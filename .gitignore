@@ -1,0 +1,58 @@
+# ================================
+# Flutter (theo_tutoring_app)
+# ================================
+theo_tutoring_app/build/
+theo_tutoring_app/.dart_tool/
+theo_tutoring_app/.flutter-plugins
+theo_tutoring_app/.flutter-plugins-dependencies
+theo_tutoring_app/.packages
+theo_tutoring_app/.pub-cache/
+theo_tutoring_app/.pub/
+theo_tutoring_app/pubspec.lock
+
+# Android
+theo_tutoring_app/android/.gradle/
+theo_tutoring_app/android/captures/
+theo_tutoring_app/android/gradlew
+theo_tutoring_app/android/gradlew.bat
+theo_tutoring_app/android/local.properties
+theo_tutoring_app/android/**/GeneratedPluginRegistrant.java
+theo_tutoring_app/android/key.properties
+
+# iOS
+theo_tutoring_app/ios/Flutter/.last_build_id
+theo_tutoring_app/ios/Pods/
+theo_tutoring_app/ios/.symlinks/
+theo_tutoring_app/ios/Flutter/Flutter.framework
+theo_tutoring_app/ios/Flutter/Flutter.podspec
+theo_tutoring_app/ios/Runner.xcworkspace/xcuserdata/
+
+# Web
+theo_tutoring_app/web/**/flutter_service_worker.js
+
+# ================================
+# Dart Frog (theo_tutoring_backend)
+# ================================
+theo_tutoring_backend/.dart_tool/
+theo_tutoring_backend/build/
+theo_tutoring_backend/.dart_frog/
+theo_tutoring_backend/pubspec.lock
+theo_tutoring_backend/.env
+
+# ================================
+# General / IDE / OS
+# ================================
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+*.log
+.DS_Store
+Thumbs.db
+
+# Secrets / environment files
+*.env
+.env.local
+firebase_options.dart
+google-services.json
+GoogleService-Info.plist
