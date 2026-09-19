@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:theo_tutoring_app/Pages/tutor_registrationPage1.dart';
-
+import 'Pages/role_selection.dart';
 import 'Pages/tutor_registration.dart';
 
 void main() {
@@ -33,7 +33,7 @@ class MyApp extends StatelessWidget {
         // tested with just a hot reload.
         colorScheme: .fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const TutorRegistrationPage1(),
+      home: const RoleSelectionPage(),
     );
   }
 }
