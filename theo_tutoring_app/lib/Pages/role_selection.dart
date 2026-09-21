@@ -15,7 +15,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             children: [
@@ -158,7 +158,7 @@ GestureDetector(
   ),
 ),
 
-const Spacer(),
+const SizedBox(height: 30),
 SizedBox(
   width: double.infinity,
   height: 55,
@@ -191,3 +191,9 @@ SizedBox(
 ),
 
 const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    ));
+  }
+}

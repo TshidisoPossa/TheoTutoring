@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:theo_tutoring_app/Pages/tutor_registrationPage1.dart';
 import 'Pages/role_selection.dart';
 import 'Pages/tutor_registration.dart';
 

@@ -27,8 +27,17 @@ String? selectedYear;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Student Registration'),
+     appBar: AppBar(
+  title: Row(
+    children: [
+      const Icon(
+        Icons.school,
+        size: 28,
+      ),
+      const SizedBox(width: 10),
+      const Text('TheoTutoring'),
+            ],
+          ),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
