@@ -80,7 +80,11 @@ class _TutorRegistrationState extends State<TutorRegistration> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('TheoTutoring')),
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        title: const Text('TheoTutoring'),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -145,6 +149,7 @@ class _TutorRegistrationState extends State<TutorRegistration> {
                   ],
                 ),
               ),
+              //
               const SizedBox(height: 24),
 
               // Subjects — tappable, multi-select chips
@@ -234,6 +239,7 @@ class _TutorRegistrationState extends State<TutorRegistration> {
               ),
               const SizedBox(height: 12),
 
+              //Button for
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -242,6 +248,15 @@ class _TutorRegistrationState extends State<TutorRegistration> {
                     // _qualificationsController.text, _experience, _bioController.text
                     // and POST to the Dart Frog API.
                   },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+
                   child: const Text('Continue →'),
                 ),
               ),

@@ -45,7 +45,11 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('TheoTutoring')),
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        title: const Text('TheoTutoring'),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -83,7 +87,6 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
                 TextFormField(
                   controller: _fullNameController,
                   decoration: const InputDecoration(
-                    //hintText: 'Jane Doe',
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
