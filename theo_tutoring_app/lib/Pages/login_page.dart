@@ -10,7 +10,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   // ============================================================
-  // FIREBASE WIRING — logic only, no UI
+  // FIREBASE WIRING — logic only
   // ============================================================
 
   // Form validation key — teammate wraps their fields in a Form
