@@ -9,7 +9,7 @@ class DatabaseConnection {
       port: 3310,
       userName: 'root',
       password: '',
-      databaseName: 'theo_tutoring_db',
+      databaseName: 'theo_tutoring',
       maxConnections: 10,
       secure: false,
     );
