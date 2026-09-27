@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'role_selection.dart';
+import 'forgot_password.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -186,50 +187,22 @@ const SizedBox(height: 10),
 Align(
   alignment: Alignment.centerRight,
   child: TextButton(
-    onPressed: () async {
-  if (_emailController.text.trim().isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Please enter your email address first.'),
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ForgotPasswordPage(),
       ),
     );
-    return;
-  }
-
-  try {
-    await FirebaseAuth.instance.sendPasswordResetEmail(
-      email: _emailController.text.trim(),
-    );
-
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Password reset email sent. Please check your inbox.',
-        ),
-      ),
-    );
-  } on FirebaseAuthException catch (e) {
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          e.message ?? 'Unable to send password reset email.',
-        ),
-      ),
-    );
-  }
-},
-    child: const Text(
-      'Forgot Password?',
-      style: TextStyle(
-        color: Colors.blue,
-        fontSize: 14,
-      ),
+  },
+  child: const Text(
+    'Forgot Password?',
+    style: TextStyle(
+      color: Colors.blue,
+      fontSize: 14,
     ),
   ),
+),
 ),
 
 const SizedBox(height: 10),
