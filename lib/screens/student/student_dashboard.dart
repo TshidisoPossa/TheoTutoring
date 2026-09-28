@@ -10,6 +10,7 @@ class StudentDashboard extends StatefulWidget {
 
 class _StudentDashboardState extends State<StudentDashboard> {
   int _currentIndex = 0;
+  int _selectedDrawerIndex = 0;
   DateTime _selectedDate = DateTime.now();
 
   final List<Map<String, dynamic>> _topTutors = [
@@ -101,55 +102,163 @@ class _StudentDashboardState extends State<StudentDashboard> {
   // ── SIDE DRAWER ──────────────────────────────────────
   Widget _buildSideDrawer() {
     final items = [
-      {'icon': Icons.home, 'label': 'Home'},
-      {'icon': Icons.menu_book, 'label': 'Subjects'},
-      {'icon': Icons.calendar_today, 'label': 'Schedule'},
-      {'icon': Icons.message, 'label': 'Messages'},
-      {'icon': Icons.history, 'label': 'Session History'},
-      {'icon': Icons.settings, 'label': 'Settings'},
+      {'icon': Icons.home_outlined, 'activeIcon': Icons.home, 'label': 'Home'},
+      {'icon': Icons.menu_book_outlined, 'activeIcon': Icons.menu_book, 'label': 'Subjects'},
+      {'icon': Icons.calendar_today_outlined, 'activeIcon': Icons.calendar_today, 'label': 'Schedule'},
+      {'icon': Icons.chat_bubble_outline, 'activeIcon': Icons.chat_bubble, 'label': 'Messages'},
+      {'icon': Icons.history, 'activeIcon': Icons.history, 'label': 'Session History'},
+      {'icon': Icons.settings_outlined, 'activeIcon': Icons.settings, 'label': 'Settings'},
     ];
 
     return Drawer(
-      child: Column(
-        children: [
-          const SizedBox(height: 50),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'Theo Tutoring',
-              style: GoogleFonts.inter(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1A73E8),
+      width: 280,
+      backgroundColor: Colors.white,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header: logo + X close button ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A73E8).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(
+                          Icons.school,
+                          color: Color(0xFF1A73E8),
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Theo Tutoring',
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF1A1A2E),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // X close button
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        color: Color(0xFF666666),
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          const Divider(),
-          ...items.map((item) => ListTile(
-            leading: Icon(
-              item['icon'] as IconData,
-              color: const Color(0xFF1A73E8),
-            ),
-            title: Text(
-              item['label'] as String,
-              style: GoogleFonts.inter(fontSize: 15),
-            ),
-            onTap: () => Navigator.pop(context),
-          )),
-          const Spacer(),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: Text(
-              'Log Out',
-              style: GoogleFonts.inter(
-                fontSize: 15,
-                color: Colors.red,
+
+            const SizedBox(height: 8),
+
+            // ── Nav items ──
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final isSelected = _selectedDrawerIndex == index;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedDrawerIndex = index);
+                        Navigator.of(context).pop();
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF1A73E8)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isSelected
+                                  ? item['activeIcon'] as IconData
+                                  : item['icon'] as IconData,
+                              color: isSelected ? Colors.white : const Color(0xFF555555),
+                              size: 22,
+                            ),
+                            const SizedBox(width: 14),
+                            Text(
+                              item['label'] as String,
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: isSelected ? Colors.white : const Color(0xFF555555),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-            onTap: () {},
-          ),
-          const SizedBox(height: 20),
-        ],
+
+            // ── Divider + Log Out ──
+            const Divider(height: 1, color: Color(0xFFEEEEEE)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.of(context).pop();
+                  // TODO: implement logout (clear Firebase session)
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.logout, color: Color(0xFFE53935), size: 22),
+                      const SizedBox(width: 14),
+                      Text(
+                        'Log Out',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFFE53935),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
