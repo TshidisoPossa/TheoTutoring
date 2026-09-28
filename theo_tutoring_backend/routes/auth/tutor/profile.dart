@@ -1,8 +1,20 @@
-import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import '../../../lib/database.dart';
-import '../../../lib/jwt_helper.dart';
 import '../../../lib/validator.dart';
+
+// POST /auth/tutor/profile
+// Body: {
+//   firebaseUid,
+//   tutorId,
+//   bio,
+//   experience,
+//   hourlyRate,
+//   certificateUrl,
+//   profilePhotoUrl,   ← NEW: Firebase Storage URL of profile photo
+//   subjectIds,
+//   qualifications
+// }
+// Note: Auth is verified via Firebase UID (no JWT)
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -12,26 +24,17 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
-  // ── Verify JWT ──
-  final authHeader = context.request.headers['Authorization'];
-  if (authHeader == null || !authHeader.startsWith('Bearer ')) {
-    return Response.json(
-      statusCode: 401,
-      body: {'error': 'Unauthorised. Please complete Step 1 first.'},
-    );
-  }
-
-  final token = authHeader.substring(7);
-  final payload = verifyToken(token);
-  if (payload == null) {
-    return Response.json(
-      statusCode: 401,
-      body: {'error': 'Invalid or expired session. Please start again.'},
-    );
-  }
-
   try {
     final body = await context.request.json() as Map<String, dynamic>;
+
+    // ── Verify Firebase UID ──
+    final firebaseUid = body['firebaseUid'] as String?;
+    if (firebaseUid == null || firebaseUid.trim().isEmpty) {
+      return Response.json(
+        statusCode: 401,
+        body: {'error': 'Unauthorised. Firebase UID is required.'},
+      );
+    }
 
     final tutorId = body['tutorId'] as int?;
     if (tutorId == null) {
@@ -41,7 +44,7 @@ Future<Response> onRequest(RequestContext context) async {
       );
     }
 
-    // ── Validate all fields ──
+    // ── Validate fields ──
     final bioCheck = Validator.validateBio(body['bio'] as String?);
     if (!bioCheck.isValid) {
       return Response.json(
@@ -72,22 +75,23 @@ Future<Response> onRequest(RequestContext context) async {
     final experience = body['experience'] as String? ?? '';
     final hourlyRate = body['hourlyRate'];
     final certificateUrl = body['certificateUrl'] as String? ?? '';
+    final profilePhotoUrl = body['profilePhotoUrl'] as String? ?? '';
     final subjectIds = (body['subjectIds'] as List).cast<int>();
     final qualifications =
-        (body['qualifications'] as List?)
-            ?.cast<Map<String, dynamic>>() ?? [];
+        (body['qualifications'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
     final db = await getConnection();
 
-    // ── Verify tutorId belongs to the JWT user ──
+    // ── Verify firebaseUid matches the tutorId ──
     final tutorCheck = await db.execute(
       '''
-      SELECT TutorID FROM TutorProfile
-      WHERE TutorID = :tutorId AND UserId = :userId
+      SELECT tp.TutorID FROM TutorProfile tp
+      INNER JOIN User u ON tp.UserId = u.UserId
+      WHERE tp.TutorID = :tutorId AND u.FirebaseUid = :firebaseUid
       ''',
       {
         'tutorId': tutorId,
-        'userId': payload['userId'],
+        'firebaseUid': firebaseUid,
       },
     );
 
@@ -98,14 +102,15 @@ Future<Response> onRequest(RequestContext context) async {
       );
     }
 
-    // ── Update TutorProfile ──
+    // ── Update TutorProfile (including ProfilePhotoUrl) ──
     await db.execute(
       '''
       UPDATE TutorProfile
       SET Bio = :bio,
           Experience = :experience,
           HourlyRate = :hourlyRate,
-          Certificate = :certificate
+          Certificate = :certificate,
+          ProfilePhotoUrl = :profilePhotoUrl
       WHERE TutorID = :tutorId
       ''',
       {
@@ -113,6 +118,7 @@ Future<Response> onRequest(RequestContext context) async {
         'experience': experience,
         'hourlyRate': hourlyRate,
         'certificate': certificateUrl,
+        'profilePhotoUrl': profilePhotoUrl,
         'tutorId': tutorId,
       },
     );
