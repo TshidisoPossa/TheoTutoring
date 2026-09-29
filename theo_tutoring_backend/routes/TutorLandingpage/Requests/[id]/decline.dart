@@ -14,47 +14,44 @@ Future<Response> onRequest(RequestContext context, String id) async {
     ); // not a number
   }
   final tutor = context.read<TutorSession>(); // who is calling
-  final conn = await getConnection(); // open a DB connection
-  try {
-    // The booking must belong to this tutor and still be Pending
-    final found = await conn.execute(
-      "SELECT `Date`, StartTime, EndTime FROM Booking "
-      "WHERE Booking_id = :id AND TutorID = :tid AND Status = 'Pending'",
-      {'id': bookingId, 'tid': tutor.tutorId},
-    );
-    if (found.rows.isEmpty) {
-      return Response.json(
-        statusCode: 404,
-        body: {'error': 'Pending request not found'},
-      );
-    }
-    final b = found.rows.first.assoc(); // date and times of the request
+  final conn = await getConnection(); // shared DB connection (do not close it)
 
-    // Tutors cannot be double-booked: look for an overlapping Accepted/Paid booking
-    final clash = await conn.execute(
-      "SELECT 1 FROM Booking WHERE TutorID = :tid AND `Date` = :d "
-      "AND Status IN ('Accepted','Paid') AND StartTime < :e AND EndTime > :s LIMIT 1",
-      {
-        'tid': tutor.tutorId,
-        'd': b['Date'],
-        's': b['StartTime'],
-        'e': b['EndTime'],
-      },
+  // The booking must belong to this tutor and still be Pending
+  final found = await conn.execute(
+    "SELECT `Date`, StartTime, EndTime FROM Booking "
+    "WHERE Booking_id = :id AND TutorID = :tid AND Status = 'Pending'",
+    {'id': bookingId, 'tid': tutor.tutorId},
+  );
+  if (found.rows.isEmpty) {
+    return Response.json(
+      statusCode: 404,
+      body: {'error': 'Pending request not found'},
     );
-    if (clash.rows.isNotEmpty) {
-      return Response.json(
-        statusCode: 409,
-        body: {'error': 'Time slot already booked'},
-      );
-    }
-
-    // Accepted status is what unlocks the student's payment
-    await conn.execute(
-      "UPDATE Booking SET Status = 'Accepted' WHERE Booking_id = :id AND Status = 'Pending'",
-      {'id': bookingId},
-    );
-    return Response.json(body: {'bookingId': bookingId, 'status': 'Accepted'});
-  } finally {
-    await conn.close(); // always close the connection
   }
+  final b = found.rows.first.assoc(); // date and times of the request
+
+  // Tutors cannot be double-booked: look for an overlapping Accepted/Paid booking
+  final clash = await conn.execute(
+    "SELECT 1 FROM Booking WHERE TutorID = :tid AND `Date` = :d "
+    "AND Status IN ('Accepted','Paid') AND StartTime < :e AND EndTime > :s LIMIT 1",
+    {
+      'tid': tutor.tutorId,
+      'd': b['Date'],
+      's': b['StartTime'],
+      'e': b['EndTime'],
+    },
+  );
+  if (clash.rows.isNotEmpty) {
+    return Response.json(
+      statusCode: 409,
+      body: {'error': 'Time slot already booked'},
+    );
+  }
+
+  // Accepted status is what unlocks the student's payment
+  await conn.execute(
+    "UPDATE Booking SET Status = 'Accepted' WHERE Booking_id = :id AND Status = 'Pending'",
+    {'id': bookingId},
+  );
+  return Response.json(body: {'bookingId': bookingId, 'status': 'Accepted'});
 }
