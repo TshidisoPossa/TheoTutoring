@@ -61,11 +61,7 @@ class SideNavigation extends StatelessWidget {
       height: double.infinity,
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          right: BorderSide(
-            color: AppColors.border,
-          ),
-        ),
+        border: Border(right: BorderSide(color: AppColors.border)),
       ),
       child: Column(
         children: [
@@ -97,10 +93,7 @@ class SideNavigation extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Icon(
-                  Icons.close_rounded,
-                  color: AppColors.secondaryText,
-                ),
+                const Icon(Icons.close_rounded, color: AppColors.secondaryText),
               ],
             ),
           ),
@@ -110,28 +103,19 @@ class SideNavigation extends StatelessWidget {
             child: Column(children: navigationItems),
           ),
           const SizedBox(height: 18),
-          const Divider(
-            indent: 22,
-            endIndent: 22,
-            color: AppColors.border,
-          ),
+          const Divider(indent: 22, endIndent: 22, color: AppColors.border),
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Column(children: secondaryItems),
           ),
           const Spacer(),
-          const Divider(
-            color: AppColors.border,
-          ),
+          const Divider(color: AppColors.border),
           Padding(
             padding: const EdgeInsets.all(22),
             child: Row(
               children: [
-                const Icon(
-                  Icons.logout_rounded,
-                  color: AppColors.danger,
-                ),
+                const Icon(Icons.logout_rounded, color: AppColors.danger),
                 const SizedBox(width: 14),
                 const Text(
                   'Log Out',
@@ -172,9 +156,7 @@ class DashboardContent extends StatelessWidget {
         ),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 1100,
-            ),
+            constraints: const BoxConstraints(maxWidth: 1100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -201,10 +183,7 @@ class DashboardContent extends StatelessWidget {
                             ),
                           ),
                           SizedBox(width: 24),
-                          Expanded(
-                            flex: 2,
-                            child: CalendarCard(),
-                          ),
+                          Expanded(flex: 2, child: CalendarCard()),
                         ],
                       );
                     }
@@ -233,15 +212,9 @@ class DashboardContent extends StatelessWidget {
     return Row(
       children: [
         if (!isDesktop)
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.menu_rounded),
-          ),
+          IconButton(onPressed: () {}, icon: const Icon(Icons.menu_rounded)),
         if (!isDesktop) const Spacer(),
-        if (!isDesktop)
-          const UserAvatar(
-            size: 38,
-          ),
+        if (!isDesktop) const UserAvatar(size: 38),
       ],
     );
   }
@@ -262,19 +235,12 @@ class MobileBottomNavigation extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(
-            color: AppColors.border,
-          ),
-        ),
+        border: Border(top: BorderSide(color: AppColors.border)),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 8,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
               Expanded(
@@ -443,10 +409,7 @@ class WelcomeSection extends StatelessWidget {
     return Center(
       child: Column(
         children: [
-          const UserAvatar(
-            size: 82,
-            showBorder: true,
-          ),
+          const UserAvatar(size: 82, showBorder: true),
           const SizedBox(height: 16),
           const Text(
             'Welcome back,',
@@ -475,11 +438,7 @@ class UserAvatar extends StatelessWidget {
   final double size;
   final bool showBorder;
 
-  const UserAvatar({
-    super.key,
-    required this.size,
-    this.showBorder = false,
-  });
+  const UserAvatar({super.key, required this.size, this.showBorder = false});
 
   @override
   Widget build(BuildContext context) {
@@ -490,12 +449,7 @@ class UserAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
-        border: showBorder
-            ? Border.all(
-                color: Colors.white,
-                width: 2,
-              )
-            : null,
+        border: showBorder ? Border.all(color: Colors.white, width: 2) : null,
         boxShadow: showBorder
             ? [
                 BoxShadow(
@@ -610,11 +564,7 @@ class QuickActionCard extends StatelessWidget {
                     color: iconBackground,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    icon,
-                    color: iconColor,
-                    size: 27,
-                  ),
+                  child: Icon(icon, color: iconColor, size: 27),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -655,10 +605,7 @@ class UpcomingSession extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeader(
-          title: 'Up Next',
-          action: 'See all',
-        ),
+        const SectionHeader(title: 'Up Next', action: 'See all'),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(20),
@@ -727,10 +674,7 @@ class UpcomingSession extends StatelessWidget {
                       children: [
                         Text(
                           'Today',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                         SizedBox(height: 2),
                         Text(
@@ -747,17 +691,11 @@ class UpcomingSession extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 18),
-              Divider(
-                color: Colors.white.withValues(alpha: 0.25),
-                height: 1,
-              ),
+              Divider(color: Colors.white.withValues(alpha: 0.25), height: 1),
               const SizedBox(height: 15),
               Row(
                 children: [
-                  const TutorAvatar(
-                    initials: 'JM',
-                    color: Color(0xFFBFC8D8),
-                  ),
+                  const TutorAvatar(initials: 'JM', color: Color(0xFFBFC8D8)),
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Column(
@@ -774,10 +712,7 @@ class UpcomingSession extends StatelessWidget {
                         SizedBox(height: 2),
                         Text(
                           'Online Meeting',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                       ],
                     ),
@@ -818,10 +753,7 @@ class TutorSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionHeader(
-          title: 'Top Tutors for You',
-          action: 'Explore',
-        ),
+        const SectionHeader(title: 'Top Tutors for You', action: 'Explore'),
         const SizedBox(height: 14),
         const TutorCard(
           initials: 'TN',
@@ -848,19 +780,14 @@ class TutorSection extends StatelessWidget {
             onPressed: () {},
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary,
-              side: const BorderSide(
-                color: Color(0xFFBFC7DB),
-              ),
+              side: const BorderSide(color: Color(0xFFBFC7DB)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(9),
               ),
             ),
             child: const Text(
               'View All Mentors',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
             ),
           ),
         ),
@@ -900,9 +827,7 @@ class TutorCard extends StatelessWidget {
         children: [
           TutorAvatar(
             initials: initials,
-            color: online
-                ? const Color(0xFFD6DDE8)
-                : const Color(0xFFC8D2D1),
+            color: online ? const Color(0xFFD6DDE8) : const Color(0xFFC8D2D1),
             size: 95,
           ),
           const SizedBox(width: 14),
@@ -913,9 +838,7 @@ class TutorCard extends StatelessWidget {
                 Text(
                   online ? 'Available Now' : 'Offline',
                   style: TextStyle(
-                    color: online
-                        ? const Color(0xFF3AC86D)
-                        : AppColors.muted,
+                    color: online ? const Color(0xFF3AC86D) : AppColors.muted,
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1008,10 +931,7 @@ class TutorAvatar extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Text(
         initials,
@@ -1029,11 +949,7 @@ class SectionHeader extends StatelessWidget {
   final String title;
   final String action;
 
-  const SectionHeader({
-    super.key,
-    required this.title,
-    required this.action,
-  });
+  const SectionHeader({super.key, required this.title, required this.action});
 
   @override
   Widget build(BuildContext context) {
@@ -1089,20 +1005,15 @@ class BottomNavItem extends StatelessWidget {
             Icon(
               icon,
               size: 22,
-              color: selected
-                  ? AppColors.primary
-                  : AppColors.secondaryText,
+              color: selected ? AppColors.primary : AppColors.secondaryText,
             ),
             const SizedBox(height: 3),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: selected
-                    ? AppColors.primary
-                    : AppColors.secondaryText,
-                fontWeight:
-                    selected ? FontWeight.w500 : FontWeight.w400,
+                color: selected ? AppColors.primary : AppColors.secondaryText,
+                fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
               ),
             ),
           ],
