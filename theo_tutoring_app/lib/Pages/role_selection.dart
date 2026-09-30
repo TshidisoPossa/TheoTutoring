@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'login_page.dart';
 import 'student_registration.dart';
 import 'tutor_registrationPage1.dart'; //Tutor reg page
@@ -177,35 +178,33 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
 
               const SizedBox(height: 15),
 
-Row(
-  mainAxisAlignment: MainAxisAlignment.center,
-  children: [
-    const Text(
-      'Already have an account? ',
-      style: TextStyle(
-        fontSize: 14,
-      ),
-    ),
-    TextButton(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const LoginPage(),
-          ),
-        );
-      },
-      child: const Text(
-        'Log in',
-        style: TextStyle(
-          color: Colors.blue,
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-        ),
-      ),
-    ),
-  ],
-),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Already have an account? ',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const LoginPage(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'Log in',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
