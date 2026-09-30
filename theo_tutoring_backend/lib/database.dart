@@ -1,5 +1,6 @@
 import 'package:mysql_client/mysql_client.dart';
 
+
 MySQLConnection? _connection;
 
 Future<MySQLConnection> getConnection() async {
@@ -13,7 +14,7 @@ Future<MySQLConnection> getConnection() async {
     userName: 'root',
     password: '',
     databaseName: 'theotutoring',
-    secure: false,
+    secure: true, // Use SSL/TLS for secure connection
   );
 
   await _connection!.connect();
