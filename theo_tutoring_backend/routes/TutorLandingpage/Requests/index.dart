@@ -1,6 +1,7 @@
 import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
 import '../../../lib/database.dart'; // getConnection()
-import '../../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../../lib/tutorlanding_session.dart';
+import 'package:theo_tutoring_backend/header_tutor.dart'; // shared tutor name + photo
 
 //auther Tshidiso Possa
 Future<Response> onRequest(RequestContext context) async {
