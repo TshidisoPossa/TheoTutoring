@@ -1,5 +1,5 @@
 import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import '../../../../lib/database.dart';
+import '../../../lib/database.dart';
 import 'package:theo_tutoring_backend/database.dart'; // getConnection()
 import 'package:theo_tutoring_backend/tutorlanding_session.dart'; // TutorSession
 import 'package:theo_tutoring_backend/header_tutor.dart'; // shared tutor name + photo
