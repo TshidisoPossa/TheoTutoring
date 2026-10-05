@@ -4,6 +4,8 @@ import 'package:theo_tutoring_app/Pages/student_registration.dart';
 import 'Pages/role_selection.dart';
 import 'Pages/tutor_registration.dart';
 import 'Pages/login_page.dart';
+import 'Pages/Admin/admin_shell.dart';
+import 'Pages/Admin/admin_dashboardscreen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -36,6 +38,8 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
       home: const LoginPage(),
+
+      routes: {AdminRoutes.dashboard: (_) => const AdminDashboardPage()},
     );
   }
 }
