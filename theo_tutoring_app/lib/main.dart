@@ -4,11 +4,15 @@ import 'package:theo_tutoring_app/Pages/student_registration.dart';
 import 'Pages/role_selection.dart';
 import 'Pages/tutor_registration.dart';
 import 'Pages/login_page.dart';
+import 'package:firebase_core/firebase_core.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp();
+
   runApp(const MyApp());
 }
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 

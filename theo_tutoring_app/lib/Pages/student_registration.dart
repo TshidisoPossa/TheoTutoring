@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class StudentRegistrationPage extends StatefulWidget {
   const StudentRegistrationPage({super.key});
@@ -24,6 +27,38 @@ final courseController = TextEditingController();
 final tutoringModuleController = TextEditingController();
 
 String? selectedYear;
+Future<UserCredential> _createFirebaseAccount() async {
+  return await FirebaseAuth.instance.createUserWithEmailAndPassword(
+    email: emailController.text.trim(),
+    password: passwordController.text,
+  );
+}
+Future<void> _registerStudent(String firebaseUid) async {
+  final response = await http.post(
+    Uri.parse('http://localhost:8080/auth/student/register'),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: jsonEncode({
+      'firebaseUid': firebaseUid,
+      'fullName': fullNameController.text.trim(),
+      'email': emailController.text.trim(),
+      'password': passwordController.text,
+      'confirmPassword': confirmPasswordController.text,
+      'phone': phoneController.text.trim(),
+      'address': addressController.text.trim(),
+      'institutionYear': selectedYear!.replaceAll('Year ', ''),
+      'course': courseController.text.trim(),
+      'tutoringModule': tutoringModuleController.text.trim(),
+      'termsAccepted': termsAccepted,
+    }),
+  );
+
+  if (response.statusCode != 201) {
+    throw Exception('Registration failed: ${response.body}');
+  }
+}
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -297,7 +332,9 @@ String? selectedYear;
                 ),
               ],
               onChanged: (value) {
-                // Year selection will be handled later.
+                setState(() {
+                  selectedYear = value;
+                });
               },
             ),
 
@@ -452,7 +489,7 @@ String? selectedYear;
               height: 55,
               child: ElevatedButton(
                 onPressed: termsAccepted
-    ? () {
+    ? () async {
         if (fullNameController.text.isEmpty ||
             emailController.text.isEmpty ||
             passwordController.text.isEmpty ||
@@ -484,13 +521,52 @@ String? selectedYear;
           return;
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Registration details are valid!',
+        try {
+          final userCredential = await _createFirebaseAccount();
+
+        final firebaseUser = userCredential.user;
+
+        if (firebaseUser == null) {
+      throw Exception('Could not get Firebase user.');
+    }
+
+        try {
+            await _registerStudent(firebaseUser.uid);
+        } catch (e) {
+            await firebaseUser.delete();
+           rethrow;
+}
+
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Registration successful!',
+              ),
             ),
-          ),
-        );
+          );
+        } on FirebaseAuthException catch (e) {
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                e.message ?? 'Firebase registration failed.',
+              ),
+            ),
+          );
+        } catch (e) {
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Registration failed: $e',
+              ),
+            ),
+          );
+        }
       }
     : null,
                 style: ElevatedButton.styleFrom(
