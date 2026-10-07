@@ -2,7 +2,7 @@ import 'package:intl/intl.dart';
 
 // Expected backend responses (Dart Frog):
 // dashboard_models.dart turns the JSON from your backend into Dart objects the page can use.
-
+//Holds data classes
 double? _num(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();

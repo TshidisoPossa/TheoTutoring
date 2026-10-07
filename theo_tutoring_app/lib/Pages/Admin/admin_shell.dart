@@ -27,6 +27,9 @@ class AdminRoutes {
   static const monitor = '/admin/monitor';
   static const settings = '/admin/settings';
   static const activity = '/admin/activity';
+  static const applicationReview = '/admin/applications/review';
+  static const transactions = '/admin/transactions';
+  static const transactionDetail = '/admin/transactions/detail';
 }
 
 class _NavItem {

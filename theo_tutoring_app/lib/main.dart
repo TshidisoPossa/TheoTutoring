@@ -6,7 +6,11 @@ import 'Pages/tutor_registration.dart';
 import 'Pages/login_page.dart';
 import 'Pages/Admin/admin_shell.dart';
 import 'Pages/Admin/admin_dashboardscreen.dart';
+
 import 'package:firebase_core/firebase_core.dart';
+
+import 'Pages/Admin/application_screen.dart';
+import 'Pages/Admin/FinancialScreen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,13 +28,12 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-        ),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
       home: const LoginPage(),
       routes: {
         AdminRoutes.dashboard: (_) => const AdminDashboardPage(),
+        AdminRoutes.applications: (_) => const AdminApplicationsScreen(),
       },
     );
   }
