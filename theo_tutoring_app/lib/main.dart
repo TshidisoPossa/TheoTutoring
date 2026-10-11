@@ -11,6 +11,7 @@ import 'package:firebase_core/firebase_core.dart';
 
 import 'Pages/Admin/application_screen.dart';
 import 'Pages/Admin/FinancialScreen.dart';
+import 'Pages/Admin/subject_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +35,7 @@ class MyApp extends StatelessWidget {
       routes: {
         AdminRoutes.dashboard: (_) => const AdminDashboardPage(),
         AdminRoutes.applications: (_) => const AdminApplicationsScreen(),
+        AdminRoutes.subjects: (_) => const AdminSubjectsScreen(),
       },
     );
   }
