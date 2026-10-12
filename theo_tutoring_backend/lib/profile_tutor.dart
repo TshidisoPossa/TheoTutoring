@@ -1,6 +1,3 @@
-import 'header_tutor.dart';
-import 'package:mysql_client/mysql_client.dart'; // gives us the MySQLConnection type
-import 'package:theo_tutoring_backend/header_tutor.dart';
 import 'package:mysql_client/mysql_client.dart'; // gives us the MySQLConnection type
 import 'package:theo_tutoring_backend/header_tutor.dart';
 
