@@ -85,9 +85,22 @@ void main() {
       );
     });
 
-    test('rejects proof URLs longer than the schema limit', () {
-      final url = 'https://example.com/${List.filled(240, 'a').join()}';
+    test('accepts schema-length proof URLs over 255 characters', () {
+      final url = 'https://example.com/${List.filled(300, 'a').join()}';
       expect(url.length, greaterThan(255));
+      expect(url.length, lessThanOrEqualTo(500));
+      expect(
+        route.validateStudentRegistration({
+          ..._validRegistration,
+          'proofOfRegistrationUrl': url,
+        }),
+        isEmpty,
+      );
+    });
+
+    test('rejects proof URLs longer than the schema limit', () {
+      final url = 'https://example.com/${List.filled(490, 'a').join()}';
+      expect(url.length, greaterThan(500));
       expect(
         route.validateStudentRegistration({
           ..._validRegistration,
@@ -136,8 +149,22 @@ void main() {
       }
     });
 
-    test('rejects profile-photo URLs over 255 characters', () {
-      final url = 'https://example.com/${List.filled(240, 'a').join()}';
+    test('accepts schema-length profile-photo URLs over 255 characters', () {
+      final url = 'https://example.com/${List.filled(300, 'a').join()}';
+      expect(url.length, greaterThan(255));
+      expect(url.length, lessThanOrEqualTo(500));
+      expect(
+        route.validateStudentRegistration({
+          ..._validRegistration,
+          'profilePhotoUrl': url,
+        }),
+        isEmpty,
+      );
+    });
+
+    test('rejects profile-photo URLs over 500 characters', () {
+      final url = 'https://example.com/${List.filled(490, 'a').join()}';
+      expect(url.length, greaterThan(500));
       expect(
         route.validateStudentRegistration({
           ..._validRegistration,

@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS `User` (
     Role ENUM('student', 'tutor', 'admin') NOT NULL,
     ProfilePhoto VARCHAR(500) NULL,
     Created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    AccountStatus ENUM('Active', 'Suspended', 'Deactivated')
+    AccountStatus ENUM(
+        'Incomplete', 'Pending', 'Active', 'Suspended', 'Deactivated', 'Rejected'
+    )
         NOT NULL DEFAULT 'Active'
 );
 
@@ -67,9 +69,9 @@ CREATE TABLE IF NOT EXISTS StudentProfile (
 CREATE TABLE IF NOT EXISTS TutorProfile (
     TutorID INT AUTO_INCREMENT PRIMARY KEY,
     Bio TEXT NULL,
-    Experiance VARCHAR(50) NULL,
+    Experience VARCHAR(50) NULL,
     Certificate VARCHAR(500) NULL,
-    IdDocum VARCHAR(500) NULL,
+    IdDocument VARCHAR(500) NULL,
     VerificationStat ENUM('Pending', 'Approved', 'Rejected')
         NOT NULL DEFAULT 'Pending',
     AveRate DECIMAL(3,2) NOT NULL DEFAULT 0,
@@ -345,7 +347,7 @@ CREATE TABLE IF NOT EXISTS Notification (
 
 CREATE TABLE IF NOT EXISTS TutorApplication (
     TutApplication INT AUTO_INCREMENT PRIMARY KEY,
-    StudentID INT NOT NULL,
+    TutorID INT NOT NULL,
     Status ENUM('Pending', 'Approved', 'Rejected')
         NOT NULL DEFAULT 'Pending',
     AdminFeedback TEXT NULL,
@@ -353,13 +355,13 @@ CREATE TABLE IF NOT EXISTS TutorApplication (
     SubmittedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     Review_at DATETIME NULL,
 
-    CONSTRAINT fk_application_student
-        FOREIGN KEY (StudentID) REFERENCES StudentProfile(StudentID),
+    CONSTRAINT fk_application_tutor
+        FOREIGN KEY (TutorID) REFERENCES TutorProfile(TutorID),
 
     CONSTRAINT fk_application_admin
         FOREIGN KEY (AdminID) REFERENCES Admin(AdminID),
 
-    INDEX idx_application_student_status (StudentID, Status)
+    INDEX idx_application_tutor_status (TutorID, Status)
 );
 
 -- =========================================================

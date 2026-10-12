@@ -5,6 +5,7 @@ import 'package:dart_frog/dart_frog.dart';
 import '../../../lib/database.dart';
 import '../../../lib/firebase_auth.dart';
 import '../../../lib/request_utils.dart';
+import '../../../lib/tutor_account_status.dart';
 import '../../../lib/validator.dart';
 
 // The tutor is identified from the verified token, never from the body.
@@ -26,11 +27,6 @@ Future<Response> onRequest(RequestContext context) async {
   }
 
   try {
-    final cloudName = Platform.environment['CLOUDINARY_CLOUD_NAME'];
-    if (cloudName == null || cloudName.isEmpty) {
-      throw StateError('CLOUDINARY_CLOUD_NAME is not set');
-    }
-
     // ── Verify the Firebase ID token ──
     final FirebaseUser firebaseUser;
     try {
@@ -39,6 +35,11 @@ Future<Response> onRequest(RequestContext context) async {
       );
     } on AuthTokenException catch (e) {
       return jsonError(401, e.message);
+    }
+
+    final cloudName = Platform.environment['CLOUDINARY_CLOUD_NAME'];
+    if (cloudName == null || cloudName.isEmpty) {
+      throw StateError('CLOUDINARY_CLOUD_NAME is not set');
     }
 
     // ── Read and validate the body ──
@@ -119,7 +120,7 @@ Future<Response> onRequest(RequestContext context) async {
       SELECT tp.TutorID, u.UserId, u.AccountStatus
       FROM TutorProfile tp
       INNER JOIN User u ON tp.UserId = u.UserId
-      WHERE u.UID = :uid AND u.Role = 'tutor'
+      WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'
       ''',
       {'uid': firebaseUser.uid},
     );
@@ -136,10 +137,13 @@ Future<Response> onRequest(RequestContext context) async {
     final userId = int.parse(row.colByName('UserId')!);
     final accountStatus = row.colByName('AccountStatus');
 
-    if (accountStatus == 'suspended' || accountStatus == 'rejected') {
+    if (!canUpdateTutorRegistrationProfile(accountStatus)) {
       return jsonError(
-        403,
-        'This account cannot be updated. Please contact support.',
+        accountStatus?.toLowerCase() == 'active' ||
+                accountStatus?.toLowerCase() == 'pending'
+            ? 409
+            : 403,
+        'This account cannot continue tutor registration.',
       );
     }
 

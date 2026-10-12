@@ -3,6 +3,7 @@ import 'package:dart_frog/dart_frog.dart';
 import '../../../lib/database.dart';
 import '../../../lib/firebase_auth.dart';
 import '../../../lib/request_utils.dart';
+import '../../../lib/tutor_account_status.dart';
 
 // POST /auth/tutor/availability  (Tutor registration, Step 3 of 3)
 //
@@ -26,7 +27,11 @@ const _maxSlots = 30;
 
 final _timePattern = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$');
 
-typedef _Slot = ({String day, int startMinutes, int endMinutes});
+typedef TutorAvailabilitySlot = ({
+  String day,
+  int startMinutes,
+  int endMinutes,
+});
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
@@ -46,7 +51,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     // ── Read and validate the availability slots ──
     final body = await readJsonObject(context);
-    final slots = _parseSlots(body['availability']);
+    final slots = parseTutorAvailabilitySlots(body['availability']);
 
     final db = await getConnection();
 
@@ -60,7 +65,7 @@ Future<Response> onRequest(RequestContext context) async {
                WHERE q.TutorID = tp.TutorID) AS QualificationCount
       FROM TutorProfile tp
       INNER JOIN User u ON tp.UserId = u.UserId
-      WHERE u.UID = :uid AND u.Role = 'tutor'
+      WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'
       ''',
       {'uid': firebaseUser.uid},
     );
@@ -77,21 +82,10 @@ Future<Response> onRequest(RequestContext context) async {
     final userId = int.parse(row.colByName('UserId')!);
     final accountStatus = row.colByName('AccountStatus');
 
-    if (accountStatus == 'suspended' || accountStatus == 'rejected') {
+    if (!canSubmitTutorAvailability(accountStatus)) {
       return jsonError(
         403,
-        'This account cannot be updated. Please contact support.',
-      );
-    }
-
-    // This endpoint is only for registration. Approved tutors change their
-    // availability from the profile edit screen, which must protect slots
-    // that already have upcoming bookings.
-    if (accountStatus == 'active') {
-      return jsonError(
-        409,
-        'Your registration is already approved. '
-        'Update your availability from your profile instead.',
+        'This account cannot continue tutor registration.',
       );
     }
 
@@ -118,7 +112,7 @@ Future<Response> onRequest(RequestContext context) async {
       for (final slot in slots) {
         await conn.execute(
           '''
-          INSERT INTO TutAvailability (TutorID, Day, StartTime, EndTime)
+          INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time)
           VALUES (:tutorId, :day, :startTime, :endTime)
           ''',
           {
@@ -133,8 +127,8 @@ Future<Response> onRequest(RequestContext context) async {
       // Registration is now complete: incomplete → pending.
       await conn.execute(
         '''
-        UPDATE User SET AccountStatus = 'pending'
-        WHERE UserId = :userId AND AccountStatus = 'incomplete'
+        UPDATE User SET AccountStatus = 'Pending'
+        WHERE UserId = :userId AND AccountStatus = 'Incomplete'
         ''',
         {'userId': userId},
       );
@@ -142,17 +136,17 @@ Future<Response> onRequest(RequestContext context) async {
       // Create the application for the admin queue, unless the tutor is
       // resubmitting Step 3 and already has one.
       final existingApplication = await conn.execute(
-        'SELECT TutApplicationID FROM TutorApplication WHERE UserID = :userId',
-        {'userId': userId},
+        'SELECT TutApplication FROM TutorApplication WHERE TutorID = :tutorId',
+        {'tutorId': tutorId},
       );
 
       if (existingApplication.rows.isEmpty) {
         await conn.execute(
           '''
-          INSERT INTO TutorApplication (UserID, Status, Submitted_at)
-          VALUES (:userId, 'pending', NOW())
+          INSERT INTO TutorApplication (TutorID, Status, SubmittedAt)
+          VALUES (:tutorId, 'Pending', NOW())
           ''',
-          {'userId': userId},
+          {'tutorId': tutorId},
         );
       }
     });
@@ -163,7 +157,7 @@ Future<Response> onRequest(RequestContext context) async {
             'Registration complete! Your application is under review. '
             'You will be notified once an admin approves your account.',
         'tutorId': tutorId,
-        'status': 'pending',
+        'status': 'Pending',
       },
     );
   } on FormatException catch (e) {
@@ -177,7 +171,7 @@ Future<Response> onRequest(RequestContext context) async {
 /// Reads and validates the availability list.
 /// Rules: at least one slot, Monday to Saturday only, 24-hour HH:mm times,
 /// start before end, and no overlapping slots on the same day.
-List<_Slot> _parseSlots(Object? value) {
+List<TutorAvailabilitySlot> parseTutorAvailabilitySlots(Object? value) {
   if (value is! List || value.isEmpty) {
     throw const FormatException(
       'Please select at least one available time slot.',
@@ -187,7 +181,7 @@ List<_Slot> _parseSlots(Object? value) {
     throw const FormatException('You can add up to $_maxSlots time slots.');
   }
 
-  final slots = <_Slot>[];
+  final slots = <TutorAvailabilitySlot>[];
 
   for (final item in value) {
     if (item is! Map<String, dynamic>) {

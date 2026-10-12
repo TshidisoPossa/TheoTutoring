@@ -1,21 +1,26 @@
+import 'dart:io';
+
 import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
 import '../../lib/database.dart'; // getConnection()
-import '../../lib/firebase_auth_helper.dart'; // verifyFirebaseToken()
+import '../../lib/firebase_auth.dart';
+import '../../lib/tutor_account_status.dart';
 import '../../lib/tutorlanding_session.dart'; // TutorSession
 
 //auther Tshidiso Possa
 
-// Finds the TutorID that belongs to a Firebase UID, or null if not a tutor
-Future<int?> _findTutorId(String firebaseUid) async {
+// Finds an active tutor profile belonging to a Firebase UID.
+Future<int?> _findActiveTutorId(String firebaseUid) async {
   final conn = await getConnection(); // shared DB connection (do not close it)
   final result = await conn.execute(
-    'SELECT tp.TutorID FROM TutorProfile tp ' // tutor row
+    'SELECT tp.TutorID, u.AccountStatus FROM TutorProfile tp ' // tutor row
     'INNER JOIN `User` u ON tp.UserId = u.UserId ' // link tutor to user
-    'WHERE u.FirebaseUid = :uid', // match the verified Firebase UID
+    "WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'", // verified tutor UID
     {'uid': firebaseUid},
   );
   if (result.rows.isEmpty) return null; // this user is not a tutor
-  return int.parse(result.rows.first.assoc()['TutorID']!); // TutorID as int
+  final row = result.rows.first.assoc();
+  if (!canAccessTutorLandingPage(row['AccountStatus'])) return null;
+  return int.parse(row['TutorID']!); // TutorID as int
 }
 
 // Runs before every route under /tutor
@@ -30,21 +35,33 @@ Handler middleware(Handler handler) {
         body: {'error': 'Missing token'},
       ); // no token sent
     }
-    final uid = await verifyFirebaseToken(
-      header.substring(7),
-    ); // strip "Bearer " and verify
-    if (uid == null) {
+    final FirebaseUser user;
+    try {
+      user = await verifyFirebaseToken(header);
+    } on AuthTokenException {
       return Response.json(
         statusCode: 401,
         body: {'error': 'Invalid token'},
       ); // bad token
+    } on StateError {
+      return Response.json(
+        statusCode: 500,
+        body: {'error': 'Authentication service is not configured correctly.'},
+      );
+    } catch (_) {
+      stderr.writeln('Firebase authentication failed unexpectedly.');
+      return Response.json(
+        statusCode: 503,
+        body: {'error': 'Authentication service is temporarily unavailable.'},
+      );
     }
-    final tutorId = await _findTutorId(uid); // map UID to TutorID
+    final uid = user.uid;
+    final tutorId = await _findActiveTutorId(uid); // map UID to active TutorID
     if (tutorId == null) {
       return Response.json(
         statusCode: 403,
-        body: {'error': 'Tutors only'},
-      ); // NFR3 role restriction
+        body: {'error': 'An active tutor account is required.'},
+      );
     }
     return handler(
       context.provide<TutorSession>(

@@ -36,13 +36,30 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
-  final firebaseUid = await verifyFirebaseToken(authorization.substring(7));
-  if (firebaseUid == null) {
+  late final FirebaseUser firebaseUser;
+
+  try {
+    firebaseUser = await verifyFirebaseToken(authorization);
+  } on AuthTokenException catch (error) {
     return Response.json(
       statusCode: 401,
-      body: {'error': 'Invalid or expired Firebase ID token.'},
+      body: {'error': error.message},
+    );
+  } on StateError catch (error) {
+    stderr.writeln('Firebase configuration error: $error');
+    return Response.json(
+      statusCode: 500,
+      body: {'error': 'Authentication service is not configured correctly.'},
+    );
+  } catch (error) {
+    stderr.writeln('Firebase authentication error: $error');
+    return Response.json(
+      statusCode: 503,
+      body: {'error': 'Authentication service is temporarily unavailable.'},
     );
   }
+
+  final firebaseUid = firebaseUser.uid;
 
   late final dynamic body;
   try {
