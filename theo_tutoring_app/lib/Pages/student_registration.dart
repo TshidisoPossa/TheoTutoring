@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+
+import '../config/api.dart';
+import 'cloudinary_upload.dart';
 
 class StudentRegistrationPage extends StatefulWidget {
   const StudentRegistrationPage({super.key});
@@ -27,29 +32,66 @@ final courseController = TextEditingController();
 final tutoringModuleController = TextEditingController();
 
 String? selectedYear;
+
+File? _proofFile;
+String? _proofUrl; // set after Cloudinary upload succeeds
+bool _uploadingProof = false;
+
+Future<void> _pickProofOfRegistration() async {
+  final picker = ImagePicker();
+  final picked = await picker.pickImage(
+    source: ImageSource.gallery,
+    maxWidth: 1600,
+    imageQuality: 85,
+  );
+  if (picked == null) return;
+
+  final file = File(picked.path);
+  setState(() {
+    _proofFile = file;
+    _proofUrl = null;
+    _uploadingProof = true;
+  });
+
+  try {
+    final url = await uploadToCloudinary(file);
+    setState(() => _proofUrl = url);
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Proof of registration upload failed: $e')),
+      );
+    }
+  } finally {
+    if (mounted) setState(() => _uploadingProof = false);
+  }
+}
+
 Future<UserCredential> _createFirebaseAccount() async {
   return await FirebaseAuth.instance.createUserWithEmailAndPassword(
     email: emailController.text.trim(),
     password: passwordController.text,
   );
 }
-Future<void> _registerStudent(String firebaseUid) async {
+Future<void> _registerStudent(User firebaseUser) async {
+  // The backend identifies the student from this Firebase ID token.
+  final idToken = await firebaseUser.getIdToken();
+
   final response = await http.post(
-    Uri.parse('http://localhost:8080/auth/student/register'),
+    Uri.parse('$apiBaseUrl/students/register'),
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': 'Bearer $idToken',
     },
     body: jsonEncode({
-      'firebaseUid': firebaseUid,
       'fullName': fullNameController.text.trim(),
       'email': emailController.text.trim(),
-      'password': passwordController.text,
-      'confirmPassword': confirmPasswordController.text,
       'phone': phoneController.text.trim(),
       'address': addressController.text.trim(),
       'institutionYear': selectedYear!.replaceAll('Year ', ''),
       'course': courseController.text.trim(),
       'tutoringModule': tutoringModuleController.text.trim(),
+      'proofOfRegistrationUrl': _proofUrl,
       'termsAccepted': termsAccepted,
     }),
   );
@@ -353,17 +395,28 @@ Future<void> _registerStudent(String firebaseUid) async {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  // File upload will be added later.
-                },
-                icon: const Icon(
-                  Icons.upload_file,
-                  color: Colors.blue,
-                ),
-                label: const Text(
-                  'Upload Proof of Registration',
+                onPressed: _uploadingProof ? null : _pickProofOfRegistration,
+                icon: _uploadingProof
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        _proofUrl != null
+                            ? Icons.check_circle
+                            : Icons.upload_file,
+                        color: _proofUrl != null ? Colors.green : Colors.blue,
+                      ),
+                label: Text(
+                  _uploadingProof
+                      ? 'Uploading...'
+                      : _proofUrl != null
+                          ? 'Uploaded: ${_proofFile!.path.split(Platform.pathSeparator).last}'
+                          : 'Upload Proof of Registration',
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.blue,
+                    color: _proofUrl != null ? Colors.green : Colors.blue,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -509,6 +562,19 @@ Future<void> _registerStudent(String firebaseUid) async {
           return;
         }
 
+        if (_uploadingProof || _proofUrl == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _uploadingProof
+                    ? 'Please wait for your proof of registration to finish uploading.'
+                    : 'Please upload your proof of registration.',
+              ),
+            ),
+          );
+          return;
+        }
+
         if (passwordController.text !=
             confirmPasswordController.text) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -531,7 +597,7 @@ Future<void> _registerStudent(String firebaseUid) async {
     }
 
         try {
-            await _registerStudent(firebaseUser.uid);
+            await _registerStudent(firebaseUser);
         } catch (e) {
             await firebaseUser.delete();
            rethrow;

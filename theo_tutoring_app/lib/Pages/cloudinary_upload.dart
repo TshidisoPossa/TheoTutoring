@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 // Fill these in from your Cloudinary dashboard (free tier — no card needed).
-const String _cloudName = 'YOUR_CLOUD_NAME';
-const String _uploadPreset = 'YOUR_UNSIGNED_UPLOAD_PRESET';
+const String _cloudName = 'ejckimby';
+const String _uploadPreset = 'theo_unsigned';
 
 /// Uploads [file] to Cloudinary using an unsigned preset and returns the
 /// resulting secure image URL. Store this URL string in MySQL, not the file.
