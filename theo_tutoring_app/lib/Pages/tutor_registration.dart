@@ -47,7 +47,7 @@ class _TutorRegistrationState extends State<TutorRegistration> {
     });
 
     try {
-      final url = await uploadToCloudinary(file);
+      final url = await uploadToCloudinary(picked);
       setState(() => _profileImageUrl = url);
     } catch (e) {
       if (mounted) {

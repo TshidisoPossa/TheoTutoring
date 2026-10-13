@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
@@ -33,7 +32,7 @@ final tutoringModuleController = TextEditingController();
 
 String? selectedYear;
 
-File? _proofFile;
+XFile? _proofFile;
 String? _proofUrl; // set after Cloudinary upload succeeds
 bool _uploadingProof = false;
 
@@ -46,15 +45,14 @@ Future<void> _pickProofOfRegistration() async {
   );
   if (picked == null) return;
 
-  final file = File(picked.path);
   setState(() {
-    _proofFile = file;
+    _proofFile = picked;
     _proofUrl = null;
     _uploadingProof = true;
   });
 
   try {
-    final url = await uploadToCloudinary(file);
+    final url = await uploadToCloudinary(picked);
     setState(() => _proofUrl = url);
   } catch (e) {
     if (mounted) {
@@ -412,7 +410,7 @@ Future<void> _registerStudent(User firebaseUser) async {
                   _uploadingProof
                       ? 'Uploading...'
                       : _proofUrl != null
-                          ? 'Uploaded: ${_proofFile!.path.split(Platform.pathSeparator).last}'
+                          ? 'Uploaded: ${_proofFile!.name}'
                           : 'Upload Proof of Registration',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -603,17 +601,25 @@ Future<void> _registerStudent(User firebaseUser) async {
            rethrow;
 }
 
-          if (!mounted) return;
+          // Creating the account signs the user in; sign out so they log in
+          // themselves on the login page.
+          await FirebaseAuth.instance.signOut();
+
+          if (!context.mounted) return;
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Registration successful!',
+                'Registration successful! Please log in.',
               ),
             ),
           );
+
+          // Back to the LoginPage (the first route), closing role selection
+          // and this registration page.
+          Navigator.of(context).popUntil((route) => route.isFirst);
         } on FirebaseAuthException catch (e) {
-          if (!mounted) return;
+          if (!context.mounted) return;
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -623,7 +629,7 @@ Future<void> _registerStudent(User firebaseUser) async {
             ),
           );
         } catch (e) {
-          if (!mounted) return;
+          if (!context.mounted) return;
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

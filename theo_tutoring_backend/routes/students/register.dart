@@ -194,7 +194,7 @@ Future<Response> createStudentRecords(
         'institutionYear': institutionYear,
         'course': course,
         'tutoringModule': tutoringModule,
-        'userId': userResult.lastInsertID,
+        'userId': userResult.lastInsertID.toInt(),
       },
     );
     await connection.execute('COMMIT');
@@ -203,8 +203,8 @@ Future<Response> createStudentRecords(
       statusCode: 201,
       body: {
         'message': 'Student registered successfully.',
-        'userId': userResult.lastInsertID,
-        'studentId': studentResult.lastInsertID,
+        'userId': userResult.lastInsertID.toInt(),
+        'studentId': studentResult.lastInsertID.toInt(),
       },
     );
   } catch (_) {

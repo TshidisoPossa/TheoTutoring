@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:mysql_client/mysql_client.dart';
+import 'package:theo_tutoring_backend/env.dart';
 
 //Database connection
 MySQLConnection? _connection;
@@ -10,9 +9,8 @@ Future<MySQLConnection> getConnection() async {
     return _connection!;
   }
 
-  // Each developer sets DB_PASSWORD etc. in their own terminal.
+  // Each developer sets DB_USER, DB_PASSWORD etc. in their own .env file.
   // Never commit passwords.
-  final env = Platform.environment;
   _connection = await MySQLConnection.createConnection(
     host: env['DB_HOST'] ?? '127.0.0.1',
     port: int.parse(env['DB_PORT'] ?? '3306'),

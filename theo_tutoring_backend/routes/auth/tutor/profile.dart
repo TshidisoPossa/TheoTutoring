@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:dart_frog/dart_frog.dart';
 
 import '../../../lib/database.dart';
+import '../../../lib/env.dart';
 import '../../../lib/firebase_auth.dart';
 import '../../../lib/request_utils.dart';
 import '../../../lib/tutor_account_status.dart';
@@ -37,7 +36,7 @@ Future<Response> onRequest(RequestContext context) async {
       return jsonError(401, e.message);
     }
 
-    final cloudName = Platform.environment['CLOUDINARY_CLOUD_NAME'];
+    final cloudName = env['CLOUDINARY_CLOUD_NAME'];
     if (cloudName == null || cloudName.isEmpty) {
       throw StateError('CLOUDINARY_CLOUD_NAME is not set');
     }

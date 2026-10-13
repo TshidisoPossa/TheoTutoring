@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 // Fill these in from your Cloudinary dashboard (free tier — no card needed).
 const String _cloudName = 'ejckimby';
@@ -8,14 +7,22 @@ const String _uploadPreset = 'theo_unsigned';
 
 /// Uploads [file] to Cloudinary using an unsigned preset and returns the
 /// resulting secure image URL. Store this URL string in MySQL, not the file.
-Future<String> uploadToCloudinary(File file) async {
+///
+/// Reads the file as bytes so it works on web as well as desktop and mobile.
+Future<String> uploadToCloudinary(XFile file) async {
   final uri = Uri.parse(
     'https://api.cloudinary.com/v1_1/$_cloudName/image/upload',
   );
 
   final request = http.MultipartRequest('POST', uri)
     ..fields['upload_preset'] = _uploadPreset
-    ..files.add(await http.MultipartFile.fromPath('file', file.path));
+    ..files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        await file.readAsBytes(),
+        filename: file.name,
+      ),
+    );
 
   final response = await request.send();
   final body = await response.stream.bytesToString();
