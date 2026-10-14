@@ -33,11 +33,25 @@ Future<UserCredential> _createFirebaseAccount() async {
     password: passwordController.text,
   );
 }
+
 Future<void> _registerStudent(String firebaseUid) async {
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user == null) {
+    throw Exception('No authenticated Firebase user found.');
+  }
+
+  final idToken = await user.getIdToken();
+
+  if (idToken == null || idToken.isEmpty) {
+    throw Exception('Could not obtain Firebase ID token.');
+  }
+
   final response = await http.post(
     Uri.parse('http://localhost:8080/auth/student/register'),
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': 'Bearer $idToken',
     },
     body: jsonEncode({
       'firebaseUid': firebaseUid,
@@ -58,6 +72,7 @@ Future<void> _registerStudent(String firebaseUid) async {
     throw Exception('Registration failed: ${response.body}');
   }
 }
+
 
   @override
   Widget build(BuildContext context) {
