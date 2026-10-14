@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -56,6 +58,44 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
   String? _proofUrl; // set after Cloudinary upload succeeds
   bool _uploadingProof = false;
 
+  Uint8List? _photoBytes;
+  String? _photoUrl;
+  bool _uploadingPhoto = false;
+
+  Future<void> _pickProfilePhoto() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        imageQuality: 80,
+      );
+      if (picked == null || !mounted) return;
+
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _photoBytes = bytes;
+        _photoUrl = null;
+        _uploadingPhoto = true;
+      });
+
+      final url = await uploadToCloudinary(picked);
+      if (mounted) setState(() => _photoUrl = url);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _photoBytes = null;
+          _photoUrl = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Profile photo upload failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
+  }
+
   Future<void> _pickProofOfRegistration() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
@@ -64,7 +104,6 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
       imageQuality: 85,
     );
     if (picked == null) return;
-
     setState(() {
       _proofFile = picked;
       _proofUrl = null;
@@ -124,6 +163,7 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
           'institutionYear': selectedYear!.replaceAll('Year ', ''),
           'course': courseController.text.trim(),
           'tutoringModule': tutoringModuleController.text.trim(),
+          'profilePhotoUrl': _photoUrl,
           'proofOfRegistrationUrl': _proofUrl,
           'termsAccepted': termsAccepted,
         }),
@@ -189,30 +229,57 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
           children: [
             // Profile photo
             Center(
-              child: Stack(
-                children: [
-                  const CircleAvatar(
-                    radius: 55,
-                    backgroundColor: Colors.blue,
-                    child: Icon(Icons.person, size: 60, color: Colors.white),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.camera_alt,
-                        size: 20,
-                        color: Colors.white,
+              child: GestureDetector(
+                onTap: _uploadingPhoto ? null : _pickProfilePhoto,
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 55,
+                      backgroundColor: Colors.blue,
+                      backgroundImage: _photoBytes == null
+                          ? null
+                          : MemoryImage(_photoBytes!),
+                      child: _uploadingPhoto
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : _photoBytes == null
+                          ? const Icon(
+                              Icons.person,
+                              size: 60,
+                              color: Colors.white,
+                            )
+                          : null,
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                          color: Colors.blue,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 20,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            Center(
+              child: Text(
+                _uploadingPhoto
+                    ? 'Uploading photo...'
+                    : _photoUrl != null
+                    ? 'Tap the photo to change it'
+                    : 'Tap to add a profile photo (optional)',
+                style: TextStyle(color: Colors.grey.shade600),
               ),
             ),
 
@@ -576,6 +643,17 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
                                 _uploadingProof
                                     ? 'Please wait for your proof of registration to finish uploading.'
                                     : 'Please upload your proof of registration.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (_uploadingPhoto) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please wait for your profile photo to finish uploading.',
                               ),
                             ),
                           );

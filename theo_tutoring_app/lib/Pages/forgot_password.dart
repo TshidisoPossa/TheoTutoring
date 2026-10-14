@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; //firebase connection
 
 class ForgotPasswordPage extends StatefulWidget {
-  const ForgotPasswordPage({super.key});
+  const ForgotPasswordPage({super.key, this.auth});
+
+  // Tests pass a fake here; the app falls back to FirebaseAuth.instance.
+  final FirebaseAuth? auth;
 
   @override
   State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
@@ -33,16 +36,24 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     final email = _emailController.text.trim();
     //Firebase code
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      await (widget.auth ?? FirebaseAuth.instance)
+          .sendPasswordResetEmail(email: email);
+      // The user may have left the page while the request was in flight.
+      if (!mounted) return;
       setState(() {
         _statusIsError = false;
-        _statusMessage =
-            'If an account exists for $email, a reset link is on its way.';
+        _statusMessage = 'A password reset link has been sent to $email.';
       });
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
       setState(() {
         _statusIsError = true;
         switch (e.code) {
+          // Only reported when email enumeration protection is off in Firebase.
+          case 'user-not-found':
+            _statusMessage =
+                'No account found for that email. Please register first.';
+            break;
           case 'invalid-email':
             _statusMessage = 'That email address looks invalid.';
             break;
