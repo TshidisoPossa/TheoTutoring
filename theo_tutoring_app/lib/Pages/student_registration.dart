@@ -1,11 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import '../config/api.dart';
 import 'cloudinary_upload.dart';
+
+class _SafeRegistrationFailure implements Exception {
+  const _SafeRegistrationFailure(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class _RegistrationOutcomeUnknown implements Exception {
+  const _RegistrationOutcomeUnknown(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 class StudentRegistrationPage extends StatefulWidget {
   const StudentRegistrationPage({super.key});
@@ -15,104 +35,150 @@ class StudentRegistrationPage extends StatefulWidget {
       _StudentRegistrationPageState();
 }
 
-class _StudentRegistrationPageState
-    extends State<StudentRegistrationPage> {
-bool isPasswordVisible = false;
-bool isConfirmPasswordVisible = false;
-bool termsAccepted = false;
+class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
+  bool isPasswordVisible = false;
+  bool isConfirmPasswordVisible = false;
+  bool termsAccepted = false;
+  bool _isSubmitting = false;
 
-final fullNameController = TextEditingController();
-final emailController = TextEditingController();
-final passwordController = TextEditingController();
-final confirmPasswordController = TextEditingController();
-final phoneController = TextEditingController();
-final addressController = TextEditingController();
-final courseController = TextEditingController();
-final tutoringModuleController = TextEditingController();
+  final fullNameController = TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
+  final phoneController = TextEditingController();
+  final addressController = TextEditingController();
+  final courseController = TextEditingController();
+  final tutoringModuleController = TextEditingController();
 
-String? selectedYear;
+  String? selectedYear;
 
-XFile? _proofFile;
-String? _proofUrl; // set after Cloudinary upload succeeds
-bool _uploadingProof = false;
+  XFile? _proofFile;
+  String? _proofUrl; // set after Cloudinary upload succeeds
+  bool _uploadingProof = false;
 
-Future<void> _pickProofOfRegistration() async {
-  final picker = ImagePicker();
-  final picked = await picker.pickImage(
-    source: ImageSource.gallery,
-    maxWidth: 1600,
-    imageQuality: 85,
-  );
-  if (picked == null) return;
+  Future<void> _pickProofOfRegistration() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
 
-  setState(() {
-    _proofFile = picked;
-    _proofUrl = null;
-    _uploadingProof = true;
-  });
+    setState(() {
+      _proofFile = picked;
+      _proofUrl = null;
+      _uploadingProof = true;
+    });
 
-  try {
-    final url = await uploadToCloudinary(picked);
-    setState(() => _proofUrl = url);
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Proof of registration upload failed: $e')),
+    try {
+      final url = await uploadToCloudinary(picked);
+      setState(() => _proofUrl = url);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Proof of registration upload failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingProof = false);
+    }
+  }
+
+  Future<UserCredential> _createFirebaseAccount() async {
+    return await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email: emailController.text.trim(),
+      password: passwordController.text,
+    );
+  }
+
+  Future<void> _registerStudent(User firebaseUser) async {
+    // The backend identifies the student from this Firebase ID token.
+    late final String? idToken;
+    try {
+      idToken = await firebaseUser.getIdToken();
+    } on Exception {
+      throw const _SafeRegistrationFailure(
+        'Could not obtain a Firebase ID token. Please try again.',
       );
     }
-  } finally {
-    if (mounted) setState(() => _uploadingProof = false);
+    if (idToken == null || idToken.isEmpty) {
+      throw const _SafeRegistrationFailure(
+        'Could not obtain a Firebase ID token. Please try again.',
+      );
+    }
+
+    late final http.Response response;
+    try {
+      response = await http.post(
+        Uri.parse('$apiBaseUrl/students/register'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
+        body: jsonEncode({
+          'fullName': fullNameController.text.trim(),
+          'email': emailController.text.trim(),
+          'phone': phoneController.text.trim(),
+          'address': addressController.text.trim(),
+          'institutionYear': selectedYear!.replaceAll('Year ', ''),
+          'course': courseController.text.trim(),
+          'tutoringModule': tutoringModuleController.text.trim(),
+          'proofOfRegistrationUrl': _proofUrl,
+          'termsAccepted': termsAccepted,
+        }),
+      );
+    } on Exception {
+      throw const _RegistrationOutcomeUnknown(
+        'The server did not confirm registration. Your Firebase account was '
+        'kept because the request may have completed. Try signing in before '
+        'retrying.',
+      );
+    }
+
+    if (response.statusCode != 201) {
+      final message = _registrationResponseMessage(response);
+      if (response.statusCode >= 500 ||
+          (response.statusCode >= 200 && response.statusCode < 300)) {
+        throw _RegistrationOutcomeUnknown(
+          '$message Your Firebase account was kept because the request may '
+          'have completed. Try signing in before retrying.',
+        );
+      }
+      throw _SafeRegistrationFailure(message);
+    }
   }
-}
 
-Future<UserCredential> _createFirebaseAccount() async {
-  return await FirebaseAuth.instance.createUserWithEmailAndPassword(
-    email: emailController.text.trim(),
-    password: passwordController.text,
-  );
-}
-Future<void> _registerStudent(User firebaseUser) async {
-  // The backend identifies the student from this Firebase ID token.
-  final idToken = await firebaseUser.getIdToken();
+  String _registrationResponseMessage(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map<String, dynamic>) {
+        final error = body['error'];
+        if (error is String && error.trim().isNotEmpty) return error;
 
-  final response = await http.post(
-    Uri.parse('$apiBaseUrl/students/register'),
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $idToken',
-    },
-    body: jsonEncode({
-      'fullName': fullNameController.text.trim(),
-      'email': emailController.text.trim(),
-      'phone': phoneController.text.trim(),
-      'address': addressController.text.trim(),
-      'institutionYear': selectedYear!.replaceAll('Year ', ''),
-      'course': courseController.text.trim(),
-      'tutoringModule': tutoringModuleController.text.trim(),
-      'proofOfRegistrationUrl': _proofUrl,
-      'termsAccepted': termsAccepted,
-    }),
-  );
-
-  if (response.statusCode != 201) {
-    throw Exception('Registration failed: ${response.body}');
+        final errors = body['errors'];
+        if (errors is Map && errors.isNotEmpty) {
+          final firstError = errors.values.first;
+          if (firstError is String) return firstError;
+        }
+      }
+    } on FormatException {
+      // Use the status-based message below when the response is not JSON.
+    }
+    return 'The server rejected registration (HTTP ${response.statusCode}).';
   }
-}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-     appBar: AppBar(
-  title: Row(
-    children: [
-      const Icon(
-        Icons.school,
-        size: 28,
-      ),
-      const SizedBox(width: 10),
-      const Text('TheoTutoring'),
-            ],
-          ),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            const Icon(Icons.school, size: 28),
+            const SizedBox(width: 10),
+            const Text('TheoTutoring'),
+          ],
+        ),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
@@ -128,11 +194,7 @@ Future<void> _registerStudent(User firebaseUser) async {
                   const CircleAvatar(
                     radius: 55,
                     backgroundColor: Colors.blue,
-                    child: Icon(
-                      Icons.person,
-                      size: 60,
-                      color: Colors.white,
-                    ),
+                    child: Icon(Icons.person, size: 60, color: Colors.white),
                   ),
                   Positioned(
                     bottom: 0,
@@ -170,17 +232,14 @@ Future<void> _registerStudent(User firebaseUser) async {
             // Full Name
             const Text(
               'Full Name',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
 
             TextField(
-                controller: fullNameController,
-                decoration: InputDecoration(
+              controller: fullNameController,
+              decoration: InputDecoration(
                 hintText: 'Enter your full name',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -193,18 +252,15 @@ Future<void> _registerStudent(User firebaseUser) async {
             // Email
             const Text(
               'Email',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
 
             TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
                 hintText: 'Enter your email address',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -214,20 +270,17 @@ Future<void> _registerStudent(User firebaseUser) async {
 
             const SizedBox(height: 20),
             // Password
-                        // Password
+            // Password
             const Text(
               'Password',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
 
             TextField(
-                controller: passwordController,
-                obscureText: !isPasswordVisible,
+              controller: passwordController,
+              obscureText: !isPasswordVisible,
               decoration: InputDecoration(
                 hintText: 'Enter your password',
                 border: OutlineInputBorder(
@@ -235,9 +288,7 @@ Future<void> _registerStudent(User firebaseUser) async {
                 ),
                 suffixIcon: IconButton(
                   icon: Icon(
-                    isPasswordVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+                    isPasswordVisible ? Icons.visibility : Icons.visibility_off,
                   ),
                   onPressed: () {
                     setState(() {
@@ -253,10 +304,7 @@ Future<void> _registerStudent(User firebaseUser) async {
             // Confirm Password
             const Text(
               'Confirm Password',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -277,8 +325,7 @@ Future<void> _registerStudent(User firebaseUser) async {
                   ),
                   onPressed: () {
                     setState(() {
-                      isConfirmPasswordVisible =
-                          !isConfirmPasswordVisible;
+                      isConfirmPasswordVisible = !isConfirmPasswordVisible;
                     });
                   },
                 ),
@@ -290,10 +337,7 @@ Future<void> _registerStudent(User firebaseUser) async {
             // Phone Number
             const Text(
               'Phone Number',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -314,10 +358,7 @@ Future<void> _registerStudent(User firebaseUser) async {
             // Address
             const Text(
               'Address',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -338,10 +379,7 @@ Future<void> _registerStudent(User firebaseUser) async {
             // Institution Year
             const Text(
               'Institution Year',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -354,22 +392,10 @@ Future<void> _registerStudent(User firebaseUser) async {
                 ),
               ),
               items: const [
-                DropdownMenuItem(
-                  value: 'Year 1',
-                  child: Text('Year 1'),
-                ),
-                DropdownMenuItem(
-                  value: 'Year 2',
-                  child: Text('Year 2'),
-                ),
-                DropdownMenuItem(
-                  value: 'Year 3',
-                  child: Text('Year 3'),
-                ),
-                DropdownMenuItem(
-                  value: 'Year 4',
-                  child: Text('Year 4'),
-                ),
+                DropdownMenuItem(value: 'Year 1', child: Text('Year 1')),
+                DropdownMenuItem(value: 'Year 2', child: Text('Year 2')),
+                DropdownMenuItem(value: 'Year 3', child: Text('Year 3')),
+                DropdownMenuItem(value: 'Year 4', child: Text('Year 4')),
               ],
               onChanged: (value) {
                 setState(() {
@@ -379,13 +405,10 @@ Future<void> _registerStudent(User firebaseUser) async {
             ),
 
             const SizedBox(height: 20),
-                        // Proof of Registration
+            // Proof of Registration
             const Text(
               'Proof of Registration',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -410,20 +433,16 @@ Future<void> _registerStudent(User firebaseUser) async {
                   _uploadingProof
                       ? 'Uploading...'
                       : _proofUrl != null
-                          ? 'Uploaded: ${_proofFile!.name}'
-                          : 'Upload Proof of Registration',
+                      ? 'Uploaded: ${_proofFile!.name}'
+                      : 'Upload Proof of Registration',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: _proofUrl != null ? Colors.green : Colors.blue,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  side: const BorderSide(
-                    color: Colors.blue,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 15,
-                  ),
+                  side: const BorderSide(color: Colors.blue),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
                 ),
               ),
             ),
@@ -433,10 +452,7 @@ Future<void> _registerStudent(User firebaseUser) async {
             // Course of Study
             const Text(
               'Course of Study',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -456,10 +472,7 @@ Future<void> _registerStudent(User firebaseUser) async {
             // Tutoring Module
             const Text(
               'Tutoring Module',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -501,9 +514,7 @@ Future<void> _registerStudent(User firebaseUser) async {
                           color: Colors.black87,
                         ),
                         children: [
-                          const TextSpan(
-                            text: 'I agree to the ',
-                          ),
+                          const TextSpan(text: 'I agree to the '),
                           TextSpan(
                             text: 'Terms of Service',
                             style: const TextStyle(
@@ -511,9 +522,7 @@ Future<void> _registerStudent(User firebaseUser) async {
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const TextSpan(
-                            text: ' and ',
-                          ),
+                          const TextSpan(text: ' and '),
                           TextSpan(
                             text: 'Privacy Policy',
                             style: const TextStyle(
@@ -521,9 +530,7 @@ Future<void> _registerStudent(User firebaseUser) async {
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-                          const TextSpan(
-                            text: '.',
-                          ),
+                          const TextSpan(text: '.'),
                         ],
                       ),
                     ),
@@ -539,108 +546,115 @@ Future<void> _registerStudent(User firebaseUser) async {
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                onPressed: termsAccepted
-    ? () async {
-        if (fullNameController.text.isEmpty ||
-            emailController.text.isEmpty ||
-            passwordController.text.isEmpty ||
-            confirmPasswordController.text.isEmpty ||
-            phoneController.text.isEmpty ||
-            addressController.text.isEmpty ||
-            selectedYear == null ||
-            courseController.text.isEmpty ||
-            tutoringModuleController.text.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Please complete all required fields.',
-              ),
-            ),
-          );
-          return;
-        }
+                onPressed: termsAccepted && !_isSubmitting
+                    ? () async {
+                        if (_isSubmitting) return;
 
-        if (_uploadingProof || _proofUrl == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                _uploadingProof
-                    ? 'Please wait for your proof of registration to finish uploading.'
-                    : 'Please upload your proof of registration.',
-              ),
-            ),
-          );
-          return;
-        }
+                        if (fullNameController.text.isEmpty ||
+                            emailController.text.isEmpty ||
+                            passwordController.text.isEmpty ||
+                            confirmPasswordController.text.isEmpty ||
+                            phoneController.text.isEmpty ||
+                            addressController.text.isEmpty ||
+                            selectedYear == null ||
+                            courseController.text.isEmpty ||
+                            tutoringModuleController.text.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please complete all required fields.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
 
-        if (passwordController.text !=
-            confirmPasswordController.text) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Passwords do not match.',
-              ),
-            ),
-          );
-          return;
-        }
+                        if (_uploadingProof || _proofUrl == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                _uploadingProof
+                                    ? 'Please wait for your proof of registration to finish uploading.'
+                                    : 'Please upload your proof of registration.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
 
-        try {
-          final userCredential = await _createFirebaseAccount();
+                        if (passwordController.text !=
+                            confirmPasswordController.text) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Passwords do not match.'),
+                            ),
+                          );
+                          return;
+                        }
 
-        final firebaseUser = userCredential.user;
+                        setState(() => _isSubmitting = true);
+                        try {
+                          final userCredential = await _createFirebaseAccount();
 
-        if (firebaseUser == null) {
-      throw Exception('Could not get Firebase user.');
-    }
+                          final firebaseUser = userCredential.user;
 
-        try {
-            await _registerStudent(firebaseUser);
-        } catch (e) {
-            await firebaseUser.delete();
-           rethrow;
-}
+                          if (firebaseUser == null) {
+                            throw Exception('Could not get Firebase user.');
+                          }
 
-          // Creating the account signs the user in; sign out so they log in
-          // themselves on the login page.
-          await FirebaseAuth.instance.signOut();
+                          try {
+                            await _registerStudent(firebaseUser);
+                          } on _SafeRegistrationFailure catch (error) {
+                            try {
+                              await firebaseUser.delete();
+                            } on FirebaseAuthException catch (cleanupError) {
+                              throw Exception(
+                                '${error.message} Firebase account cleanup failed: '
+                                '${cleanupError.message ?? 'Please contact support.'}',
+                              );
+                            }
+                            rethrow;
+                          }
 
-          if (!context.mounted) return;
+                          // Creating the account signs the user in; sign out so they log in
+                          // themselves on the login page.
+                          await FirebaseAuth.instance.signOut();
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Registration successful! Please log in.',
-              ),
-            ),
-          );
+                          if (!context.mounted) return;
 
-          // Back to the LoginPage (the first route), closing role selection
-          // and this registration page.
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        } on FirebaseAuthException catch (e) {
-          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Registration successful! Please log in.',
+                              ),
+                            ),
+                          );
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                e.message ?? 'Firebase registration failed.',
-              ),
-            ),
-          );
-        } catch (e) {
-          if (!context.mounted) return;
+                          // Back to the LoginPage (the first route), closing role selection
+                          // and this registration page.
+                          Navigator.of(context)
+                              .popUntil((route) => route.isFirst);
+                        } on FirebaseAuthException catch (e) {
+                          if (!context.mounted) return;
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Registration failed: $e',
-              ),
-            ),
-          );
-        }
-      }
-    : null,
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                e.message ?? 'Firebase registration failed.',
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!context.mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Registration failed: $e')),
+                          );
+                        } finally {
+                          if (mounted) setState(() => _isSubmitting = false);
+                        }
+                      }
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   disabledBackgroundColor: Colors.grey.shade300,
@@ -652,10 +666,7 @@ Future<void> _registerStudent(User firebaseUser) async {
                 ),
                 child: const Text(
                   'Create Account',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
             ),

@@ -83,8 +83,26 @@ Future<Response> onRequest(RequestContext context) async {
     return Response.json(statusCode: 422, body: {'errors': errors});
   }
 
+  final firebaseEmail = firebaseUser.email?.trim().toLowerCase();
+  if (firebaseEmail == null || firebaseEmail.isEmpty) {
+    return Response.json(
+      statusCode: 401,
+      body: {'error': 'The Firebase account must include an email address.'},
+    );
+  }
+
+  final submittedEmail = (body['email'] as String).trim().toLowerCase();
+  if (submittedEmail != firebaseEmail) {
+    return Response.json(
+      statusCode: 403,
+      body: {
+        'error': 'The submitted email does not match your Firebase account.',
+      },
+    );
+  }
+
   final fullName = (body['fullName'] as String).trim();
-  final email = (body['email'] as String).trim().toLowerCase();
+  final email = firebaseEmail;
   final phone = (body['phone'] as String).trim();
   final address = (body['address'] as String).trim();
   final course = (body['course'] as String).trim();
