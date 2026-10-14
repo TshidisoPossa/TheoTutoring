@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
@@ -32,9 +33,44 @@ final tutoringModuleController = TextEditingController();
 
 String? selectedYear;
 
+Uint8List? _photoBytes; // local preview, works on web too
+String? _photoUrl; // set after Cloudinary upload succeeds
+bool _uploadingPhoto = false;
+
 XFile? _proofFile;
 String? _proofUrl; // set after Cloudinary upload succeeds
 bool _uploadingProof = false;
+
+Future<void> _pickProfilePhoto() async {
+  final picker = ImagePicker();
+  final picked = await picker.pickImage(
+    source: ImageSource.gallery,
+    maxWidth: 800,
+    imageQuality: 80,
+  );
+  if (picked == null) return;
+
+  final bytes = await picked.readAsBytes();
+  setState(() {
+    _photoBytes = bytes;
+    _photoUrl = null;
+    _uploadingPhoto = true;
+  });
+
+  try {
+    final url = await uploadToCloudinary(picked);
+    if (mounted) setState(() => _photoUrl = url);
+  } catch (e) {
+    if (mounted) {
+      setState(() => _photoBytes = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Profile photo upload failed: $e')),
+      );
+    }
+  } finally {
+    if (mounted) setState(() => _uploadingPhoto = false);
+  }
+}
 
 Future<void> _pickProofOfRegistration() async {
   final picker = ImagePicker();
@@ -89,6 +125,7 @@ Future<void> _registerStudent(User firebaseUser) async {
       'institutionYear': selectedYear!.replaceAll('Year ', ''),
       'course': courseController.text.trim(),
       'tutoringModule': tutoringModuleController.text.trim(),
+      'profilePhotoUrl': _photoUrl,
       'proofOfRegistrationUrl': _proofUrl,
       'termsAccepted': termsAccepted,
     }),
@@ -123,16 +160,24 @@ Future<void> _registerStudent(User firebaseUser) async {
           children: [
             // Profile photo
             Center(
-              child: Stack(
+              child: GestureDetector(
+                onTap: _uploadingPhoto ? null : _pickProfilePhoto,
+                child: Stack(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 55,
                     backgroundColor: Colors.blue,
-                    child: Icon(
-                      Icons.person,
-                      size: 60,
-                      color: Colors.white,
-                    ),
+                    backgroundImage:
+                        _photoBytes != null ? MemoryImage(_photoBytes!) : null,
+                    child: _uploadingPhoto
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : _photoBytes == null
+                            ? const Icon(
+                                Icons.person,
+                                size: 60,
+                                color: Colors.white,
+                              )
+                            : null,
                   ),
                   Positioned(
                     bottom: 0,
@@ -151,6 +196,20 @@ Future<void> _registerStudent(User firebaseUser) async {
                     ),
                   ),
                 ],
+              ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            Center(
+              child: Text(
+                _uploadingPhoto
+                    ? 'Uploading photo...'
+                    : _photoUrl != null
+                        ? 'Tap the photo to change it'
+                        : 'Tap to add a profile photo (optional)',
+                style: TextStyle(color: Colors.grey.shade600),
               ),
             ),
 
@@ -567,6 +626,17 @@ Future<void> _registerStudent(User firebaseUser) async {
                 _uploadingProof
                     ? 'Please wait for your proof of registration to finish uploading.'
                     : 'Please upload your proof of registration.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        if (_uploadingPhoto) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please wait for your profile photo to finish uploading.',
               ),
             ),
           );
