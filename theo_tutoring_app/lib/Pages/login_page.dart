@@ -1,6 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+import '../config/api.dart';
+import 'Student/student_dashboard.dart';
 import 'role_selection.dart';
 import 'forgot_password.dart';
 
@@ -42,6 +47,7 @@ class _LoginPageState extends State<LoginPage> {
 
   // Call this from the teammate's "Log In" button onPressed
   Future<void> _login() async {
+    if (_isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -50,17 +56,141 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      // TODO: navigate to Student or Tutor dashboard based on role
+      final user = credential.user;
+      if (user == null) {
+        if (mounted) {
+          setState(() => _errorMessage = 'Login failed. Please try again.');
+        }
+        return;
+      }
+
+      final String? idToken;
+      try {
+        idToken = await user.getIdToken();
+      } on Exception {
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                'Could not verify your account. Please sign in again.';
+          });
+        }
+        return;
+      }
+
+      if (idToken == null || idToken.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                'Could not verify your account. Please sign in again.';
+          });
+        }
+        return;
+      }
+
+      final http.Response response;
+      try {
+        response = await http
+            .get(
+              Uri.parse('$apiBaseUrl/students/myprofile'),
+              headers: {
+                'Authorization': 'Bearer $idToken',
+                'Accept': 'application/json',
+              },
+            )
+            .timeout(const Duration(seconds: 15));
+      } on Exception {
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                'Could not connect to the server. Please try again.';
+          });
+        }
+        return;
+      }
+
+      if (response.statusCode != 200) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = switch (response.statusCode) {
+              401 =>
+                'Your session could not be verified. Please sign in again.',
+              404 => 'No student profile was found for this account.',
+              _ =>
+                'We could not verify your student profile. Please try again.',
+            };
+          });
+        }
+        return;
+      }
+
+      final dynamic profile;
+      try {
+        profile = jsonDecode(response.body);
+      } on FormatException {
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                'The server returned an invalid response. Please try again.';
+          });
+        }
+        return;
+      }
+
+      if (profile is! Map<String, dynamic> ||
+          profile['userId'] is! int ||
+          profile['studentId'] is! int ||
+          profile['name'] is! String ||
+          (profile['name'] as String).trim().isEmpty ||
+          profile['email'] is! String ||
+          (profile['email'] as String).trim().isEmpty ||
+          profile['role'] is! String ||
+          profile['accountStatus'] is! String ||
+          (profile['accountStatus'] as String).trim().isEmpty) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'The server returned an invalid student profile. Please try again.';
+          });
+        }
+        return;
+      }
+
+      if (profile['role'] != 'student') {
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'This account is not registered as a student.';
+          });
+        }
+        return;
+      }
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => StudentDashboard(
+              studentName: (profile['name'] as String).trim(),
+            ),
+          ),
+        );
+      }
     } on FirebaseAuthException catch (e) {
-      setState(() {
-        _errorMessage = e.message ?? 'Login failed. Please try again.';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.message ?? 'Login failed. Please try again.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Login failed. Please try again.';
+        });
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class StudentDashboard extends StatefulWidget {
-  const StudentDashboard({super.key});
+  const StudentDashboard({super.key, this.studentName});
+
+  final String? studentName;
 
   @override
   State<StudentDashboard> createState() => _StudentDashboardState();
@@ -88,7 +90,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildWelcomeSection(),
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 850),
+                      child: _buildWelcomeSection(),
+                    ),
+                  ),
+                  const SizedBox(height: 26),
+                  const _OrganisationLogoCarousel(),
                   const SizedBox(height: 26),
                   _buildUpNextCard(),
                   const SizedBox(height: 30),
@@ -340,81 +349,86 @@ class _StudentDashboardState extends State<StudentDashboard> {
   // ── WELCOME SECTION ─────────────────────────────────────
 
   Widget _buildWelcomeSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    final name = widget.studentName?.trim();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final headlineSize = constraints.maxWidth < 440
+            ? 28.0
+            : constraints.maxWidth < 700
+            ? 36.0
+            : 46.0;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              height: 28,
-              width: 4,
-              decoration: BoxDecoration(
+            Text(
+              name == null || name.isEmpty
+                  ? 'Welcome back!'
+                  : 'Welcome back, $name! 👋',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
                 color: _primaryBlue,
-                borderRadius: BorderRadius.circular(10),
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(width: 10),
-            Text(
-              'YOUR LEARNING JOURNEY',
+            const SizedBox(height: 17),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Get the help you need,\n',
+                    style: TextStyle(color: _textDark),
+                  ),
+                  TextSpan(
+                    text: 'pass with confidence.',
+                    style: TextStyle(color: _primaryBlue),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                fontSize: 10,
+                fontSize: headlineSize,
+                height: 1.2,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.5,
-                color: _primaryBlue,
+              ),
+            ),
+            const SizedBox(height: 13),
+            Text(
+              'Find the right tutor. Learn at your pace.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                color: _textMuted,
+                fontSize: 14,
+                height: 1.6,
+              ),
+            ),
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              // TODO: Connect to the tutor-discovery screen when it exists.
+              onPressed: () =>
+                  _showMessage('Tutor discovery will be connected soon.'),
+              icon: const Icon(Icons.search_rounded),
+              label: Text(
+                'Find a tutor',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: _primaryBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 25,
+                  vertical: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 13),
-        Text(
-          'Small steps.\nBig progress.',
-          style: GoogleFonts.poppins(
-            fontSize: 30,
-            height: 1.25,
-            fontWeight: FontWeight.w700,
-            color: _textDark,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Make today count. Find the support you need, '
-          'stay on track, and keep moving towards your goals.',
-          style: GoogleFonts.poppins(
-            color: _textMuted,
-            fontSize: 12,
-            height: 1.8,
-          ),
-        ),
-        const SizedBox(height: 18),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEDF2FF),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.auto_awesome_rounded,
-                color: _primaryBlue,
-                size: 17,
-              ),
-              const SizedBox(width: 9),
-              Flexible(
-                child: Text(
-                  'Your learning journey starts here',
-                  style: GoogleFonts.poppins(
-                    color: _primaryBlue,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -1276,6 +1290,214 @@ class _StudentDashboardState extends State<StudentDashboard> {
           duration: const Duration(seconds: 2),
         ),
       );
+  }
+}
+
+class _OrganisationLogoCarousel extends StatefulWidget {
+  const _OrganisationLogoCarousel();
+
+  @override
+  State<_OrganisationLogoCarousel> createState() =>
+      _OrganisationLogoCarouselState();
+}
+
+class _OrganisationLogoCarouselState extends State<_OrganisationLogoCarousel>
+    with SingleTickerProviderStateMixin {
+  static const _organisations = <({String name, String url})>[
+    (
+      name: 'University of Pretoria',
+      url: 'https://img.logo.dev/up.ac.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'Wits University',
+      url: 'https://img.logo.dev/wits.ac.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'University of Cape Town',
+      url: 'https://img.logo.dev/uct.ac.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'Stellenbosch University',
+      url: 'https://img.logo.dev/sun.ac.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'UNISA',
+      url: 'https://img.logo.dev/unisa.ac.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'North-West University',
+      url: 'https://img.logo.dev/nwu.ac.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'Eduvos',
+      url: 'https://img.logo.dev/eduvos.com?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'SANRAL',
+      url: 'https://img.logo.dev/sanral.co.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'Airports Company South Africa',
+      url:
+          'https://img.logo.dev/airports.co.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'WBHO',
+      url: 'https://img.logo.dev/wbho.co.za?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+    (
+      name: 'Sasol',
+      url: 'https://img.logo.dev/sasol.com?token=pk_RFuHpnZUQX2O_cCVSFpMkA',
+    ),
+  ];
+
+  late final AnimationController _controller;
+  bool? _reducedMotion;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 42),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    if (_reducedMotion == reduceMotion) return;
+
+    _reducedMotion = reduceMotion;
+    if (reduceMotion) {
+      _controller
+        ..stop()
+        ..value = 0;
+    } else {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Students we help at',
+          style: GoogleFonts.poppins(
+            color: _StudentDashboardState._textDark,
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 13),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final tileWidth = constraints.maxWidth < 480 ? 132.0 : 156.0;
+            const gap = 14.0;
+            final cycleWidth = _organisations.length * (tileWidth + gap);
+            final copies = _reducedMotion == true ? 1 : 2;
+
+            return ClipRect(
+              child: SizedBox(
+                height: 94,
+                child: AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) => Transform.translate(
+                    offset: Offset(-cycleWidth * _controller.value, 0),
+                    child: child,
+                  ),
+                  child: Row(
+                    children: [
+                      for (var copy = 0; copy < copies; copy++)
+                        for (final organisation in _organisations)
+                          Padding(
+                            padding: const EdgeInsets.only(right: gap),
+                            child: SizedBox(
+                              width: tileWidth,
+                              height: 78,
+                              child: _buildLogoTile(
+                                organisation,
+                                excludedFromSemantics: copy > 0,
+                              ),
+                            ),
+                          ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLogoTile(
+    ({String name, String url}) organisation, {
+    required bool excludedFromSemantics,
+  }) {
+    final image = Image.network(
+      organisation.url,
+      fit: BoxFit.contain,
+      width: 124,
+      height: 48,
+      loadingBuilder: (context, child, progress) => progress == null
+          ? child
+          : const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFF356AE6),
+              ),
+            ),
+      errorBuilder: (context, error, stackTrace) => _logoFallback(organisation),
+    );
+
+    final tile = Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: const Color(0xFFEDF0F7)),
+      ),
+      child: image,
+    );
+
+    return excludedFromSemantics
+        ? ExcludeSemantics(child: tile)
+        : Semantics(label: organisation.name, image: true, child: tile);
+  }
+
+  Widget _logoFallback(({String name, String url}) organisation) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.school_rounded, color: Color(0xFF356AE6), size: 23),
+        const SizedBox(height: 3),
+        Text(
+          organisation.name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            color: const Color(0xFF17233D),
+            fontSize: 8,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 }
 
