@@ -27,6 +27,20 @@ void main() {
       expect(canAccessTutorLandingPage(null), isFalse);
     });
 
+    test('Active and Pending tutors can view the dashboard', () {
+      expect(canViewTutorDashboard('Active'), isTrue);
+      expect(canViewTutorDashboard('Pending'), isTrue);
+      for (final status in [
+        'Incomplete',
+        'Rejected',
+        'Suspended',
+        'Deactivated',
+      ]) {
+        expect(canViewTutorDashboard(status), isFalse, reason: status);
+      }
+      expect(canViewTutorDashboard(null), isFalse);
+    });
+
     test('only Incomplete accounts can submit the profile step', () {
       expect(canUpdateTutorRegistrationProfile('Incomplete'), isTrue);
       for (final status in ['Pending', 'Active', ...restricted.skip(2)]) {

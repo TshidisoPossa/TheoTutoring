@@ -6,21 +6,31 @@ import '../../lib/firebase_auth.dart';
 import '../../lib/tutor_account_status.dart';
 import '../../lib/tutorlanding_session.dart'; // TutorSession
 
-//auther Tshidiso Possa
+// The dashboard is the only tutor page a Pending tutor may open, so they
+// can see their application status (all other routes need an Active account).
+const _dashboardPath = '/TutorLandingpage/LandingPageScreen';
 
-// Finds an active tutor profile belonging to a Firebase UID.
-Future<int?> _findActiveTutorId(String firebaseUid) async {
+bool _isDashboard(Uri uri) {
+  var path = uri.path;
+  if (path.endsWith('/')) path = path.substring(0, path.length - 1);
+  return path == _dashboardPath;
+}
+
+// Finds the tutor profile belonging to a Firebase UID.
+Future<({int tutorId, String status})?> _findTutor(String firebaseUid) async {
   final conn = await getConnection(); // shared DB connection (do not close it)
   final result = await conn.execute(
     'SELECT tp.TutorID, u.AccountStatus FROM TutorProfile tp ' // tutor row
-    'INNER JOIN `User` u ON tp.UserId = u.UserId ' // link tutor to user
+    'INNER JOIN `User` u ON tp.UserID = u.UserId ' // link tutor to user
     "WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'", // verified tutor UID
     {'uid': firebaseUid},
   );
   if (result.rows.isEmpty) return null; // this user is not a tutor
   final row = result.rows.first.assoc();
-  if (!canAccessTutorLandingPage(row['AccountStatus'])) return null;
-  return int.parse(row['TutorID']!); // TutorID as int
+  return (
+    tutorId: int.parse(row['TutorID']!), // TutorID as int
+    status: row['AccountStatus'] ?? '',
+  );
 }
 
 // Runs before every route under /tutor
@@ -56,8 +66,11 @@ Handler middleware(Handler handler) {
       );
     }
     final uid = user.uid;
-    final tutorId = await _findActiveTutorId(uid); // map UID to active TutorID
-    if (tutorId == null) {
+    final tutor = await _findTutor(uid); // map UID to TutorID + status
+    if (tutor == null ||
+        !(canAccessTutorLandingPage(tutor.status) ||
+            (_isDashboard(context.request.uri) &&
+                canViewTutorDashboard(tutor.status)))) {
       return Response.json(
         statusCode: 403,
         body: {'error': 'An active tutor account is required.'},
@@ -65,7 +78,7 @@ Handler middleware(Handler handler) {
     }
     return handler(
       context.provide<TutorSession>(
-        () => TutorSession(uid, tutorId),
+        () => TutorSession(uid, tutor.tutorId, accountStatus: tutor.status),
       ), // make session available to routes
     );
   };
