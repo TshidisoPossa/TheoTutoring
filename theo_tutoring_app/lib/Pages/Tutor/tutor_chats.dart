@@ -118,6 +118,14 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
               child: Row(
                 children: [
+                  if (Navigator.canPop(context)) ...[
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: const Icon(Icons.arrow_back,
+                          color: Colors.black87),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
                   const Text(
                     'Messages',
                     style: TextStyle(
@@ -199,33 +207,9 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
-  Widget _buildBottomNav() {
-    return BottomNavigationBar(
-      currentIndex: 2,
-      backgroundColor: Colors.white,
-      elevation: 8,
-      selectedItemColor: const Color(0xFF1457D9),
-      unselectedItemColor: Colors.black38,
-      type: BottomNavigationBarType.fixed,
-      selectedFontSize: 11,
-      unselectedFontSize: 11,
-      onTap: (_) {},
-      items: const [
-        BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined), label: 'Home'),
-        BottomNavigationBarItem(
-            icon: Icon(Icons.menu_book_outlined), label: 'Lessons'),
-        BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-        BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline), label: 'Profile'),
-      ],
-    );
-  }
 }
 
 class _ContactTile extends StatelessWidget {
@@ -414,7 +398,6 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -569,29 +552,6 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
     );
   }
 
-  Widget _buildBottomNav() {
-    return BottomNavigationBar(
-      currentIndex: 2,
-      backgroundColor: Colors.white,
-      elevation: 8,
-      selectedItemColor: const Color(0xFF1457D9),
-      unselectedItemColor: Colors.black38,
-      type: BottomNavigationBarType.fixed,
-      selectedFontSize: 11,
-      unselectedFontSize: 11,
-      onTap: (_) {},
-      items: const [
-        BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined), label: 'Home'),
-        BottomNavigationBarItem(
-            icon: Icon(Icons.menu_book_outlined), label: 'Lessons'),
-        BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-        BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline), label: 'Profile'),
-      ],
-    );
-  }
 }
 
 // ─── Reusable widgets ───────────────────────────────────────────────────────

@@ -1,10 +1,10 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import '../../lib/database.dart'; // getConnection()
-import '../../lib/firebase_auth.dart';
-import '../../lib/tutor_account_status.dart';
-import '../../lib/tutorlanding_session.dart'; // TutorSession
+import 'package:theo_tutoring_backend/database.dart'; // getConnection()
+import 'package:theo_tutoring_backend/firebase_auth.dart';
+import 'package:theo_tutoring_backend/tutor_account_status.dart';
+import 'package:theo_tutoring_backend/tutorlanding_session.dart'; // TutorSession
 
 // The dashboard is the only tutor page a Pending tutor may open, so they
 // can see their application status (all other routes need an Active account).

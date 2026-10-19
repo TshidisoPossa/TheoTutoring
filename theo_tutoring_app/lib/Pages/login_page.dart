@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 
 import '../config/api.dart';
 import 'Student/student_dashboard.dart';
+import 'Tutor/tutor_api.dart';
+import 'Tutor/tutor_dashboard.dart';
 import 'role_selection.dart';
 import 'forgot_password.dart';
 
@@ -112,6 +114,12 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
+      // No student profile: this may be a tutor account
+      if (response.statusCode == 404) {
+        await _openTutorDashboard(idToken);
+        return;
+      }
+
       if (response.statusCode != 200) {
         if (mounted) {
           setState(() {
@@ -191,6 +199,29 @@ class _LoginPageState extends State<LoginPage> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // Loads the tutor dashboard; opens it if this account is a tutor
+  Future<void> _openTutorDashboard(String idToken) async {
+    try {
+      final dashboard = await fetchTutorDashboard(idToken: idToken);
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TutorDashboard(initialData: dashboard),
+        ),
+      );
+    } on TutorApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = switch (e.statusCode) {
+          403 || 404 =>
+            'No active student or tutor profile was found for this account.',
+          _ => e.message,
+        };
+      });
     }
   }
 

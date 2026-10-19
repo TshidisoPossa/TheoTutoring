@@ -174,7 +174,6 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -423,33 +422,6 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
     );
   }
 
-  Widget _buildBottomNav() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF141928),
-        border: Border(top: BorderSide(color: Color(0xFF1E2235))),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: 1,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        selectedItemColor: const Color(0xFF1457D9),
-        unselectedItemColor: const Color(0xFF9295A3),
-        type: BottomNavigationBarType.fixed,
-        selectedFontSize: 11,
-        unselectedFontSize: 11,
-        onTap: (index) {
-          // Navigation handled by parent
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: 'Dashboard'),
-          BottomNavigationBarItem(icon: Icon(Icons.inbox_rounded), label: 'Requests'),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_month_rounded), label: 'Schedule'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profile'),
-        ],
-      ),
-    );
-  }
 }
 
 // ── Request Details Bottom Sheet ──────────────────────────────────────────────
