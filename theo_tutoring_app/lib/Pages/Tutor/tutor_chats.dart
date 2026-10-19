@@ -176,7 +176,7 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
             Expanded(
               child: ListView.separated(
                 itemCount: _filtered.length,
-                separatorBuilder: (_, __) => Divider(
+                separatorBuilder: (_, _) => Divider(
                   height: 1,
                   indent: 76,
                   color: Colors.grey[100],
@@ -348,7 +348,7 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
       time: '9:41 AM',
     ),
     const ChatMessage(
-      text: 'Lerato Yes, I have some slots open. How about Thursday at 3:00 PM?',
+      text: 'Yes, I have some slots open. How about Thursday at 3:00 PM?',
       isOutgoing: true,
       time: '9:44 AM',
     ),
@@ -681,7 +681,7 @@ class _MessageBubble extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 4,
                       offset: const Offset(0, 1),
                     ),
@@ -751,7 +751,7 @@ class _SessionCardState extends State<_SessionCard> {
           border: Border.all(color: Colors.grey.shade200),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
