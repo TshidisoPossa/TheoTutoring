@@ -12,7 +12,6 @@ class _StudentSettingsState extends State<StudentSettings> {
   bool bookingConfirmations = true;
   bool directMessages = true;
   bool darkMode = false;
-  int _selectedIndex = 3;
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +109,11 @@ class _StudentSettingsState extends State<StudentSettings> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Dark Mode', style: TextStyle(fontSize: 14)),
-                  Switch(value: darkMode, onChanged: (val) => setState(() => darkMode = val), activeColor: const Color(0xFF1A73E8)),
+                  Switch(
+                    value: darkMode,
+                    onChanged: (val) => setState(() => darkMode = val),
+                    activeColor: const Color(0xFF1A73E8),
+                  ),
                 ],
               ),
             ]),
@@ -119,4 +122,66 @@ class _StudentSettingsState extends State<StudentSettings> {
               width: double.infinity,
               child: OutlinedButton(
                 onPressed: () {},
-                style:
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text('Log Out', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Helper widgets ──────────────────────────────────────────────────────────
+
+  Widget _sectionCard(List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _inputBox(String hint) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(hint, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+    );
+  }
+
+  Widget _toggleRow(String title, String subtitle, bool value, ValueChanged<bool> onChanged) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+        ),
+        Switch(value: value, onChanged: onChanged, activeColor: const Color(0xFF1A73E8)),
+      ],
+    );
+  }
+}
