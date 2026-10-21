@@ -2,7 +2,7 @@ import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
 import 'package:mysql_client/mysql_client.dart'; // IResultSet
 import 'package:theo_tutoring_backend/database.dart'; // getConnection()
 import 'package:theo_tutoring_backend/header_tutor.dart'; // shared tutor name + photo
-import 'package:theo_tutoring_backend/tutorlanding_session.dart'; // TutorSession
+import '../../lib/tutorlanding_session.dart'; // TutorSession
 
 //Tutor dashboard (landing page after registration)
 //
