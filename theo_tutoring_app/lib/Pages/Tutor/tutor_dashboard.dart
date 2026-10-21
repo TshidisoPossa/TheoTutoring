@@ -1,5 +1,131 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+
+// ── Models ────────────────────────────────────────────────────────────────────
+
+class DashboardSession {
+  final int bookingId;
+  final String timeRange;
+  final String subject;
+  final String studentName;
+  final String colorHex;
+  final String? note;        // e.g. "Zoom Meeting" / "Topic: Functions & Loops"
+  final String? platform;    // e.g. "zoom" | "code" | "document" | "video"
+  final String? startsIn;    // e.g. "In 45 min" | "In 2.5 hrs"
+
+  DashboardSession({
+    required this.bookingId,
+    required this.timeRange,
+    required this.subject,
+    required this.studentName,
+    required this.colorHex,
+    this.note,
+    this.platform,
+    this.startsIn,
+  });
+
+  factory DashboardSession.fromJson(Map<String, dynamic> j) => DashboardSession(
+        bookingId: int.tryParse(j['bookingId']?.toString() ??
+                j['booking_id']?.toString() ?? '0') ?? 0,
+        timeRange: j['timeRange']?.toString() ??
+            j['time_range']?.toString() ??
+            j['time']?.toString() ?? '',
+        subject: j['subject']?.toString() ?? '',
+        studentName: j['studentName']?.toString() ??
+            j['student_name']?.toString() ?? 'Student',
+        colorHex: j['color']?.toString() ?? '#246BFE',
+        note: j['note']?.toString() ?? j['topic']?.toString(),
+        platform: j['platform']?.toString(),
+        startsIn: j['startsIn']?.toString() ?? j['starts_in']?.toString(),
+      );
+
+  Color get color {
+    try {
+      final hex = colorHex.replaceAll('#', '');
+      return Color(int.parse('FF$hex', radix: 16));
+    } catch (_) {
+      return const Color(0xFF246BFE);
+    }
+  }
+}
+
+class DashboardData {
+  final int activeStudents;
+  final int upcomingToday;
+  final List<DashboardSession> todaySchedule;
+  final String tutorName;
+  final String? tutorPhotoUrl;
+  final String tutorInitials;
+  final int unreadNotifications;
+
+  DashboardData({
+    required this.activeStudents,
+    required this.upcomingToday,
+    required this.todaySchedule,
+    required this.tutorName,
+    this.tutorPhotoUrl,
+    required this.tutorInitials,
+    required this.unreadNotifications,
+  });
+
+  factory DashboardData.fromJson(Map<String, dynamic> j) {
+    final tutor = j['tutor'] as Map<String, dynamic>?;
+    final name = tutor?['name']?.toString() ??
+        j['tutorName']?.toString() ??
+        j['tutor_name']?.toString() ?? '';
+    final parts = name.trim().split(' ');
+    final initials = parts.length >= 2
+        ? '${parts.first[0]}${parts.last[0]}'.toUpperCase()
+        : name.isNotEmpty ? name[0].toUpperCase() : 'T';
+    return DashboardData(
+      activeStudents: int.tryParse(
+              (j['activeStudents'] ?? j['active_students'] ?? 0).toString()) ?? 0,
+      upcomingToday: int.tryParse(
+              (j['upcomingToday'] ?? j['upcoming_today'] ?? 0).toString()) ?? 0,
+      todaySchedule:
+          ((j['todaysSchedule'] ?? j['todaySchedule'] ?? j['today_schedule'])
+                      as List<dynamic>? ??
+                  [])
+              .map((e) => DashboardSession.fromJson(e as Map<String, dynamic>))
+              .toList(),
+      tutorName: name,
+      tutorPhotoUrl: tutor?['photoUrl']?.toString() ??
+          j['tutorPhotoUrl']?.toString() ??
+          j['tutor_photo_url']?.toString(),
+      tutorInitials: initials,
+      unreadNotifications: int.tryParse(
+              (j['unreadNotifications'] ?? j['unread_notifications'] ?? 0)
+                  .toString()) ?? 0,
+    );
+  }
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+class TutorDashboardService {
+  static String get _base =>
+      kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
+
+  static Future<DashboardData> fetchDashboard() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Not authenticated');
+    final token = await user.getIdToken();
+    final res = await http.get(
+      Uri.parse('$_base/TutorLandingpage'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+    );
+    if (res.statusCode != 200) {
+      throw Exception('Failed to load dashboard: ${res.statusCode}');
+    }
+    return DashboardData.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 class TutorDashboard extends StatefulWidget {
   const TutorDashboard({super.key});
@@ -9,704 +135,479 @@ class TutorDashboard extends StatefulWidget {
 }
 
 class _TutorDashboardState extends State<TutorDashboard> {
-  int _currentIndex = 0;
-  int _selectedDrawerIndex = 0;
+  DashboardData? _data;
+  bool _loading = true;
+  String? _error;
 
-  final List<Map<String, dynamic>> _recentRequests = [
-    {
-      'name': 'Emma Roberts',
-      'message':
-          'Looking for help with derivatives and chain rule before my midterm this Tuesday.',
-      'time': '2h ago',
-    },
-    {
-      'name': 'Marcus Chen',
-      'message':
-          'Need to review dynamic equations. I\'m struggling with projectile motion concepts.',
-      'time': '5h ago',
-    },
-  ];
+  static const _blue = Color(0xFF246BFE);
+  static const _bg   = Color(0xFFF2F4F8);
 
-  final List<Map<String, dynamic>> _todaySchedule = [
-    {
-      'time': '1:00 PM - 2:00 PM',
-      'title': 'Advanced Essay Writing',
-      'student': 'with Sarah Jenkins',
-      'color': const Color(0xFFFF6B35),
-    },
-    {
-      'time': '3:00 PM - 4:30 PM',
-      'title': 'Intro to Python',
-      'student': 'with Daniel Kim',
-      'color': const Color(0xFF1A73E8),
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final data = await TutorDashboardService.fetchDashboard();
+      if (mounted) setState(() { _data = data; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      drawer: _buildSideDrawer(),
+      backgroundColor: _bg,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTopBar(),
-              const SizedBox(height: 20),
-              _buildStatsRow(),
-              const SizedBox(height: 16),
-              _buildNewRequestsBanner(),
-              const SizedBox(height: 20),
-              _buildRecentRequests(),
-              const SizedBox(height: 20),
-              _buildTodaySchedule(),
-              const SizedBox(height: 80),
-            ],
-          ),
-        ),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: _blue))
+            : _error != null
+                ? _buildError()
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    color: _blue,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildTopBar(),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 6),
+                                _buildTitle(),
+                                const SizedBox(height: 20),
+                                _buildStatsRow(),
+                                const SizedBox(height: 24),
+                                _buildTodaySchedule(),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
       ),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
 
-  // ── TOP BAR ──────────────────────────────────────────
-  Widget _buildTopBar() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        // Hamburger
-        Builder(
-          builder: (context) => GestureDetector(
-            onTap: () => Scaffold.of(context).openDrawer(),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.menu, color: Color(0xFF1A1A2E), size: 22),
-            ),
-          ),
-        ),
-
-        // Title
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              'Theo Tutoring',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: Colors.grey[600],
-              ),
-            ),
-            Text(
-              'Dashboard',
-              style: GoogleFonts.inter(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1A1A2E),
+            Icon(Icons.wifi_off_rounded, size: 56, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(_error ?? 'Something went wrong',
+                style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: Text('Retry', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _blue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
 
-        // Bell + Avatar
-        Row(
-          children: [
-            Stack(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.notifications_outlined,
-                    color: Color(0xFF1A1A2E),
-                    size: 22,
-                  ),
-                ),
+  // ── TOP BAR ──────────────────────────────────────────────────────────────────
+
+  Widget _buildTopBar() {
+    final hasNotif = (_data?.unreadNotifications ?? 0) > 0;
+    final initials = _data?.tutorInitials ?? 'AT';
+    final photoUrl  = _data?.tutorPhotoUrl;
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          // Brand name
+          Expanded(
+            child: Text(
+              'Theo Tutoring',
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1A1A2E),
+              ),
+            ),
+          ),
+
+          // Bell icon
+          Stack(
+            children: [
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.notifications_outlined,
+                    color: Color(0xFF1A1A2E), size: 24),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+              if (hasNotif)
                 Positioned(
-                  top: 8,
-                  right: 8,
+                  top: 6,
+                  right: 6,
                   child: Container(
                     width: 8,
                     height: 8,
                     decoration: const BoxDecoration(
-                      color: Color(0xFFE53935),
-                      shape: BoxShape.circle,
-                    ),
+                        color: Color(0xFFE53935), shape: BoxShape.circle),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(width: 10),
-            const CircleAvatar(
-              radius: 20,
-              backgroundColor: Color(0xFF1A73E8),
-              child: Icon(Icons.person, color: Colors.white, size: 22),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+            ],
+          ),
 
-  // ── STATS ROW ────────────────────────────────────────
-  Widget _buildStatsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _statCard(
-            value: '14',
-            label: 'Active Students',
-            icon: Icons.people,
-            iconColor: const Color(0xFF1A73E8),
-            bgColor: const Color(0xFFE8F0FE),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _statCard(
-            value: '4',
-            label: 'Upcoming Today',
-            icon: Icons.calendar_today,
-            iconColor: const Color(0xFF1A73E8),
-            bgColor: const Color(0xFF1A73E8),
-            isDark: true,
-          ),
-        ),
-      ],
-    );
-  }
+          const SizedBox(width: 4),
 
-  Widget _statCard({
-    required String value,
-    required String label,
-    required IconData icon,
-    required Color iconColor,
-    required Color bgColor,
-    bool isDark = false,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon,
-              color: isDark ? Colors.white70 : iconColor, size: 28),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : const Color(0xFF1A1A2E),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: isDark ? Colors.white70 : Colors.grey[600],
-            ),
+          // Avatar with initials / photo
+          CircleAvatar(
+            radius: 20,
+            backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+            backgroundColor: _blue,
+            child: photoUrl == null
+                ? Text(initials,
+                    style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700))
+                : null,
           ),
         ],
       ),
     );
   }
 
-  // ── NEW REQUESTS BANNER ──────────────────────────────
-  Widget _buildNewRequestsBanner() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFFE082)),
+  // ── TITLE ─────────────────────────────────────────────────────────────────────
+
+  Widget _buildTitle() {
+    return Text(
+      'Dashboard',
+      style: GoogleFonts.inter(
+        fontSize: 28,
+        fontWeight: FontWeight.bold,
+        color: const Color(0xFF1A1A2E),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
+    );
+  }
+
+  // ── STATS ROW ─────────────────────────────────────────────────────────────────
+
+  Widget _buildStatsRow() {
+    final activeStudents = _data?.activeStudents ?? 0;
+    final upcomingToday  = _data?.upcomingToday  ?? 0;
+
+    return Row(
+      children: [
+        // Active Students — white card
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFC107).withOpacity(0.2),
-              shape: BoxShape.circle,
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: const Icon(
-              Icons.inbox,
-              color: Color(0xFFF9A825),
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    const Icon(Icons.person_outline,
+                        color: Color(0xFF9CA3AF), size: 20),
+                    const SizedBox(width: 6),
+                    Text('Active Students',
+                        style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: const Color(0xFF9CA3AF),
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Text(
-                  '3 New Requests',
+                  '$activeStudents',
                   style: GoogleFonts.inter(
-                    fontSize: 14,
+                    fontSize: 36,
                     fontWeight: FontWeight.bold,
                     color: const Color(0xFF1A1A2E),
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(width: 12),
+
+        // Upcoming Today — blue card
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+            decoration: BoxDecoration(
+              color: _blue,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today_outlined,
+                        color: Colors.white70, size: 20),
+                    const SizedBox(width: 6),
+                    Text('Upcoming Today',
+                        style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Text(
-                  'Review pending bookings',
+                  '$upcomingToday',
                   style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.grey[600],
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
                 ),
               ],
             ),
           ),
-          TextButton(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              backgroundColor: const Color(0xFF1A73E8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            ),
-            child: Text(
-              'View All',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── RECENT REQUESTS ───────────────────────────────────
-  Widget _buildRecentRequests() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Recent Requests',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1A1A2E),
-              ),
-            ),
-            Text(
-              'See all →',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: const Color(0xFF1A73E8),
-              ),
-            ),
-          ],
         ),
-        const SizedBox(height: 10),
-        ..._recentRequests.map((req) => _requestCard(req)),
       ],
     );
   }
 
-  Widget _requestCard(Map<String, dynamic> req) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const CircleAvatar(
-                radius: 20,
-                backgroundColor: Color(0xFFE8F0FE),
-                child: Icon(Icons.person, color: Color(0xFF1A73E8), size: 22),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      req['name'] as String,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF1A1A2E),
-                      ),
-                    ),
-                    Text(
-                      req['time'] as String,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            req['message'] as String,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: Colors.grey[600],
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A73E8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    elevation: 0,
-                  ),
-                  child: Text(
-                    'Accept',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {},
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF1A73E8)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                  child: Text(
-                    'View Details',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF1A73E8),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // ── TODAY'S SCHEDULE ──────────────────────────────────────────────────────────
 
-  // ── TODAY'S SCHEDULE ──────────────────────────────────
   Widget _buildTodaySchedule() {
+    final sessions = _data?.todaySchedule ?? [];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Header row
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               "Today's Schedule",
               style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1A1A2E),
-              ),
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF1A1A2E)),
             ),
+            const SizedBox(width: 8),
+            if (sessions.isNotEmpty)
+              Text(
+                '${sessions.length} session${sessions.length > 1 ? 's' : ''}',
+                style: GoogleFonts.inter(
+                    fontSize: 13, color: const Color(0xFF9CA3AF)),
+              ),
+            const Spacer(),
+            // + button
             Container(
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: const Color(0xFF1A73E8),
-                borderRadius: BorderRadius.circular(8),
-              ),
+                  color: _blue, borderRadius: BorderRadius.circular(8)),
               child: const Icon(Icons.add, color: Colors.white, size: 20),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        ..._todaySchedule.map((session) => _scheduleCard(session)),
+
+        if (sessions.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 28),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text('No sessions today',
+                style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 13)),
+          )
+        else
+          ...sessions.map((s) => _scheduleCard(s)),
       ],
     );
   }
 
-  Widget _scheduleCard(Map<String, dynamic> session) {
-    final color = session['color'] as Color;
+  Widget _scheduleCard(DashboardSession session) {
+    // Determine platform icon
+    IconData platformIcon;
+    switch ((session.platform ?? '').toLowerCase()) {
+      case 'zoom':
+      case 'video':
+      case 'meet':
+        platformIcon = Icons.videocam_outlined;
+        break;
+      case 'code':
+        platformIcon = Icons.code;
+        break;
+      case 'document':
+      case 'doc':
+        platformIcon = Icons.description_outlined;
+        break;
+      default:
+        platformIcon = Icons.videocam_outlined;
+    }
+
+    // Parse "In X hrs/min" badge colour: orange for < 1 hr, green for >= 1 hr
+    final startsIn = session.startsIn ?? '';
+    Color badgeColor = const Color(0xFFF59E0B); // amber default
+    if (startsIn.contains('hr') || startsIn.contains('hrs')) {
+      badgeColor = const Color(0xFF10B981); // green
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2)),
         ],
       ),
-      child: Row(
-        children: [
-          // Colour strip
-          Container(
-            width: 4,
-            height: 50,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  session['time'] as String,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  session['title'] as String,
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A1A2E),
-                  ),
-                ),
-                Text(
-                  session['student'] as String,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, color: Colors.grey[400]),
-        ],
-      ),
-    );
-  }
-
-  // ── SIDE DRAWER (same design as student dashboard) ────
-  Widget _buildSideDrawer() {
-    final items = [
-      {'icon': Icons.home_outlined, 'activeIcon': Icons.home, 'label': 'Home'},
-      {'icon': Icons.people_outline, 'activeIcon': Icons.people, 'label': 'My Students'},
-      {'icon': Icons.calendar_today_outlined, 'activeIcon': Icons.calendar_today, 'label': 'Schedule'},
-      {'icon': Icons.chat_bubble_outline, 'activeIcon': Icons.chat_bubble, 'label': 'Messages'},
-      {'icon': Icons.history, 'activeIcon': Icons.history, 'label': 'Session History'},
-      {'icon': Icons.settings_outlined, 'activeIcon': Icons.settings, 'label': 'Settings'},
-    ];
-
-    return Drawer(
-      width: 280,
-      backgroundColor: Colors.white,
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1A73E8).withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(
-                          Icons.school,
-                          color: Color(0xFF1A73E8),
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Theo Tutoring',
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1A1A2E),
-                        ),
-                      ),
-                    ],
-                  ),
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.close,
-                        color: Color(0xFF666666),
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                ],
+            // Coloured left border strip
+            Container(
+              width: 4,
+              decoration: BoxDecoration(
+                color: session.color,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(14),
+                  bottomLeft: Radius.circular(14),
+                ),
               ),
             ),
 
-            const SizedBox(height: 8),
-
-            // Nav items
+            // Content
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  final isSelected = _selectedDrawerIndex == index;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() => _selectedDrawerIndex = index);
-                        Navigator.of(context).pop();
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFF1A73E8)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Row 1: time (blue bold) + "In X hrs" badge
+                    Row(
+                      children: [
+                        Text(
+                          session.timeRange,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _blue,
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              isSelected
-                                  ? item['activeIcon'] as IconData
-                                  : item['icon'] as IconData,
-                              color: isSelected
-                                  ? Colors.white
-                                  : const Color(0xFF555555),
-                              size: 22,
+                        const Spacer(),
+                        if (startsIn.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: badgeColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                            const SizedBox(width: 14),
-                            Text(
-                              item['label'] as String,
+                            child: Text(
+                              startsIn,
                               style: GoogleFonts.inter(
-                                fontSize: 14,
-                                fontWeight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: isSelected
-                                    ? Colors.white
-                                    : const Color(0xFF555555),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: badgeColor,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
+                          ),
+                      ],
                     ),
-                  );
-                },
-              ),
-            ),
 
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.of(context).pop();
-                  // TODO: implement logout
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.logout,
-                          color: Color(0xFFE53935), size: 22),
-                      const SizedBox(width: 14),
-                      Text(
-                        'Log Out',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFFE53935),
+                    const SizedBox(height: 4),
+
+                    // Row 2: subject + platform icon button
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                session.subject,
+                                style: GoogleFonts.inter(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1A1A2E),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'with ${session.studentName}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: const Color(0xFF9CA3AF),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+
+                        // Platform icon in a light grey rounded square
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(platformIcon,
+                              size: 18, color: const Color(0xFF6B7280)),
+                        ),
+                      ],
+                    ),
+
+                    // Row 3: note / topic (if present)
+                    if (session.note != null && session.note!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.circle,
+                              size: 6, color: Color(0xFF10B981)),
+                          const SizedBox(width: 5),
+                          Text(
+                            session.note!,
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: const Color(0xFF6B7280),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),
@@ -716,68 +617,39 @@ class _TutorDashboardState extends State<TutorDashboard> {
     );
   }
 
-  // ── BOTTOM NAV ────────────────────────────────────────
-  Widget _buildBottomNav() {
-    final items = [
-      {'icon': Icons.dashboard_outlined, 'activeIcon': Icons.dashboard, 'label': 'Dashboard'},
-      {'icon': Icons.menu_book_outlined, 'activeIcon': Icons.menu_book, 'label': 'Sessions'},
-      {'icon': Icons.calendar_today_outlined, 'activeIcon': Icons.calendar_today, 'label': 'Calendar'},
-      {'icon': Icons.person_outline, 'activeIcon': Icons.person, 'label': 'Profile'},
-    ];
+  // ── BOTTOM NAV ────────────────────────────────────────────────────────────────
 
+  Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, -2))
         ],
       ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: items.asMap().entries.map((entry) {
-              final index = entry.key;
-              final item = entry.value;
-              final isActive = index == _currentIndex;
-              return GestureDetector(
-                onTap: () => setState(() => _currentIndex = index),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isActive
-                          ? item['activeIcon'] as IconData
-                          : item['icon'] as IconData,
-                      color: isActive
-                          ? const Color(0xFF1A73E8)
-                          : Colors.grey,
-                      size: 24,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      item['label'] as String,
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        color: isActive
-                            ? const Color(0xFF1A73E8)
-                            : Colors.grey,
-                        fontWeight: isActive
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ),
+      child: BottomNavigationBar(
+        currentIndex: 0,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        selectedItemColor: _blue,
+        unselectedItemColor: const Color(0xFF9CA3AF),
+        type: BottomNavigationBarType.fixed,
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
+        onTap: (_) {},
+        items: const [
+          BottomNavigationBarItem(
+              icon: Icon(Icons.grid_view_rounded), label: 'Dashboard'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.inbox_rounded), label: 'Schedule'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.chat_bubble_outline_rounded), label: 'Chats'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.person_rounded), label: 'Profile'),
+        ],
       ),
     );
   }
