@@ -162,15 +162,88 @@ CREATE TABLE IF NOT EXISTS TutAvailability (
 
 -- =========================================================
 -- 10. BOOKING
--- Backend logic must enforce the 3-hour lead time and prevent
--- overlapping bookings within a transaction.
+-- Booking Date/StartTime/EndTime are Africa/Johannesburg local
+-- wall-clock values. Backend logic must enforce the strictly-more-
+-- than-2-hour lead time and serialize reservations by locking the
+-- student then tutor rows before checking bookings and active holds.
 -- =========================================================
+
+CREATE TABLE IF NOT EXISTS BookingPurchase (
+    PurchaseID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    StudentID INT NOT NULL,
+    TutorID INT NOT NULL,
+    SubjectID INT NOT NULL,
+    PurchaseType ENUM('Single', 'Package') NOT NULL,
+    LessonCount SMALLINT UNSIGNED NOT NULL,
+    RatePerLesson DECIMAL(10,2) NOT NULL,
+    SubtotalAmount DECIMAL(12,2) NOT NULL,
+    DiscountPercent DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+    DiscountAmount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    TotalAmount DECIMAL(12,2) NOT NULL,
+    IdempotencyKey VARCHAR(128)
+        CHARACTER SET ascii COLLATE ascii_bin NULL,
+    RequestFingerprint CHAR(64)
+        CHARACTER SET ascii COLLATE ascii_bin NULL,
+    PurchaseStatus ENUM(
+        'Draft', 'Held', 'PaymentPending', 'Paid',
+        'Cancelled', 'Expired', 'PartiallyRefunded', 'Refunded'
+    ) NOT NULL DEFAULT 'Draft',
+    CreatedAtUtc DATETIME(6) NOT NULL,
+
+    CONSTRAINT chk_purchase_lesson_count
+        CHECK (
+            (PurchaseType = 'Single' AND LessonCount = 1)
+            OR (PurchaseType = 'Package' AND LessonCount >= 2)
+        ),
+    CONSTRAINT chk_purchase_discount
+        CHECK (
+            (PurchaseType = 'Single' AND DiscountPercent = 0)
+            OR (PurchaseType = 'Package' AND LessonCount >= 10
+                AND DiscountPercent = 10)
+            OR (PurchaseType = 'Package' AND LessonCount < 10
+                AND DiscountPercent = 0)
+        ),
+    CONSTRAINT chk_purchase_amounts
+        CHECK (
+            RatePerLesson > 0
+            AND SubtotalAmount = ROUND(RatePerLesson * LessonCount, 2)
+            AND DiscountAmount = ROUND(
+                SubtotalAmount * DiscountPercent / 100, 2
+            )
+            AND TotalAmount = SubtotalAmount - DiscountAmount
+        ),
+    CONSTRAINT chk_purchase_idempotency_fields
+        CHECK (
+            (IdempotencyKey IS NULL AND RequestFingerprint IS NULL)
+            OR (IdempotencyKey IS NOT NULL AND RequestFingerprint IS NOT NULL)
+        ),
+
+    CONSTRAINT fk_purchase_student
+        FOREIGN KEY (StudentID) REFERENCES StudentProfile(StudentID),
+    CONSTRAINT fk_purchase_tutor
+        FOREIGN KEY (TutorID) REFERENCES TutorProfile(TutorID),
+    CONSTRAINT fk_purchase_subject
+        FOREIGN KEY (SubjectID) REFERENCES Subjects(subjectId),
+
+    UNIQUE KEY uq_purchase_identity
+        (PurchaseID, StudentID, TutorID, SubjectID),
+    UNIQUE KEY uq_purchase_student_idempotency
+        (StudentID, IdempotencyKey),
+    UNIQUE KEY uq_purchase_tutor (PurchaseID, TutorID),
+    UNIQUE KEY uq_purchase_total (PurchaseID, TotalAmount),
+    INDEX idx_purchase_student_created (StudentID, CreatedAtUtc),
+    INDEX idx_purchase_student_purchases (StudentID, PurchaseID),
+    INDEX idx_purchase_tutor_created (TutorID, CreatedAtUtc)
+) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS Booking (
     Booking_id INT AUTO_INCREMENT PRIMARY KEY,
     StudentID INT NOT NULL,
     TutorID INT NOT NULL,
     SubjectID INT NOT NULL,
+    PurchaseID BIGINT UNSIGNED NULL,
+    LessonNumber SMALLINT UNSIGNED NULL,
+    LessonPriceAtPurchase DECIMAL(10,2) NULL,
     Date DATE NOT NULL,
     StartTime TIME NOT NULL,
     EndTime TIME NOT NULL,
@@ -180,9 +253,25 @@ CREATE TABLE IF NOT EXISTS Booking (
         'Cancelled', 'Rejected'
     ) NOT NULL DEFAULT 'Pending',
     Link VARCHAR(500) NULL,
+    LinkUpdatedByUserID INT NULL,
+    LinkUpdatedAtUtc DATETIME(6) NULL,
     Created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT chk_booking_times CHECK (StartTime < EndTime),
+    CONSTRAINT chk_booking_purchase_fields
+        CHECK (
+            (PurchaseID IS NULL AND LessonNumber IS NULL
+                AND LessonPriceAtPurchase IS NULL)
+            OR (PurchaseID IS NOT NULL AND LessonNumber IS NOT NULL
+                AND LessonPriceAtPurchase IS NOT NULL)
+        ),
+    CONSTRAINT chk_booking_purchased_lesson_duration
+        CHECK (
+            PurchaseID IS NULL
+            OR TIMEDIFF(EndTime, StartTime) = '01:00:00'
+        ),
+    CONSTRAINT chk_booking_lesson_price
+        CHECK (LessonPriceAtPurchase IS NULL OR LessonPriceAtPurchase >= 0),
 
     CONSTRAINT fk_booking_student
         FOREIGN KEY (StudentID) REFERENCES StudentProfile(StudentID),
@@ -192,7 +281,13 @@ CREATE TABLE IF NOT EXISTS Booking (
 
     CONSTRAINT fk_booking_subject
         FOREIGN KEY (SubjectID) REFERENCES Subjects(subjectId),
+    CONSTRAINT fk_booking_purchase_identity
+        FOREIGN KEY (PurchaseID, StudentID, TutorID, SubjectID)
+        REFERENCES BookingPurchase(PurchaseID, StudentID, TutorID, SubjectID),
+    CONSTRAINT fk_booking_link_updated_by
+        FOREIGN KEY (LinkUpdatedByUserID) REFERENCES `User`(UserId),
 
+    UNIQUE KEY uq_booking_purchase_lesson (PurchaseID, LessonNumber),
     INDEX idx_booking_tutor_date (TutorID, Date, StartTime),
     INDEX idx_booking_student_date (StudentID, Date)
 );
@@ -229,6 +324,81 @@ CREATE TABLE IF NOT EXISTS Payment (
         FOREIGN KEY (BookingId) REFERENCES Booking(Booking_id)
 );
 
+-- PaymentAttempt is the purchase-level payment ledger for new bookings.
+-- The legacy Payment table remains unchanged for existing records/flows.
+CREATE TABLE IF NOT EXISTS PaymentAttempt (
+    PaymentAttemptID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    PurchaseID BIGINT UNSIGNED NOT NULL,
+    AttemptNumber SMALLINT UNSIGNED NOT NULL,
+    IdempotencyKey VARCHAR(128) NOT NULL,
+    PaymentMethod ENUM('CreditDebitCard', 'PayPal', 'EFT') NOT NULL,
+    PaymentMode ENUM('Demo') NOT NULL DEFAULT 'Demo',
+    DemoOutcome ENUM(
+        'NotApplicable', 'SimulatedSuccess', 'SimulatedFailure'
+    ) NOT NULL DEFAULT 'NotApplicable',
+    PaymentStatus ENUM(
+        'Pending', 'Successful', 'Failed', 'OutcomeUnknown',
+        'ReconciliationRequired', 'Cancelled', 'Refunded'
+    ) NOT NULL DEFAULT 'Pending',
+    PaymentReference VARCHAR(191) NULL,
+    Amount DECIMAL(12,2) NOT NULL,
+    FailureCode VARCHAR(64) NULL,
+    CreatedAtUtc DATETIME(6) NOT NULL,
+    UpdatedAtUtc DATETIME(6) NOT NULL,
+    ResolvedAtUtc DATETIME(6) NULL,
+
+    CONSTRAINT chk_payment_attempt_demo_outcome
+        CHECK (
+            PaymentMode = 'Demo'
+            AND (
+                (PaymentStatus = 'Successful'
+                    AND DemoOutcome = 'SimulatedSuccess')
+                OR (PaymentStatus = 'Failed'
+                    AND DemoOutcome = 'SimulatedFailure')
+                OR PaymentStatus NOT IN ('Successful', 'Failed')
+            )
+        ),
+    CONSTRAINT chk_payment_attempt_amount CHECK (Amount > 0),
+    CONSTRAINT fk_payment_attempt_purchase
+        FOREIGN KEY (PurchaseID, Amount)
+        REFERENCES BookingPurchase(PurchaseID, TotalAmount),
+
+    UNIQUE KEY uq_payment_attempt_idempotency (PurchaseID, IdempotencyKey),
+    UNIQUE KEY uq_payment_attempt_number (PurchaseID, AttemptNumber),
+    UNIQUE KEY uq_payment_attempt_reference (PaymentReference),
+    UNIQUE KEY uq_payment_attempt_purchase_identity
+        (PurchaseID, PaymentAttemptID),
+    INDEX idx_payment_attempt_status (PaymentStatus, CreatedAtUtc)
+) ENGINE=InnoDB;
+
+-- One successful, purchase-wide settlement. PaymentID links the legacy
+-- per-booking Payment row for single lessons; package settlements leave it NULL.
+CREATE TABLE IF NOT EXISTS PurchasePayment (
+    PurchasePaymentID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    PurchaseID BIGINT UNSIGNED NOT NULL,
+    PaymentAttemptID BIGINT UNSIGNED NOT NULL,
+    PaymentID INT NULL,
+    Amount DECIMAL(12,2) NOT NULL,
+    CreatedAtUtc DATETIME(6) NOT NULL,
+
+    CONSTRAINT chk_purchase_payment_amount CHECK (Amount > 0),
+    CONSTRAINT fk_purchase_payment_purchase
+        FOREIGN KEY (PurchaseID) REFERENCES BookingPurchase(PurchaseID),
+    CONSTRAINT fk_purchase_payment_attempt
+        FOREIGN KEY (PurchaseID, PaymentAttemptID)
+        REFERENCES PaymentAttempt(PurchaseID, PaymentAttemptID),
+    CONSTRAINT fk_purchase_payment_total
+        FOREIGN KEY (PurchaseID, Amount)
+        REFERENCES BookingPurchase(PurchaseID, TotalAmount),
+    CONSTRAINT fk_purchase_payment_legacy
+        FOREIGN KEY (PaymentID) REFERENCES Payment(PaymentID),
+
+    UNIQUE KEY uq_purchase_payment_purchase (PurchaseID),
+    UNIQUE KEY uq_purchase_payment_attempt (PaymentAttemptID),
+    UNIQUE KEY uq_purchase_payment_legacy (PaymentID),
+    INDEX idx_purchase_payment_created (CreatedAtUtc)
+) ENGINE=InnoDB;
+
 -- =========================================================
 -- 12. REFUND
 -- One refund record per booking.
@@ -242,18 +412,124 @@ CREATE TABLE IF NOT EXISTS Refund (
     RefundStatus ENUM(
         'Pending', 'Approved', 'Rejected', 'Processed'
     ) NOT NULL DEFAULT 'Pending',
+    RefundAmount DECIMAL(10,2) NULL,
     OverriddenByAdmin BOOLEAN NOT NULL DEFAULT FALSE,
     AdminID INT NULL,
+    ExceptionReviewStatus ENUM(
+        'NotRequested', 'Pending', 'Approved', 'Rejected'
+    ) NOT NULL DEFAULT 'NotRequested',
+    ExceptionReason TEXT NULL,
+    ExceptionReviewedByAdminID INT NULL,
+    ExceptionReviewedAtUtc DATETIME(6) NULL,
+    ProcessedAtUtc DATETIME(6) NULL,
 
     CONSTRAINT chk_refund_percentage
         CHECK (RefundPercentage BETWEEN 0 AND 100),
+    CONSTRAINT chk_refund_amount
+        CHECK (RefundAmount IS NULL OR RefundAmount >= 0),
 
     CONSTRAINT fk_refund_booking
         FOREIGN KEY (BookingID) REFERENCES Booking(Booking_id),
 
     CONSTRAINT fk_refund_admin
-        FOREIGN KEY (AdminID) REFERENCES Admin(AdminID)
+        FOREIGN KEY (AdminID) REFERENCES Admin(AdminID),
+
+    CONSTRAINT fk_refund_exception_admin
+        FOREIGN KEY (ExceptionReviewedByAdminID) REFERENCES Admin(AdminID)
 );
+
+-- Refund remains the per-booking case/aggregate; this table records
+-- idempotent monetary refund attempts without weakening Refund.BookingID UNIQUE.
+CREATE TABLE IF NOT EXISTS RefundTransaction (
+    RefundTransactionID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    RefundID INT NOT NULL,
+    IdempotencyKey VARCHAR(128) NOT NULL,
+    RefundReference VARCHAR(191) NULL,
+    Amount DECIMAL(12,2) NOT NULL,
+    TransactionStatus ENUM(
+        'Pending', 'Processing', 'Successful', 'Failed',
+        'OutcomeUnknown', 'ReconciliationRequired', 'Cancelled'
+    ) NOT NULL DEFAULT 'Pending',
+    CreatedAtUtc DATETIME(6) NOT NULL,
+    UpdatedAtUtc DATETIME(6) NOT NULL,
+    ResolvedAtUtc DATETIME(6) NULL,
+
+    CONSTRAINT chk_refund_transaction_amount CHECK (Amount > 0),
+    CONSTRAINT fk_refund_transaction_refund
+        FOREIGN KEY (RefundID) REFERENCES Refund(RefundID),
+
+    UNIQUE KEY uq_refund_transaction_idempotency (RefundID, IdempotencyKey),
+    UNIQUE KEY uq_refund_transaction_reference (RefundReference),
+    INDEX idx_refund_transaction_status (TransactionStatus, CreatedAtUtc)
+) ENGINE=InnoDB;
+
+-- A hold row represents one 60-minute slot in a purchase. Expiration
+-- timestamps are UTC; lesson date/time remain Johannesburg local values.
+CREATE TABLE IF NOT EXISTS BookingSlotHold (
+    HoldID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    PurchaseID BIGINT UNSIGNED NOT NULL,
+    LessonNumber SMALLINT UNSIGNED NOT NULL,
+    TutorID INT NOT NULL,
+    BookingID INT NULL UNIQUE,
+    LessonDate DATE NOT NULL,
+    StartTime TIME NOT NULL,
+    EndTime TIME NOT NULL,
+    HoldStatus ENUM('Active', 'Consumed', 'Expired', 'Released')
+        NOT NULL DEFAULT 'Active',
+    CreatedAtUtc DATETIME(6) NOT NULL,
+    ExpiresAtUtc DATETIME(6) NOT NULL,
+    ConsumedAtUtc DATETIME(6) NULL,
+    ReleasedAtUtc DATETIME(6) NULL,
+
+    CONSTRAINT chk_hold_times
+        CHECK (StartTime < EndTime AND TIMEDIFF(EndTime, StartTime) = '01:00:00'),
+    CONSTRAINT fk_hold_purchase
+        FOREIGN KEY (PurchaseID) REFERENCES BookingPurchase(PurchaseID),
+    CONSTRAINT fk_hold_purchase_tutor
+        FOREIGN KEY (PurchaseID, TutorID)
+        REFERENCES BookingPurchase(PurchaseID, TutorID),
+    CONSTRAINT fk_hold_booking
+        FOREIGN KEY (BookingID) REFERENCES Booking(Booking_id),
+
+    UNIQUE KEY uq_hold_purchase_lesson (PurchaseID, LessonNumber),
+    INDEX idx_hold_tutor_conflict
+        (TutorID, LessonDate, HoldStatus, ExpiresAtUtc, StartTime)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS BookingReschedule (
+    RescheduleID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    BookingID INT NOT NULL,
+    RequestedByUserID INT NOT NULL,
+    ReviewedByUserID INT NULL,
+    OriginalDate DATE NOT NULL,
+    OriginalStartTime TIME NOT NULL,
+    OriginalEndTime TIME NOT NULL,
+    ProposedDate DATE NOT NULL,
+    ProposedStartTime TIME NOT NULL,
+    ProposedEndTime TIME NOT NULL,
+    RescheduleStatus ENUM(
+        'Pending', 'Approved', 'Rejected', 'Cancelled', 'Applied'
+    ) NOT NULL DEFAULT 'Pending',
+    Reason TEXT NULL,
+    RequestedAtUtc DATETIME(6) NOT NULL,
+    ReviewedAtUtc DATETIME(6) NULL,
+    AppliedAtUtc DATETIME(6) NULL,
+
+    CONSTRAINT chk_reschedule_original_times
+        CHECK (OriginalStartTime < OriginalEndTime),
+    CONSTRAINT chk_reschedule_proposed_times
+        CHECK (ProposedStartTime < ProposedEndTime),
+    CONSTRAINT chk_reschedule_proposed_duration
+        CHECK (TIMEDIFF(ProposedEndTime, ProposedStartTime) = '01:00:00'),
+    CONSTRAINT fk_reschedule_booking
+        FOREIGN KEY (BookingID) REFERENCES Booking(Booking_id),
+    CONSTRAINT fk_reschedule_requester
+        FOREIGN KEY (RequestedByUserID) REFERENCES `User`(UserId),
+    CONSTRAINT fk_reschedule_reviewer
+        FOREIGN KEY (ReviewedByUserID) REFERENCES `User`(UserId),
+
+    INDEX idx_reschedule_booking_status (BookingID, RescheduleStatus)
+) ENGINE=InnoDB;
 
 -- =========================================================
 -- 13. REVIEWS
