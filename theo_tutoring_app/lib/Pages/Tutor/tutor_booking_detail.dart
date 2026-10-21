@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
+
+import 'tutor_api.dart';
+import 'tutor_format.dart';
+import 'tutor_format.dart' as fmt; // the durationLabel field hides the function
 
 // ── Model ──────────────────────────────────────────────────────────────────
 
@@ -11,22 +11,22 @@ class BookingDetail {
   final String requestId;
   final String receivedAgo;
   final String subject;
+  final String rawDate; // "2026-10-24", used by the postpone date picker
   final String date;
   final String startTime;
   final String endTime;
+  final int durationMinutes;
   final String durationLabel;
   final String status;
   final String? studentNote;
-  final String platform;
   final String? sessionLink;
+  final bool canPostpone; // shows the Decline button
 
   final String studentName;
   final String? studentPhotoUrl;
-  final String? studentUniversity;
   final String? studentYear;
-  final double studentRating;
   final String? studentMajor;
-  final String? studentFocus;
+  final bool studentVerified;
 
   final bool isRecurring;
   final String? recurringPattern;
@@ -34,98 +34,84 @@ class BookingDetail {
   final int totalSessions;
   final String? totalHours;
 
+  final String? tutorName;
+  final String? tutorPhotoUrl;
+
   const BookingDetail({
     required this.bookingId,
     required this.requestId,
     required this.receivedAgo,
     required this.subject,
+    required this.rawDate,
     required this.date,
     required this.startTime,
     required this.endTime,
+    required this.durationMinutes,
     required this.durationLabel,
     required this.status,
     this.studentNote,
-    required this.platform,
     this.sessionLink,
+    required this.canPostpone,
     required this.studentName,
     this.studentPhotoUrl,
-    this.studentUniversity,
     this.studentYear,
-    required this.studentRating,
     this.studentMajor,
-    this.studentFocus,
+    required this.studentVerified,
     required this.isRecurring,
     this.recurringPattern,
     this.nextSessions = const [],
     required this.totalSessions,
     this.totalHours,
+    this.tutorName,
+    this.tutorPhotoUrl,
   });
 
-  factory BookingDetail.fromJson(Map<String, dynamic> j) => BookingDetail(
-        bookingId: int.tryParse(j['bookingId']?.toString() ?? '') ?? 0,
-        requestId: j['requestId']?.toString() ?? '',
-        receivedAgo: j['receivedAgo']?.toString() ?? '',
-        subject: j['subject']?.toString() ?? '',
-        date: j['date']?.toString() ?? '',
-        startTime: j['startTime']?.toString() ?? '',
-        endTime: j['endTime']?.toString() ?? '',
-        durationLabel: j['durationLabel']?.toString() ?? '',
-        status: j['status']?.toString() ?? '',
-        studentNote: j['studentNote']?.toString(),
-        platform: j['platform']?.toString() ?? 'online',
-        sessionLink: j['sessionLink']?.toString(),
-        studentName: j['studentName']?.toString() ?? '',
-        studentPhotoUrl: j['studentPhotoUrl']?.toString(),
-        studentUniversity: j['studentUniversity']?.toString(),
-        studentYear: j['studentYear']?.toString(),
-        studentRating:
-            double.tryParse(j['studentRating']?.toString() ?? '') ?? 0.0,
-        studentMajor: j['studentMajor']?.toString(),
-        studentFocus: j['studentFocus']?.toString(),
-        isRecurring: j['isRecurring'] == true,
-        recurringPattern: j['recurringPattern']?.toString(),
-        nextSessions: (j['nextSessions'] as List?)
-                ?.map((s) => s.toString())
-                .toList() ??
-            [],
-        totalSessions:
-            int.tryParse(j['totalSessions']?.toString() ?? '') ?? 0,
-        totalHours: j['totalHours']?.toString(),
-      );
-}
+  // GET /TutorLandingpage/bookings/<id> sends
+  // { tutor, booking, student, recurring (null for a one-off session) }
+  factory BookingDetail.fromJson(Map<String, dynamic> j) {
+    final b = j['booking'] as Map<String, dynamic>? ?? const {};
+    final s = j['student'] as Map<String, dynamic>? ?? const {};
+    final r = j['recurring'] as Map<String, dynamic>?;
+    final t = j['tutor'] as Map<String, dynamic>?;
+    final received = b['receivedMinutesAgo'] as int?;
+    final minutes = b['durationMinutes'] as int? ?? 0;
+    final totalMinutes = r?['totalMinutes'] as int?;
+    final rawDate = b['date']?.toString() ?? '';
 
-// ── Service ────────────────────────────────────────────────────────────────
-
-class TutorBookingService {
-  static String get _base =>
-      kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
-
-  static Future<BookingDetail> fetchBooking(int bookingId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    final res = await http.get(
-      Uri.parse('$_base/tutor/bookings/$bookingId'),
-      headers: {'Authorization': 'Bearer $token'},
+    return BookingDetail(
+      bookingId: b['bookingId'] as int? ?? 0,
+      requestId: b['reference']?.toString() ?? '',
+      receivedAgo: received == null ? '' : timeAgo(received),
+      subject: b['subject']?.toString() ?? '',
+      rawDate: rawDate,
+      date: formatLongDate(rawDate),
+      startTime: b['startTime']?.toString() ?? '',
+      endTime: b['endTime']?.toString() ?? '',
+      durationMinutes: minutes,
+      durationLabel: fmt.durationLabel(minutes),
+      status: b['status']?.toString() ?? '',
+      studentNote: b['note']?.toString(),
+      sessionLink: b['link']?.toString(),
+      canPostpone: b['canPostpone'] == true,
+      studentName: s['name']?.toString() ?? '',
+      studentPhotoUrl: s['profilePhotoUrl']?.toString(),
+      studentYear: s['year']?.toString(),
+      studentMajor: s['course']?.toString(),
+      studentVerified: s['verified'] == true,
+      isRecurring: r != null,
+      recurringPattern: r == null
+          ? null
+          : 'Every ${r['weekday']} (${r['frequency'] ?? 'Weekly'})',
+      nextSessions: [
+        for (final session in r?['sessions'] as List<dynamic>? ?? [])
+          formatLongDate((session as Map<String, dynamic>)['date']?.toString()),
+      ],
+      totalSessions: r?['totalSessions'] as int? ?? 0,
+      totalHours:
+          totalMinutes == null ? null : fmt.durationLabel(totalMinutes),
+      tutorName: t?['name']?.toString(),
+      tutorPhotoUrl: t?['profilePhotoUrl']?.toString(),
     );
-    if (res.statusCode != 200) {
-      throw Exception('Failed to load booking (${res.statusCode})');
-    }
-    return BookingDetail.fromJson(
-        jsonDecode(res.body) as Map<String, dynamic>);
-  }
-
-  static Future<void> declineBooking(int bookingId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    final res = await http.patch(
-      Uri.parse('$_base/tutor/bookings/$bookingId/decline'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    if (res.statusCode != 200) {
-      throw Exception('Failed to decline booking (${res.statusCode})');
-    }
   }
 }
 
@@ -168,21 +154,26 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final b = await TutorBookingService.fetchBooking(widget.bookingId);
+      final b = BookingDetail.fromJson(
+          await fetchTutorBooking(widget.bookingId));
       if (mounted) setState(() { _booking = b; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
   }
 
+  // Declining does not cancel the session: the tutor picks a new date and
+  // start time (same length as before) and the student must confirm it.
   Future<void> _decline() async {
+    final b = _booking!;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Decline Booking',
             style: TextStyle(color: _text1)),
         content: const Text(
-            'Are you sure you want to decline this booking request?',
+            'Declining moves this session to a new time. The student will be '
+            'asked to confirm the new time.',
             style: TextStyle(color: _text3)),
         actions: [
           TextButton(
@@ -191,28 +182,77 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Decline',
+            child: const Text('Pick a new time',
                 style: TextStyle(color: _red, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
-    if (confirm != true) return;
+    if (confirm != true || !mounted) return;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final current = DateTime.tryParse(b.rawDate);
+    final day = await showDatePicker(
+      context: context,
+      initialDate:
+          current == null || current.isBefore(today) ? today : current,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 90)),
+      helpText: 'New session date',
+    );
+    if (day == null || !mounted) return;
+
+    final parts = b.startTime.split(':');
+    final start = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: int.tryParse(parts.first) ?? 9,
+        minute: parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
+      ),
+      helpText: 'New start time',
+    );
+    if (start == null || !mounted) return;
+
+    final length = b.durationMinutes > 0 ? b.durationMinutes : 60;
+    final startMinutes = start.hour * 60 + start.minute;
+    final endMinutes = startMinutes + length;
+    if (endMinutes >= 24 * 60) {
+      _showMessage('The session must end before midnight.', error: true);
+      return;
+    }
+
+    String two(int n) => n.toString().padLeft(2, '0');
+    String clock(int m) => '${two(m ~/ 60)}:${two(m % 60)}';
+    final date = '${day.year}-${two(day.month)}-${two(day.day)}';
+
     setState(() => _declining = true);
     try {
-      await TutorBookingService.declineBooking(widget.bookingId);
-      if (mounted) Navigator.pop(context);
+      await postponeTutorBooking(
+        b.bookingId,
+        date: date,
+        startTime: clock(startMinutes),
+        endTime: clock(endMinutes),
+      );
+      if (!mounted) return;
+      _showMessage(
+          'Session moved to ${formatLongDate(date)}, ${clock(startMinutes)}. '
+          'The student has been asked to confirm.');
+      Navigator.pop(context, true); // the Schedule page reloads
     } catch (e) {
+      if (!mounted) return;
       setState(() => _declining = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to decline: $e'),
-            backgroundColor: _red,
-          ),
-        );
-      }
+      _showMessage(e.toString(), error: true);
     }
+  }
+
+  void _showMessage(String message, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: error ? _red : null,
+      ),
+    );
   }
 
   @override
@@ -276,8 +316,10 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                 const SizedBox(height: 12),
                 _buildRecurringSection(b),
               ],
-              const SizedBox(height: 20),
-              _buildDeclineButton(),
+              if (b.canPostpone) ...[
+                const SizedBox(height: 20),
+                _buildDeclineButton(),
+              ],
               const SizedBox(height: 8),
             ],
           ),
@@ -323,7 +365,18 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           CircleAvatar(
             radius: 18,
             backgroundColor: _blue,
-            child: const Icon(Icons.person, color: _white, size: 18),
+            backgroundImage: b.tutorPhotoUrl != null
+                ? NetworkImage(b.tutorPhotoUrl!)
+                : null,
+            child: b.tutorPhotoUrl != null
+                ? null
+                : b.tutorName != null
+                    ? Text(initialsOf(b.tutorName!),
+                        style: const TextStyle(
+                            color: _white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700))
+                    : const Icon(Icons.person, color: _white, size: 18),
           ),
           const SizedBox(width: 8),
           GestureDetector(
@@ -361,10 +414,11 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            'Received ${b.receivedAgo}',
-            style: const TextStyle(color: _text4, fontSize: 12),
-          ),
+          if (b.receivedAgo.isNotEmpty)
+            Text(
+              'Received ${b.receivedAgo}',
+              style: const TextStyle(color: _text4, fontSize: 12),
+            ),
           const Spacer(),
           Container(
             padding:
@@ -388,8 +442,10 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     switch (s.toLowerCase()) {
       case 'confirmed':
       case 'accepted':  return const Color(0xFF16A34A);
-      case 'pending':   return const Color(0xFFD97706);
-      case 'declined':  return _red;
+      case 'pending':
+      case 'postponed': return const Color(0xFFD97706);
+      case 'declined':
+      case 'cancelled': return _red;
       default:          return _text3;
     }
   }
@@ -398,8 +454,10 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     switch (s.toLowerCase()) {
       case 'confirmed':
       case 'accepted':  return const Color(0xFFF0FDF4);
-      case 'pending':   return const Color(0xFFFFFBEB);
-      case 'declined':  return _redBg;
+      case 'pending':
+      case 'postponed': return const Color(0xFFFFFBEB);
+      case 'declined':
+      case 'cancelled': return _redBg;
       default:          return const Color(0xFFF3F4F6);
     }
   }
@@ -541,32 +599,28 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(b.studentName,
-                        style: const TextStyle(
-                            color: _text1,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700)),
-                    if (b.studentUniversity != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        '${b.studentUniversity}${b.studentYear != null ? ' · ${b.studentYear}' : ''}',
-                        style: const TextStyle(
-                            color: _text3, fontSize: 12),
-                      ),
-                    ],
-                    if (b.studentRating > 0) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.star_rounded,
-                              color: Color(0xFFF59E0B), size: 14),
-                          const SizedBox(width: 3),
-                          Text(b.studentRating.toStringAsFixed(1),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(b.studentName,
                               style: const TextStyle(
                                   color: _text1,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600)),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                        if (b.studentVerified) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.verified_rounded,
+                              color: _blue, size: 16),
                         ],
+                      ],
+                    ),
+                    if (b.studentYear != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        b.studentYear!,
+                        style: const TextStyle(
+                            color: _text3, fontSize: 12),
                       ),
                     ],
                   ],
@@ -575,7 +629,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
             ],
           ),
 
-          if (b.studentMajor != null || b.studentFocus != null) ...[
+          if (b.studentMajor != null) ...[
             const SizedBox(height: 14),
             const Divider(color: _border, height: 1),
             const SizedBox(height: 12),
@@ -586,12 +640,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2)),
             const SizedBox(height: 8),
-            if (b.studentMajor != null)
-              _detailRow(Icons.school_outlined, b.studentMajor!),
-            if (b.studentFocus != null) ...[
-              const SizedBox(height: 6),
-              _detailRow(Icons.lightbulb_outline, b.studentFocus!),
-            ],
+            _detailRow(Icons.school_outlined, b.studentMajor!),
           ],
         ],
       ),
@@ -659,7 +708,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           ],
           // Next sessions list
           if (b.nextSessions.isNotEmpty) ...[
-            const Text('Next 4 sessions',
+            Text('Next ${b.nextSessions.length.clamp(0, 4)} sessions',
                 style: TextStyle(
                     color: _text4,
                     fontSize: 11,
@@ -748,7 +797,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                 children: const [
                   Icon(Icons.close, size: 16, color: _red),
                   SizedBox(width: 8),
-                  Text('Cancel',
+                  Text('Decline',
                       style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
+
+import 'tutor_api.dart';
 import 'tutor_booking_detail.dart';
+import 'tutor_format.dart';
+import 'tutor_nav.dart';
 
 // ── Model ──────────────────────────────────────────────────────────────────
 
@@ -12,7 +13,6 @@ class ScheduleSession {
   final String subject;
   final String studentName;
   final String? studentPhoto;
-  final String? studentUniversity;
   final String date;
   final String startTime;
   final String endTime;
@@ -21,97 +21,81 @@ class ScheduleSession {
   final String? link;
   final String? note;
   final String platform;
-  final String? confirmedAgo;
-  final bool isRecurring;
+  final String? statusAgo; // "Confirmed 25m ago" / "Requested 2h ago"
 
   const ScheduleSession({
     required this.bookingId,
     required this.subject,
     required this.studentName,
     this.studentPhoto,
-    this.studentUniversity,
     required this.date,
     required this.startTime,
     required this.endTime,
-    this.duration = '1 hr',
+    required this.duration,
     required this.status,
     this.link,
     this.note,
     required this.platform,
-    this.confirmedAgo,
-    this.isRecurring = false,
+    this.statusAgo,
   });
 
-  factory ScheduleSession.fromJson(Map<String, dynamic> j) => ScheduleSession(
-        bookingId: int.tryParse(j['bookingId']?.toString() ?? '') ?? 0,
-        subject: j['subject']?.toString() ?? '',
-        studentName: j['studentName']?.toString() ?? '',
-        studentPhoto: j['studentPhoto']?.toString(),
-        studentUniversity: j['studentUniversity']?.toString(),
-        date: j['date']?.toString() ?? '',
-        startTime: j['startTime']?.toString() ?? '',
-        endTime: j['endTime']?.toString() ?? '',
-        duration: j['duration']?.toString() ?? '1 hr',
-        status: j['status']?.toString() ?? '',
-        link: j['link']?.toString(),
-        note: j['note']?.toString(),
-        platform: j['platform']?.toString() ?? 'online',
-        confirmedAgo: j['confirmedAgo']?.toString(),
-        isRecurring: j['isRecurring'] == true,
-      );
+  // One session card from GET /TutorLandingpage/schedule
+  factory ScheduleSession.fromJson(Map<String, dynamic> j) {
+    final student = j['student'] as Map<String, dynamic>? ?? const {};
+    final status = j['status']?.toString() ?? '';
+    final requested = j['requestedMinutesAgo'] as int?;
+    final confirmed = j['confirmedMinutesAgo'] as int?;
+    final link = j['link']?.toString();
+    return ScheduleSession(
+      bookingId: j['bookingId'] as int? ?? 0,
+      subject: j['subject']?.toString() ?? '',
+      studentName: student['name']?.toString() ?? '',
+      studentPhoto: student['profilePhotoUrl']?.toString(),
+      date: j['date']?.toString() ?? '',
+      startTime: j['startTime']?.toString() ?? '',
+      endTime: j['endTime']?.toString() ?? '',
+      duration: durationLabel(j['durationMinutes'] as int?),
+      status: status,
+      link: link,
+      note: j['note']?.toString(),
+      platform: platformOf(link),
+      statusAgo: switch (status) {
+        'Pending' when requested != null => 'Requested ${timeAgo(requested)}',
+        'Confirmed' when confirmed != null => 'Confirmed ${timeAgo(confirmed)}',
+        'Completed' => 'Completed',
+        _ => null,
+      },
+    );
+  }
 
   String get platformLabel {
-    switch (platform.toLowerCase()) {
-      case 'zoom':        return 'Zoom';
-      case 'google_meet':
-      case 'meet':        return 'Google Meet';
-      case 'in_person':
-      case 'in-person':  return 'In-person';
-      default:            return 'Online';
+    switch (platform) {
+      case 'zoom':  return 'Zoom';
+      case 'meet':  return 'Google Meet';
+      case 'teams': return 'Microsoft Teams';
+      case 'none':  return 'Session link not added yet';
+      default:      return 'Online';
     }
   }
 
-  IconData get platformIcon {
-    switch (platform.toLowerCase()) {
-      case 'zoom':
-      case 'google_meet':
-      case 'meet':        return Icons.videocam_outlined;
-      case 'in_person':
-      case 'in-person':  return Icons.location_on_outlined;
-      default:            return Icons.videocam_outlined;
-    }
-  }
+  IconData get platformIcon =>
+      platform == 'none' ? Icons.link_off : Icons.videocam_outlined;
 }
 
-// ── Service ────────────────────────────────────────────────────────────────
+/// One day heading with its sessions ("Today, 30 Sep  2 sessions").
+class ScheduleDay {
+  final String label;
+  final List<ScheduleSession> sessions;
 
-class TutorScheduleService {
-  static String get _base =>
-      kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
+  const ScheduleDay({required this.label, required this.sessions});
 
-  static Future<Map<String, dynamic>> fetchSchedule(String filter) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    final res = await http.get(
-      Uri.parse('$_base/tutor/schedule?filter=$filter'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    if (res.statusCode != 200) throw Exception('Failed to load schedule');
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-
-    final grouped = <String, List<ScheduleSession>>{};
-    ((data['grouped'] ?? {}) as Map<String, dynamic>).forEach((label, list) {
-      grouped[label] = (list as List)
-          .map((s) => ScheduleSession.fromJson(s as Map<String, dynamic>))
-          .toList();
-    });
-
-    return {
-      'grouped': grouped,
-      'badges': (data['badges'] as Map<String, dynamic>?) ?? {},
-    };
-  }
+  factory ScheduleDay.fromJson(Map<String, dynamic> j) => ScheduleDay(
+        label: dayHeading(
+            j['date']?.toString(), j['daysFromToday'] as int?),
+        sessions: (j['sessions'] as List<dynamic>? ?? [])
+            .map((s) => ScheduleSession.fromJson(s as Map<String, dynamic>))
+            .toList(),
+      );
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────
@@ -127,13 +111,26 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _dateFilter = 'All Dates';
-  Map<String, List<ScheduleSession>> _grouped = {};
+  List<ScheduleDay> _days = [];
   Map<String, dynamic> _badges = {};
+  List<Map<String, dynamic>> _subjects = []; // for the filter icon
+  final Set<int> _subjectFilter = {};
+  String? _tutorName;
+  String? _tutorPhoto;
   bool _loading = true;
   String? _error;
 
   static const _tabs        = ['Upcoming', 'New', 'Past', 'All'];
   static const _dateFilters = ['All Dates', 'Today', 'Tomorrow', 'This Week'];
+
+  // Values the backend expects for ?tab= and ?date=
+  static const _tabParams  = ['upcoming', 'new', 'past', 'all'];
+  static const _dateParams = {
+    'All Dates': 'all',
+    'Today': 'today',
+    'Tomorrow': 'tomorrow',
+    'This Week': 'week',
+  };
 
   static const _blue   = Color(0xFF246BFE);
   static const _bg     = Color(0xFFF2F4F8);
@@ -141,7 +138,6 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
   static const _border = Color(0xFFE5E7EB);
   static const _muted  = Color(0xFF6B7280);
   static const _text1  = Color(0xFF111827);
-  static const _text2  = Color(0xFF374151);
 
   @override
   void initState() {
@@ -162,16 +158,118 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final result = await TutorScheduleService.fetchSchedule(
-          _tabs[_tabController.index].toLowerCase());
-      if (mounted) setState(() {
-        _grouped = result['grouped'] as Map<String, List<ScheduleSession>>;
-        _badges  = result['badges']  as Map<String, dynamic>;
-        _loading = false;
-      });
+      final data = await fetchTutorSchedule(
+        tab: _tabParams[_tabController.index],
+        date: _dateParams[_dateFilter]!,
+        subjectIds: _subjectFilter.toList(),
+      );
+      final tutor = data['tutor'] as Map<String, dynamic>?;
+      if (mounted) {
+        setState(() {
+          _days = (data['days'] as List<dynamic>? ?? [])
+              .map((d) => ScheduleDay.fromJson(d as Map<String, dynamic>))
+              .toList();
+          _badges = data['counts'] as Map<String, dynamic>? ?? {};
+          _subjects = (data['subjects'] as List<dynamic>? ?? [])
+              .cast<Map<String, dynamic>>();
+          _tutorName = tutor?['name']?.toString();
+          _tutorPhoto = tutor?['profilePhotoUrl']?.toString();
+          _loading = false;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
+  }
+
+  Future<void> _openBooking(ScheduleSession s) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TutorBookingDetailScreen(bookingId: s.bookingId),
+      ),
+    );
+    if (changed == true) _load(); // postponed: it moved to another day
+  }
+
+  Future<void> _copyLink(ScheduleSession s) async {
+    await Clipboard.setData(ClipboardData(text: s.link!));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Session link copied')),
+    );
+  }
+
+  Future<void> _pickSubjects() async {
+    final picked = Set<int>.of(_subjectFilter);
+    final apply = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: _card,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Filter by subject',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _text1)),
+                const SizedBox(height: 8),
+                if (_subjects.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text('You have no subjects yet.',
+                        style: TextStyle(color: _muted, fontSize: 13)),
+                  ),
+                ..._subjects.map((s) {
+                  final id = s['subjectId'] as int;
+                  return CheckboxListTile(
+                    value: picked.contains(id),
+                    activeColor: _blue,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(s['subjectName']?.toString() ?? '',
+                        style: const TextStyle(fontSize: 14, color: _text1)),
+                    onChanged: (on) => setSheet(() {
+                      on == true ? picked.add(id) : picked.remove(id);
+                    }),
+                  );
+                }),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => setSheet(picked.clear),
+                      child: const Text('Clear',
+                          style: TextStyle(color: _muted)),
+                    ),
+                    const Spacer(),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: _blue,
+                          foregroundColor: Colors.white,
+                          elevation: 0),
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (apply != true) return;
+    _subjectFilter
+      ..clear()
+      ..addAll(picked);
+    _load();
   }
 
   @override
@@ -219,7 +317,17 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
           CircleAvatar(
             radius: 20,
             backgroundColor: _blue,
-            child: const Icon(Icons.person, color: Colors.white, size: 22),
+            backgroundImage:
+                _tutorPhoto != null ? NetworkImage(_tutorPhoto!) : null,
+            child: _tutorPhoto != null
+                ? null
+                : _tutorName != null
+                    ? Text(initialsOf(_tutorName!),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700))
+                    : const Icon(Icons.person, color: Colors.white, size: 22),
           ),
         ],
       ),
@@ -241,7 +349,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
         unselectedLabelStyle:
             const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
         tabs: _tabs.map((t) {
-          final count = _badges[t];
+          final count = _badges[t.toLowerCase()];
           return Tab(
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -271,6 +379,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
   }
 
   Widget _buildDateFilters() {
+    final filtering = _subjectFilter.isNotEmpty;
     return Container(
       color: _card,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
@@ -285,7 +394,11 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: GestureDetector(
-                      onTap: () => setState(() => _dateFilter = f),
+                      onTap: () {
+                        if (sel) return;
+                        setState(() => _dateFilter = f);
+                        _load();
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 6),
@@ -309,11 +422,16 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
             ),
           ),
           const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-                color: _border, borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.tune, color: _muted, size: 16),
+          GestureDetector(
+            onTap: _pickSubjects,
+            child: Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                  color: filtering ? _blue : _border,
+                  borderRadius: BorderRadius.circular(8)),
+              child: Icon(Icons.tune,
+                  color: filtering ? Colors.white : _muted, size: 16),
+            ),
           ),
         ],
       ),
@@ -348,14 +466,14 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
         ),
       );
     }
-    if (_grouped.isEmpty) return _buildEmpty();
+    if (_days.isEmpty) return _buildEmpty();
     return RefreshIndicator(
       onRefresh: _load,
       color: _blue,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          ..._grouped.entries.map((e) => _buildDateGroup(e.key, e.value)),
+          ..._days.map((d) => _buildDateGroup(d.label, d.sessions)),
           _buildAllCaughtUp(),
         ],
       ),
@@ -470,12 +588,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
   }
 
   Widget _buildSessionCard(ScheduleSession s) {
-    final parts = s.studentName.trim().split(' ');
-    final initials = parts.length >= 2
-        ? '${parts.first[0]}${parts.last[0]}'.toUpperCase()
-        : s.studentName.isNotEmpty
-            ? s.studentName[0].toUpperCase()
-            : '?';
+    final initials = initialsOf(s.studentName);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -540,15 +653,9 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                         ),
                       ],
                     ),
-                    if (s.confirmedAgo != null) ...[
+                    if (s.statusAgo != null) ...[
                       const SizedBox(height: 2),
-                      Text(s.confirmedAgo!,
-                          style:
-                              const TextStyle(fontSize: 11, color: _muted)),
-                    ],
-                    if (s.studentUniversity != null) ...[
-                      const SizedBox(height: 1),
-                      Text(s.studentUniversity!,
+                      Text(s.statusAgo!,
                           style:
                               const TextStyle(fontSize: 11, color: _muted)),
                     ],
@@ -582,19 +689,30 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
 
           const SizedBox(height: 10),
 
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
             children: [
-              const Icon(Icons.calendar_today_outlined,
-                  size: 13, color: _muted),
-              const SizedBox(width: 4),
-              Text(s.date,
-                  style: const TextStyle(fontSize: 12, color: _muted)),
-              const SizedBox(width: 12),
-              const Icon(Icons.access_time_outlined,
-                  size: 13, color: _muted),
-              const SizedBox(width: 4),
-              Text('${s.startTime} – ${s.endTime} (${s.duration})',
-                  style: const TextStyle(fontSize: 12, color: _muted)),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.calendar_today_outlined,
+                      size: 13, color: _muted),
+                  const SizedBox(width: 4),
+                  Text(formatLongDate(s.date),
+                      style: const TextStyle(fontSize: 12, color: _muted)),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.access_time_outlined,
+                      size: 13, color: _muted),
+                  const SizedBox(width: 4),
+                  Text('${s.startTime} – ${s.endTime} (${s.duration})',
+                      style: const TextStyle(fontSize: 12, color: _muted)),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -615,7 +733,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
           Row(
             children: [
               OutlinedButton.icon(
-                onPressed: () {},
+                onPressed: s.link == null ? null : () => _copyLink(s),
                 icon: const Icon(Icons.link, size: 13),
                 label: const Text('Session link',
                     style: TextStyle(fontSize: 12)),
@@ -632,13 +750,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
               ),
               const Spacer(),
               ElevatedButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => TutorBookingDetailScreen(
-                        bookingId: s.bookingId),
-                  ),
-                ),
+                onPressed: () => _openBooking(s),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _blue,
                   foregroundColor: Colors.white,
@@ -688,7 +800,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,
         unselectedFontSize: 11,
-        onTap: (_) {},
+        onTap: (i) => openTutorTab(context, i, current: 1),
         items: const [
           BottomNavigationBarItem(
               icon: Icon(Icons.grid_view_rounded), label: 'Dashboard'),

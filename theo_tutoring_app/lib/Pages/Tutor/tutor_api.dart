@@ -17,10 +17,110 @@ class TutorApiException implements Exception {
 }
 
 /// Loads the tutor dashboard (GET /TutorLandingpage/LandingPageScreen).
-/// Active tutors get stats, requests, today's schedule and reviews.
+/// Active tutors get stats, today's schedule and reviews.
 /// Pending tutors get `accountStatus: 'Pending'` and their `application`.
 /// Pass [idToken] when it is already known (e.g. right after login).
-Future<Map<String, dynamic>> fetchTutorDashboard({String? idToken}) async {
+Future<Map<String, dynamic>> fetchTutorDashboard({String? idToken}) {
+  return _send(
+    'GET',
+    '/TutorLandingpage/LandingPageScreen',
+    idToken: idToken,
+    failMessage: 'Could not load your dashboard. Please try again.',
+  );
+}
+
+/// Loads the Schedule page (GET /TutorLandingpage/schedule).
+/// [tab] is upcoming | new | past | all, [date] is all | today | tomorrow |
+/// week, and [subjectIds] limits it to those subjects (empty = all).
+Future<Map<String, dynamic>> fetchTutorSchedule({
+  String tab = 'upcoming',
+  String date = 'all',
+  List<int> subjectIds = const [],
+}) {
+  return _send(
+    'GET',
+    '/TutorLandingpage/schedule',
+    query: {
+      'tab': tab,
+      'date': date,
+      if (subjectIds.isNotEmpty) 'subjectId': subjectIds.join(','),
+    },
+    failMessage: 'Could not load your schedule. Please try again.',
+  );
+}
+
+/// Loads one booking for the details page
+/// (GET /TutorLandingpage/bookings/{id}).
+Future<Map<String, dynamic>> fetchTutorBooking(int bookingId) {
+  return _send(
+    'GET',
+    '/TutorLandingpage/bookings/$bookingId',
+    failMessage: 'Could not load this session. Please try again.',
+  );
+}
+
+/// The Decline button: moves the booking to a new time that the student
+/// must confirm (POST /TutorLandingpage/bookings/{id}/postpone).
+/// [date] is "2026-10-31", [startTime] and [endTime] are "16:00".
+Future<Map<String, dynamic>> postponeTutorBooking(
+  int bookingId, {
+  required String date,
+  required String startTime,
+  required String endTime,
+}) {
+  return _send(
+    'POST',
+    '/TutorLandingpage/bookings/$bookingId/postpone',
+    body: {'date': date, 'startTime': startTime, 'endTime': endTime},
+    failMessage: 'Could not postpone this session. Please try again.',
+  );
+}
+
+/// Loads the Profile page (GET /TutorLandingpage/Profile).
+Future<Map<String, dynamic>> fetchTutorProfile() {
+  return _send(
+    'GET',
+    '/TutorLandingpage/Profile',
+    failMessage: 'Could not load your profile. Please try again.',
+  );
+}
+
+/// Saves the availability grid (PUT /TutorLandingpage/Profile/availability).
+/// [availability] is e.g. {"Monday": ["Morning", "Evening"]}; days left out
+/// have no availability.
+Future<Map<String, dynamic>> saveTutorAvailability(
+  Map<String, List<String>> availability,
+) {
+  return _send(
+    'PUT',
+    '/TutorLandingpage/Profile/availability',
+    body: {'availability': availability},
+    failMessage: 'Could not save your availability. Please try again.',
+  );
+}
+
+/// Saves a profile photo already uploaded to Cloudinary
+/// (PUT /TutorLandingpage/Profile/photo).
+Future<Map<String, dynamic>> saveTutorPhoto(String profilePhotoUrl) {
+  return _send(
+    'PUT',
+    '/TutorLandingpage/Profile/photo',
+    body: {'profilePhotoUrl': profilePhotoUrl},
+    failMessage: 'Could not update your photo. Please try again.',
+  );
+}
+
+// Sends one request to a /TutorLandingpage route with the Firebase ID token
+// and returns the JSON object it sends back. Errors become a
+// TutorApiException with the server's message when it gave one.
+Future<Map<String, dynamic>> _send(
+  String method,
+  String path, {
+  required String failMessage,
+  Map<String, String>? query,
+  Map<String, dynamic>? body,
+  String? idToken,
+}) async {
   final token =
       idToken ?? await FirebaseAuth.instance.currentUser?.getIdToken();
   if (token == null || token.isEmpty) {
@@ -30,38 +130,48 @@ Future<Map<String, dynamic>> fetchTutorDashboard({String? idToken}) async {
     );
   }
 
+  final uri = Uri.parse('$apiBaseUrl$path').replace(queryParameters: query);
+  final headers = {
+    'Authorization': 'Bearer $token',
+    'Accept': 'application/json',
+    if (body != null) 'Content-Type': 'application/json',
+  };
+
   final http.Response response;
   try {
-    response = await http
-        .get(
-          Uri.parse('$apiBaseUrl/TutorLandingpage/LandingPageScreen'),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-          },
-        )
-        .timeout(const Duration(seconds: 15));
+    final request = switch (method) {
+      'POST' => http.post(uri, headers: headers, body: jsonEncode(body)),
+      'PUT' => http.put(uri, headers: headers, body: jsonEncode(body)),
+      _ => http.get(uri, headers: headers),
+    };
+    response = await request.timeout(const Duration(seconds: 15));
   } on Exception {
     throw const TutorApiException(
       'Could not connect to the server. Please try again.',
     );
   }
 
+  dynamic decoded;
+  try {
+    decoded = jsonDecode(response.body);
+  } on FormatException {
+    decoded = null;
+  }
+
   if (response.statusCode != 200) {
+    final serverMessage = decoded is Map ? decoded['error'] : null;
     throw TutorApiException(switch (response.statusCode) {
       401 => 'Your session could not be verified. Please sign in again.',
       403 => 'This account does not have an active tutor profile.',
+      // 400 / 404 / 409 carry a message written for the tutor
+      _ when serverMessage is String && serverMessage.isNotEmpty =>
+        serverMessage,
       404 => 'No tutor profile was found for this account.',
-      _ => 'Could not load your dashboard. Please try again.',
+      _ => failMessage,
     }, statusCode: response.statusCode);
   }
 
-  try {
-    final body = jsonDecode(response.body);
-    if (body is Map<String, dynamic>) return body;
-  } on FormatException {
-    // falls through to the error below
-  }
+  if (decoded is Map<String, dynamic>) return decoded;
   throw const TutorApiException(
     'The server returned an invalid response. Please try again.',
   );

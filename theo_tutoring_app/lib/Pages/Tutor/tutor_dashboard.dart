@@ -1,134 +1,117 @@
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
+
+import 'tutor_api.dart';
+import 'tutor_booking_detail.dart';
+import 'tutor_format.dart';
+import 'tutor_nav.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
 class DashboardSession {
   final int bookingId;
+  final int subjectId;
   final String timeRange;
   final String subject;
   final String studentName;
-  final String colorHex;
-  final String? note;        // e.g. "Zoom Meeting" / "Topic: Functions & Loops"
-  final String? platform;    // e.g. "zoom" | "code" | "document" | "video"
-  final String? startsIn;    // e.g. "In 45 min" | "In 2.5 hrs"
+  final String? note;        // the student's message, e.g. "Topic: Functions"
+  final String platform;     // from the session link: zoom | meet | teams | online | none
+  final String? startsIn;    // e.g. "In 45 min" | "In 2.5 hrs" | "Now"
 
   DashboardSession({
     required this.bookingId,
+    required this.subjectId,
     required this.timeRange,
     required this.subject,
     required this.studentName,
-    required this.colorHex,
     this.note,
-    this.platform,
+    required this.platform,
     this.startsIn,
   });
 
-  factory DashboardSession.fromJson(Map<String, dynamic> j) => DashboardSession(
-        bookingId: int.tryParse(j['bookingId']?.toString() ??
-                j['booking_id']?.toString() ?? '0') ?? 0,
-        timeRange: j['timeRange']?.toString() ??
-            j['time_range']?.toString() ??
-            j['time']?.toString() ?? '',
-        subject: j['subject']?.toString() ?? '',
-        studentName: j['studentName']?.toString() ??
-            j['student_name']?.toString() ?? 'Student',
-        colorHex: j['color']?.toString() ?? '#246BFE',
-        note: j['note']?.toString() ?? j['topic']?.toString(),
-        platform: j['platform']?.toString(),
-        startsIn: j['startsIn']?.toString() ?? j['starts_in']?.toString(),
-      );
-
-  Color get color {
-    try {
-      final hex = colorHex.replaceAll('#', '');
-      return Color(int.parse('FF$hex', radix: 16));
-    } catch (_) {
-      return const Color(0xFF246BFE);
+  // One row of todaysSchedule from GET /TutorLandingpage/LandingPageScreen.
+  // MySQL sends every value back as text, so numbers are parsed here.
+  factory DashboardSession.fromJson(Map<String, dynamic> j) {
+    String clock(Object? v) {
+      final s = v?.toString() ?? '';
+      return s.length >= 5 ? s.substring(0, 5) : s; // "15:00:00" -> "15:00"
     }
+
+    final minutes = int.tryParse(j['MinutesUntilStart']?.toString() ?? '');
+    return DashboardSession(
+      bookingId: int.tryParse(j['Booking_id']?.toString() ?? '') ?? 0,
+      subjectId: int.tryParse(j['SubjectID']?.toString() ?? '') ?? 0,
+      timeRange: '${clock(j['StartTime'])} – ${clock(j['EndTime'])}',
+      subject: j['Subject']?.toString() ?? '',
+      studentName: j['StudentName']?.toString() ?? 'Student',
+      note: j['Note']?.toString(),
+      platform: platformOf(j['Link']?.toString()),
+      startsIn: minutes == null ? null : startsInLabel(minutes),
+    );
   }
+
+  // Each subject keeps the same colour strip on every card
+  static const _palette = [
+    Color(0xFF246BFE),
+    Color(0xFF10B981),
+    Color(0xFFF59E0B),
+    Color(0xFF8B5CF6),
+    Color(0xFFEF4444),
+  ];
+
+  Color get color => _palette[subjectId % _palette.length];
 }
 
 class DashboardData {
+  final String accountStatus; // 'Active' or 'Pending'
+  final Map<String, dynamic>? application; // Pending tutors only
   final int activeStudents;
   final int upcomingToday;
   final List<DashboardSession> todaySchedule;
   final String tutorName;
   final String? tutorPhotoUrl;
   final String tutorInitials;
-  final int unreadNotifications;
 
   DashboardData({
+    required this.accountStatus,
+    this.application,
     required this.activeStudents,
     required this.upcomingToday,
     required this.todaySchedule,
     required this.tutorName,
     this.tutorPhotoUrl,
     required this.tutorInitials,
-    required this.unreadNotifications,
   });
+
+  bool get isPending => accountStatus != 'Active';
 
   factory DashboardData.fromJson(Map<String, dynamic> j) {
     final tutor = j['tutor'] as Map<String, dynamic>?;
-    final name = tutor?['name']?.toString() ??
-        j['tutorName']?.toString() ??
-        j['tutor_name']?.toString() ?? '';
-    final parts = name.trim().split(' ');
-    final initials = parts.length >= 2
-        ? '${parts.first[0]}${parts.last[0]}'.toUpperCase()
-        : name.isNotEmpty ? name[0].toUpperCase() : 'T';
+    final name = tutor?['name']?.toString() ?? '';
     return DashboardData(
-      activeStudents: int.tryParse(
-              (j['activeStudents'] ?? j['active_students'] ?? 0).toString()) ?? 0,
-      upcomingToday: int.tryParse(
-              (j['upcomingToday'] ?? j['upcoming_today'] ?? 0).toString()) ?? 0,
-      todaySchedule:
-          ((j['todaysSchedule'] ?? j['todaySchedule'] ?? j['today_schedule'])
-                      as List<dynamic>? ??
-                  [])
-              .map((e) => DashboardSession.fromJson(e as Map<String, dynamic>))
-              .toList(),
+      accountStatus: j['accountStatus']?.toString() ?? 'Active',
+      application: j['application'] as Map<String, dynamic>?,
+      activeStudents:
+          int.tryParse(j['activeStudents']?.toString() ?? '') ?? 0,
+      upcomingToday: int.tryParse(j['upcomingToday']?.toString() ?? '') ?? 0,
+      todaySchedule: (j['todaysSchedule'] as List<dynamic>? ?? [])
+          .map((e) => DashboardSession.fromJson(e as Map<String, dynamic>))
+          .toList(),
       tutorName: name,
-      tutorPhotoUrl: tutor?['photoUrl']?.toString() ??
-          j['tutorPhotoUrl']?.toString() ??
-          j['tutor_photo_url']?.toString(),
-      tutorInitials: initials,
-      unreadNotifications: int.tryParse(
-              (j['unreadNotifications'] ?? j['unread_notifications'] ?? 0)
-                  .toString()) ?? 0,
+      tutorPhotoUrl: tutor?['profilePhotoUrl']?.toString(),
+      tutorInitials: name.isEmpty ? 'T' : initialsOf(name),
     );
-  }
-}
-
-// ── Service ───────────────────────────────────────────────────────────────────
-
-class TutorDashboardService {
-  static String get _base =>
-      kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
-
-  static Future<DashboardData> fetchDashboard() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    final res = await http.get(
-      Uri.parse('$_base/TutorLandingpage'),
-      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-    );
-    if (res.statusCode != 200) {
-      throw Exception('Failed to load dashboard: ${res.statusCode}');
-    }
-    return DashboardData.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class TutorDashboard extends StatefulWidget {
-  const TutorDashboard({super.key});
+  /// [initialData] is the dashboard JSON when it was already loaded
+  /// (the login page fetches it to check the account is a tutor).
+  const TutorDashboard({super.key, this.initialData});
+
+  final Map<String, dynamic>? initialData;
 
   @override
   State<TutorDashboard> createState() => _TutorDashboardState();
@@ -145,17 +128,33 @@ class _TutorDashboardState extends State<TutorDashboard> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final initial = widget.initialData;
+    if (initial != null) {
+      _data = DashboardData.fromJson(initial);
+      _loading = false;
+    } else {
+      _load();
+    }
   }
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final data = await TutorDashboardService.fetchDashboard();
+      final data = DashboardData.fromJson(await fetchTutorDashboard());
       if (mounted) setState(() { _data = data; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
+  }
+
+  Future<void> _openBooking(DashboardSession session) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TutorBookingDetailScreen(bookingId: session.bookingId),
+      ),
+    );
+    if (changed == true) _load(); // postponed: it may have left today
   }
 
   @override
@@ -184,9 +183,13 @@ class _TutorDashboardState extends State<TutorDashboard> {
                                 const SizedBox(height: 6),
                                 _buildTitle(),
                                 const SizedBox(height: 20),
-                                _buildStatsRow(),
-                                const SizedBox(height: 24),
-                                _buildTodaySchedule(),
+                                if (_data!.isPending)
+                                  _buildApplicationStatus()
+                                else ...[
+                                  _buildStatsRow(),
+                                  const SizedBox(height: 24),
+                                  _buildTodaySchedule(),
+                                ],
                               ],
                             ),
                           ),
@@ -231,8 +234,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
   // ── TOP BAR ──────────────────────────────────────────────────────────────────
 
   Widget _buildTopBar() {
-    final hasNotif = (_data?.unreadNotifications ?? 0) > 0;
-    final initials = _data?.tutorInitials ?? 'AT';
+    final initials = _data?.tutorInitials ?? 'T';
     final photoUrl  = _data?.tutorPhotoUrl;
 
     return Container(
@@ -253,27 +255,12 @@ class _TutorDashboardState extends State<TutorDashboard> {
           ),
 
           // Bell icon
-          Stack(
-            children: [
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.notifications_outlined,
-                    color: Color(0xFF1A1A2E), size: 24),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-              if (hasNotif)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                        color: Color(0xFFE53935), shape: BoxShape.circle),
-                  ),
-                ),
-            ],
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.notifications_outlined,
+                color: Color(0xFF1A1A2E), size: 24),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
 
           const SizedBox(width: 4),
@@ -305,6 +292,81 @@ class _TutorDashboardState extends State<TutorDashboard> {
         fontSize: 28,
         fontWeight: FontWeight.bold,
         color: const Color(0xFF1A1A2E),
+      ),
+    );
+  }
+
+  // ── APPLICATION STATUS (Pending tutors) ───────────────────────────────────────
+
+  Widget _buildApplicationStatus() {
+    final app = _data?.application;
+    final status = app?['status']?.toString() ?? 'Pending';
+    final feedback = app?['adminFeedback']?.toString();
+    final submitted = app?['submittedAt']?.toString();
+
+    final (IconData icon, Color color, String message) = switch (status) {
+      'Rejected' => (
+          Icons.cancel_outlined,
+          const Color(0xFFE53935),
+          'Your application was not approved.',
+        ),
+      'Approved' => (
+          Icons.check_circle_outline,
+          const Color(0xFF10B981),
+          'Your application was approved. Your account will be activated shortly.',
+        ),
+      _ => (
+          Icons.hourglass_top_rounded,
+          const Color(0xFFF59E0B),
+          'Your application is under review. You will be notified once an '
+              'administrator approves your account.',
+        ),
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(width: 8),
+              Text('Application $status',
+                  style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A1A2E))),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(message,
+              style: GoogleFonts.inter(
+                  fontSize: 13, color: const Color(0xFF6B7280), height: 1.5)),
+          if (submitted != null && submitted.length >= 10) ...[
+            const SizedBox(height: 8),
+            Text('Submitted ${formatLongDate(submitted.substring(0, 10))}',
+                style: GoogleFonts.inter(
+                    fontSize: 12, color: const Color(0xFF9CA3AF))),
+          ],
+          if (feedback != null && feedback.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('Feedback from the administrator',
+                style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A1A2E))),
+            const SizedBox(height: 4),
+            Text(feedback,
+                style: GoogleFonts.inter(
+                    fontSize: 13, color: const Color(0xFF6B7280))),
+          ],
+        ],
       ),
     );
   }
@@ -446,7 +508,10 @@ class _TutorDashboardState extends State<TutorDashboard> {
                 style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 13)),
           )
         else
-          ...sessions.map((s) => _scheduleCard(s)),
+          ...sessions.map((s) => GestureDetector(
+                onTap: () => _openBooking(s),
+                child: _scheduleCard(s),
+              )),
       ],
     );
   }
@@ -454,7 +519,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
   Widget _scheduleCard(DashboardSession session) {
     // Determine platform icon
     IconData platformIcon;
-    switch ((session.platform ?? '').toLowerCase()) {
+    switch (session.platform) {
       case 'zoom':
       case 'video':
       case 'meet':
@@ -639,7 +704,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,
         unselectedFontSize: 11,
-        onTap: (_) {},
+        onTap: (i) => openTutorTab(context, i, current: 0),
         items: const [
           BottomNavigationBarItem(
               icon: Icon(Icons.grid_view_rounded), label: 'Dashboard'),
