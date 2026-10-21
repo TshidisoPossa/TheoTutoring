@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
 class TutorProfileScreen extends StatefulWidget {
-  const TutorProfileScreen({super.key, this.onBack});
-
-  /// Called by the back arrow. Defaults to popping the page.
-  final VoidCallback? onBack;
+  const TutorProfileScreen({super.key});
 
   @override
   State<TutorProfileScreen> createState() => _TutorProfileScreenState();
@@ -40,7 +37,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             Row(
               children: [
                 GestureDetector(
-                  onTap: widget.onBack ?? () => Navigator.pop(context),
+                  onTap: () => Navigator.pop(context),
                   child: const Icon(Icons.arrow_back, color: Colors.black87),
                 ),
                 const SizedBox(width: 12),
@@ -274,6 +271,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           ],
         ),
       ),
+      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -322,4 +320,23 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     );
   }
 
+  Widget _buildBottomNav() {
+    return BottomNavigationBar(
+      currentIndex: 3,
+      backgroundColor: Colors.white,
+      elevation: 8,
+      selectedItemColor: const Color(0xFF1457D9),
+      unselectedItemColor: Colors.black38,
+      type: BottomNavigationBarType.fixed,
+      selectedFontSize: 11,
+      unselectedFontSize: 11,
+      onTap: (index) {},
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.menu_book_outlined), label: 'Lessons'),
+        BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
+        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
+      ],
+    );
+  }
 }

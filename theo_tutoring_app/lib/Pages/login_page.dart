@@ -205,12 +205,13 @@ class _LoginPageState extends State<LoginPage> {
   // Loads the tutor dashboard; opens it if this account is a tutor
   Future<void> _openTutorDashboard(String idToken) async {
     try {
-      final dashboard = await fetchTutorDashboard(idToken: idToken);
+      // Confirms the account is a tutor; the dashboard loads its own data
+      await fetchTutorDashboard(idToken: idToken);
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => TutorDashboard(initialData: dashboard),
+          builder: (_) => const TutorDashboard(),
         ),
       );
     } on TutorApiException catch (e) {
