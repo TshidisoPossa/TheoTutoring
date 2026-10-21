@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:http/http.dart' as http;
+import 'package:theo_tutoring_backend/env.dart';
 
 /// The signed-in user, taken from a verified Firebase ID token.
 class FirebaseUser {
@@ -63,7 +63,7 @@ Future<FirebaseUser> verifyFirebaseToken(String? authHeader) async {
 
   final token = authHeader.substring(7).trim();
 
-  final projectId = Platform.environment['FIREBASE_PROJECT_ID'];
+  final projectId = env['FIREBASE_PROJECT_ID'];
   if (projectId == null || projectId.isEmpty) {
     throw StateError('FIREBASE_PROJECT_ID is not set');
   }

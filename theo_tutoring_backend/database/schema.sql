@@ -175,9 +175,11 @@ CREATE TABLE IF NOT EXISTS Booking (
     StartTime TIME NOT NULL,
     EndTime TIME NOT NULL,
     Note TEXT NULL,
+    -- Statuses from project documentation 4.5, plus Postponed: the tutor
+    -- moved the session to a new time and the student must confirm it.
     Status ENUM(
-        'Pending', 'Confirmed', 'Completed',
-        'Cancelled', 'Rejected'
+        'Pending', 'Accepted', 'Declined', 'Confirmed',
+        'Postponed', 'Cancelled', 'Completed'
     ) NOT NULL DEFAULT 'Pending',
     Link VARCHAR(500) NULL,
     Created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

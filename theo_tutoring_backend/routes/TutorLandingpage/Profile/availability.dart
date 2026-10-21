@@ -1,10 +1,19 @@
-import 'dart:io'; // gives us HttpStatus codes
+import 'dart:io'; // HttpStatus codes + stderr
+
 import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
 import 'package:theo_tutoring_backend/database.dart'; // getConnection()
 import 'package:theo_tutoring_backend/profile_tutor.dart'; // update + read the grid
-import 'package:theo_tutoring_backend/tutorlanding_session.dart'; // TutorSession
+import 'package:theo_tutoring_backend/request_utils.dart'; // JSON helpers
+// Relative import: must be the same TutorSession type the middleware provides.
+import '../../../lib/tutorlanding_session.dart'; // TutorSession
 
 // PUT /TutorLandingpage/Profile/availability   (the Save button)
+//
+// body: {"availability": {"Monday": ["Morning", "Evening"], "Friday": ["Afternoon"]}}
+// Days are Monday to Saturday; periods are Morning (08:00-12:00),
+// Afternoon (12:00-17:00) and Evening (17:00-20:00). The whole grid is
+// replaced; a day that is left out has no availability.
+// A period that has an upcoming booking cannot be removed (409).
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.put) {
     return Response(
@@ -13,54 +22,55 @@ Future<Response> onRequest(RequestContext context) async {
   }
   final tutor = context.read<TutorSession>(); // who is calling
 
-  // body looks like {"availability": {"Monday": ["Morning", "Evening"], ...}}
-  final dynamic body;
+  final Map<String, List<String>> selected; // day -> ticked periods
   try {
-    body = await context.request.json(); // read the JSON body
-  } catch (_) {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'error': 'Body must be valid JSON'},
-    );
-  }
-  if (body is! Map || body['availability'] is! Map) {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'error': 'Send {"availability": {"Monday": ["Morning"]}}'},
-    );
+    selected = _readGrid(await readJsonObject(context));
+  } on FormatException catch (e) {
+    return jsonError(HttpStatus.badRequest, e.message);
   }
 
-  final selected = <String, List<String>>{}; // day -> ticked periods
-  for (final entry in (body['availability'] as Map).entries) {
-    final periods = entry.value; // e.g. ["Morning", "Evening"]
-    if (periods is! List) {
-      return Response.json(
-        statusCode: HttpStatus.badRequest,
-        body: {'error': 'Each day must be a list of periods'},
-      );
-    }
-    selected[entry.key.toString()] = periods.map((p) => p.toString()).toList();
-  }
-
-  final conn = await getConnection(); // shared DB connection (do not close it)
   try {
-    await updateTutorAvailability(
-      conn,
-      tutor.tutorId,
-      selected,
-    ); // replace the grid
+    final conn =
+        await getConnection(); // shared DB connection (do not close it)
+    await updateTutorAvailability(conn, tutor.tutorId, selected);
+    return Response.json(
+      body: {
+        'message': 'Availability saved.',
+        'availability': await getTutorAvailability(
+          conn,
+          tutor.tutorId,
+        ), // the saved grid
+      },
+    );
   } on ArgumentError catch (e) {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'error': e.message.toString()}, // unknown day or period
+    // unknown day or period, or nothing ticked
+    return jsonError(HttpStatus.badRequest, e.message.toString());
+  } on AvailabilityInUseException catch (e) {
+    return jsonError(HttpStatus.conflict, e.message); // booked slot removed
+  } catch (e) {
+    stderr.writeln('Error saving tutor availability: $e');
+    return jsonError(
+      HttpStatus.internalServerError,
+      'Could not save your availability. Please try again.',
     );
   }
-  return Response.json(
-    body: {
-      'availability': await getTutorAvailability(
-        conn,
-        tutor.tutorId,
-      ), // the saved grid
-    },
-  );
+}
+
+// {"availability": {"Monday": ["Morning"]}} -> {"Monday": ["Morning"]}
+Map<String, List<String>> _readGrid(Map<String, dynamic> body) {
+  final grid = body['availability'];
+  if (grid is! Map) {
+    throw const FormatException(
+      'Send {"availability": {"Monday": ["Morning"]}}',
+    );
+  }
+  final selected = <String, List<String>>{};
+  for (final entry in grid.entries) {
+    final periods = entry.value; // e.g. ["Morning", "Evening"]
+    if (periods is! List || periods.any((p) => p is! String)) {
+      throw const FormatException('Each day must be a list of periods');
+    }
+    selected[entry.key.toString()] = periods.cast<String>();
+  }
+  return selected;
 }

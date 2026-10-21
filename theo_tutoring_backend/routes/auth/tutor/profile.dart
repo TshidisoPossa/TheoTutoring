@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:dart_frog/dart_frog.dart';
 
+import '../../../lib/cloudinary_url.dart';
 import '../../../lib/database.dart';
 import '../../../lib/firebase_auth.dart';
 import '../../../lib/request_utils.dart';
@@ -12,9 +11,6 @@ import '../../../lib/validator.dart';
 // Tutors cannot set a rate. The session rate is fixed by the administrator.
 
 const _experienceOptions = {'0-1', '1-2', '3-5', '5+'};
-
-const _documentTypes = {'pdf', 'jpg', 'jpeg', 'png'};
-const _imageTypes = {'jpg', 'jpeg', 'png'};
 
 const _maxSubjects = 10;
 const _maxQualifications = 10;
@@ -37,10 +33,7 @@ Future<Response> onRequest(RequestContext context) async {
       return jsonError(401, e.message);
     }
 
-    final cloudName = Platform.environment['CLOUDINARY_CLOUD_NAME'];
-    if (cloudName == null || cloudName.isEmpty) {
-      throw StateError('CLOUDINARY_CLOUD_NAME is not set');
-    }
+    final cloudName = cloudinaryCloudName();
 
     // ── Read and validate the body ──
     final body = await readJsonObject(context);
@@ -71,10 +64,10 @@ Future<Response> onRequest(RequestContext context) async {
     if (certificateUrl == null) {
       return jsonError(400, 'Please upload your certificate.');
     }
-    final certificateError = _checkUploadUrl(
+    final certificateError = checkCloudinaryUrl(
       certificateUrl,
       'Certificate',
-      _documentTypes,
+      cloudinaryDocumentTypes,
       cloudName,
     );
     if (certificateError != null) return jsonError(400, certificateError);
@@ -85,10 +78,10 @@ Future<Response> onRequest(RequestContext context) async {
       maxLength: _maxUrlLength,
     );
     if (idDocumentUrl != null) {
-      final error = _checkUploadUrl(
+      final error = checkCloudinaryUrl(
         idDocumentUrl,
         'ID document',
-        _documentTypes,
+        cloudinaryDocumentTypes,
         cloudName,
       );
       if (error != null) return jsonError(400, error);
@@ -100,10 +93,10 @@ Future<Response> onRequest(RequestContext context) async {
       maxLength: _maxUrlLength,
     );
     if (profilePhotoUrl != null) {
-      final error = _checkUploadUrl(
+      final error = checkCloudinaryUrl(
         profilePhotoUrl,
         'Profile photo',
-        _imageTypes,
+        cloudinaryImageTypes,
         cloudName,
       );
       if (error != null) return jsonError(400, error);
@@ -234,35 +227,6 @@ Future<Response> onRequest(RequestContext context) async {
     print('❌ Error in tutor profile: $e');
     return jsonError(500, 'Something went wrong. Please try again.');
   }
-}
-
-/// Checks that a URL is an HTTPS link to a file in this project's
-/// Cloudinary account, with an allowed file type.
-/// Returns an error message, or null if the URL is valid.
-String? _checkUploadUrl(
-  String url,
-  String label,
-  Set<String> allowedTypes,
-  String cloudName,
-) {
-  final uri = Uri.tryParse(url);
-  if (uri == null ||
-      uri.scheme != 'https' ||
-      uri.host != 'res.cloudinary.com' ||
-      uri.pathSegments.length < 2 ||
-      uri.pathSegments.first != cloudName) {
-    return '$label must be a file uploaded through the app.';
-  }
-
-  final fileName = uri.pathSegments.last;
-  final dot = fileName.lastIndexOf('.');
-  final extension = dot == -1 ? '' : fileName.substring(dot + 1).toLowerCase();
-
-  if (!allowedTypes.contains(extension)) {
-    final allowed = allowedTypes.map((t) => t.toUpperCase()).join(', ');
-    return '$label must be one of these file types: $allowed.';
-  }
-  return null;
 }
 
 /// Reads subjectIds as a list of unique positive whole numbers.

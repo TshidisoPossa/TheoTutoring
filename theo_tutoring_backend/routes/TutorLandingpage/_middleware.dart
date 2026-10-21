@@ -8,12 +8,21 @@ import '../../lib/tutorlanding_session.dart'; // TutorSession
 
 // The dashboard is the only tutor page a Pending tutor may open, so they
 // can see their application status (all other routes need an Active account).
+// Its bell icon opens the notifications, so those are allowed too.
+// A Pending tutor may also complete their profile while they wait
+// (project documentation 4.3 / business rule 5).
 const _dashboardPath = '/TutorLandingpage/LandingPageScreen';
+const _notificationsPath = '/TutorLandingpage/notifications';
+const _profilePath = '/TutorLandingpage/Profile';
 
-bool _isDashboard(Uri uri) {
+bool _pendingTutorMayOpen(Uri uri) {
   var path = uri.path;
   if (path.endsWith('/')) path = path.substring(0, path.length - 1);
-  return path == _dashboardPath;
+  return path == _dashboardPath ||
+      path == _notificationsPath ||
+      path.startsWith('$_notificationsPath/') ||
+      path == _profilePath ||
+      path.startsWith('$_profilePath/');
 }
 
 // Finds the tutor profile belonging to a Firebase UID.
@@ -69,7 +78,7 @@ Handler middleware(Handler handler) {
     final tutor = await _findTutor(uid); // map UID to TutorID + status
     if (tutor == null ||
         !(canAccessTutorLandingPage(tutor.status) ||
-            (_isDashboard(context.request.uri) &&
+            (_pendingTutorMayOpen(context.request.uri) &&
                 canViewTutorDashboard(tutor.status)))) {
       return Response.json(
         statusCode: 403,
