@@ -63,10 +63,35 @@ Future<Response> onRequest(RequestContext context) async {
     p,
   );
 
-  // Card 2 and Today's Schedule: Confirmed sessions today that have not ended
-  // yet, in time order. The card shows the length of this list, so the two
-  // always agree. MinutesUntilStart is worked out by MySQL so it uses the
-  // same clock as CURDATE()/CURTIME(); 0 or less means the session is on now.
+  // Card 2: Confirmed sessions today that have not ended yet
+  final today = await conn.execute(
+    'SELECT COUNT(*) AS n FROM Booking '
+    "WHERE TutorID = :tid AND Status = 'Confirmed' "
+    'AND `Date` = CURDATE() AND EndTime > CURTIME()',
+    p,
+  );
+
+  // Banner: number of pending requests
+  final pending = await conn.execute(
+    "SELECT COUNT(*) AS n FROM Booking WHERE TutorID = :tid AND Status = 'Pending'",
+    p,
+  );
+
+  // Recent Requests: two newest pending bookings with the student's name and photo
+  final recent = await conn.execute(
+    'SELECT b.Booking_id, b.SubjectID, sj.subjectName AS Subject, b.Note, '
+    'b.`Date`, b.StartTime, b.EndTime, '
+    'u.Name AS StudentName, u.ProfilePhoto AS StudentPhoto '
+    'FROM Booking b '
+    'JOIN Subjects sj ON sj.subjectId = b.SubjectID ' // booking -> subject name
+    'JOIN StudentProfile s ON s.StudentID = b.StudentID ' // booking -> student profile
+    'JOIN `User` u ON u.UserId = s.UserID ' // student profile -> user
+    "WHERE b.TutorID = :tid AND b.Status = 'Pending' "
+    'ORDER BY b.Created_at DESC LIMIT 2',
+    p,
+  );
+
+  // Today's Schedule: Confirmed sessions today in time order
   final schedule = await conn.execute(
     'SELECT b.Booking_id, b.SubjectID, sj.subjectName AS Subject, '
     'b.StartTime, b.EndTime, b.Note, b.Link, '
