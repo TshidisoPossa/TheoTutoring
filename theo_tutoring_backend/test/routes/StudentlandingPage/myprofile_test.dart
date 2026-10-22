@@ -4,14 +4,14 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 
-import '../../../routes/students/myprofile.dart' as route;
+import '../../../routes/StudentlandingPage/myprofile.dart' as route;
 
 class _MockRequestContext extends Mock implements RequestContext {}
 
 class _MockRequest extends Mock implements Request {}
 
 void main() {
-  group('GET /students/myprofile', () {
+  group('GET /StudentlandingPage/myprofile', () {
     late RequestContext context;
     late Request request;
 

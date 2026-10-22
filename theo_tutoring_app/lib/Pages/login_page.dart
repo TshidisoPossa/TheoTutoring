@@ -97,7 +97,7 @@ class _LoginPageState extends State<LoginPage> {
       try {
         response = await http
             .get(
-              Uri.parse('$apiBaseUrl/students/myprofile'),
+              Uri.parse('$apiBaseUrl/StudentlandingPage/myprofile'),
               headers: {
                 'Authorization': 'Bearer $idToken',
                 'Accept': 'application/json',

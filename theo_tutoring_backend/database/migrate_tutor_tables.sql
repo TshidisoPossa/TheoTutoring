@@ -1,8 +1,5 @@
 
--- the tutor tables: TutorProfile, Subjects, Qualification, TutAvailability
--- and TutorApplication (TutorSubjects already matches).
---
--- Run ONCE, on an old database only. A database built from the current
+
 
 -- After this, run seed_subjects.sql to fill the Subjects table.
 

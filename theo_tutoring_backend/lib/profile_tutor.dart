@@ -3,6 +3,7 @@ import 'dart:io'; // stderr
 import 'package:mysql_client/exception.dart'; // MySQLServerException
 import 'package:mysql_client/mysql_client.dart'; // gives us the MySQLConnection type
 import 'package:theo_tutoring_backend/header_tutor.dart';
+import 'package:theo_tutoring_backend/session_rate.dart'; // current rate
 
 // ---------------------------------------------------------------------------
 // TUTOR PROFILE PAGE: BACKEND
@@ -80,15 +81,12 @@ Future<List<Map<String, dynamic>>> getTutorQualifications(
 }
 
 // The fixed session rate set by the administrator (read-only for tutors).
-// Stored in PlatformSettings.TutoringRate. Returns null if no rate is set
-// yet, or if the table does not exist on this database.
+// Stored in PlatformSettings.TutoringRate (lib/session_rate.dart). Returns
+// null if no rate is set yet, or if the table does not exist on this database.
 Future<double?> getSessionRate(MySQLConnection conn) async {
   try {
-    final result = await conn.execute(
-      'SELECT TutoringRate FROM PlatformSettings WHERE SettingsID = 1',
-    );
-    if (result.rows.isEmpty) return null; // admin has not set a rate yet
-    return double.tryParse(result.rows.first.colByName('TutoringRate') ?? '');
+    // null until the admin sets a rate
+    return double.tryParse(await getCurrentSessionRate(conn) ?? '');
   } on MySQLServerException catch (e) {
     stderr.writeln('Could not read the session rate: ${e.message}');
     return null; // the rest of the profile page still loads

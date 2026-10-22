@@ -142,7 +142,7 @@ process environment sets `APP_ENV` to exactly `development` or `test` and
 not `.env`, so a production process always disables demo payments regardless
 of dotenv values. Missing/invalid values disable the endpoint.
 
-`POST /students/booking-purchases/{purchaseId}/payment-attempts` accepts exactly
+`POST /StudentlandingPage/booking-purchases/{purchaseId}/payment-attempts` accepts exactly
 `idempotencyKey`, `paymentMethod` (`CreditDebitCard`, `PayPal`, or `EFT`), and
 `simulatedOutcome` (`success` or `failure`). It returns attempt ID/number,
 payment and purchase statuses, `replayed`, and `settled`; a new attempt returns
@@ -307,7 +307,7 @@ were not performed by this static review.
 
 ### Purchase-hold endpoint deployment
 
-Before enabling `POST /students/booking-purchases`, apply and verify migration
+Before enabling `POST /StudentlandingPage/booking-purchases`, apply and verify migration
 001 and then migration 002. The route expects both idempotency columns and
 their unique key. It inserts a `BookingPurchase` in `Held`, scheduled lesson
 rows in `Pending`, and one `Active` `BookingSlotHold` per lesson; it never

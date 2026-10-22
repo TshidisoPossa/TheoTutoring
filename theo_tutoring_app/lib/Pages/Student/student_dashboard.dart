@@ -1,5 +1,13 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../../models/tutor.dart';
+import '../../services/tutor_search_api.dart';
+import '../login_page.dart';
+import 'search_tutor.dart';
+import 'student_api.dart';
+import 'student_tutor_profile.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key, this.studentName});
@@ -17,35 +25,110 @@ class _StudentDashboardState extends State<StudentDashboard> {
   DateTime _selectedDate = DateTime.now();
   DateTime _displayedMonth = DateTime.now();
 
-  final List<Map<String, dynamic>> _topTutors = [
-    {
-      'name': 'Joseph Mungula',
-      'subject': 'Accounting',
-      'rating': '4.9',
-      'reviews': '120',
-      'initials': 'JM',
-      'color': const Color(0xFFE4ECFF),
-      'tags': ['Exam Prep', 'Online'],
-    },
-    {
-      'name': 'Sarah Williams',
-      'subject': 'Mathematics',
-      'rating': '4.8',
-      'reviews': '98',
-      'initials': 'SW',
-      'color': const Color(0xFFFFE9DD),
-      'tags': ['Calculus', 'Online'],
-    },
-    {
-      'name': 'Thabo Nkosi',
-      'subject': 'Computer Science',
-      'rating': '4.9',
-      'reviews': '85',
-      'initials': 'TN',
-      'color': const Color(0xFFE2F5EC),
-      'tags': ['Programming', 'Online'],
-    },
+  // The signed-in student's name; login passes it, otherwise it is loaded
+  // from GET /StudentlandingPage/myprofile.
+  String? _studentName;
+
+  // Top Tutors for You: the best-rated approved tutors from GET /tutors.
+  final _tutorSearchApi = TutorSearchApi();
+  List<Tutor> _topTutors = [];
+  bool _loadingTutors = true;
+  String? _tutorsError;
+
+  static const _topTutorCount = 3;
+
+  // Background colours for tutor initials, picked by tutor ID.
+  static const _avatarColors = [
+    Color(0xFFE4ECFF),
+    Color(0xFFFFE9DD),
+    Color(0xFFE2F5EC),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _studentName = widget.studentName?.trim();
+    if (_studentName == null || _studentName!.isEmpty) _loadStudentName();
+    _loadTopTutors();
+  }
+
+  @override
+  void dispose() {
+    _tutorSearchApi.close();
+    super.dispose();
+  }
+
+  Future<void> _loadStudentName() async {
+    try {
+      final profile = await fetchStudentProfile();
+      final name = profile['name']?.toString().trim();
+      if (mounted && name != null && name.isNotEmpty) {
+        setState(() => _studentName = name);
+      }
+    } on StudentApiException {
+      // The page still works without the name ("Welcome back!").
+    }
+  }
+
+  Future<void> _loadTopTutors() async {
+    setState(() {
+      _loadingTutors = true;
+      _tutorsError = null;
+    });
+    try {
+      // The search returns tutors by name, so take a page and keep the
+      // best rated (most reviews first when ratings are equal).
+      final page = await _tutorSearchApi.search(limit: 20);
+      final tutors = [...page.tutors]
+        ..sort((a, b) {
+          final byRating = (b.averageRating ?? 0).compareTo(
+            a.averageRating ?? 0,
+          );
+          return byRating != 0
+              ? byRating
+              : b.reviewCount.compareTo(a.reviewCount);
+        });
+      if (!mounted) return;
+      setState(() {
+        _topTutors = tutors.take(_topTutorCount).toList();
+        _loadingTutors = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _tutorsError = e is TutorSearchException
+            ? e.message
+            : 'Tutors are temporarily unavailable. Please try again.';
+        _loadingTutors = false;
+      });
+    }
+  }
+
+  void _openTutorSearch() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const SearchTutorPage()),
+    );
+  }
+
+  void _openTutor(Tutor tutor) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => StudentTutorProfilePage(tutor: tutor),
+      ),
+    );
+  }
+
+  Future<void> _logOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const LoginPage()),
+      (_) => false,
+    );
+  }
 
   final List<String> _drawerItems = [
     'Home',
@@ -183,11 +266,20 @@ class _StudentDashboardState extends State<StudentDashboard> {
           child: CircleAvatar(
             radius: 20,
             backgroundColor: const Color(0xFFE4ECFF),
-            child: const Icon(
-              Icons.person_rounded,
-              color: _primaryBlue,
-              size: 25,
-            ),
+            child: _studentName == null || _studentName!.isEmpty
+                ? const Icon(
+                    Icons.person_rounded,
+                    color: _primaryBlue,
+                    size: 25,
+                  )
+                : Text(
+                    _initials(_studentName!),
+                    style: GoogleFonts.poppins(
+                      color: _primaryBlue,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
           ),
         ),
       ],
@@ -305,7 +397,10 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         });
                         Navigator.pop(context);
 
-                        if (index != 0) {
+                        if (index == 1) {
+                          // Subjects: the tutor search filters by subject
+                          _openTutorSearch();
+                        } else if (index != 0) {
                           _showMessage(
                             '${_drawerItems[index]} will be connected soon.',
                           );
@@ -336,7 +431,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
               ),
               onTap: () {
                 Navigator.pop(context);
-                _showMessage('Logout will be connected to authentication.');
+                _logOut();
               },
             ),
             const SizedBox(height: 8),
@@ -349,7 +444,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
   // ── WELCOME SECTION ─────────────────────────────────────
 
   Widget _buildWelcomeSection() {
-    final name = widget.studentName?.trim();
+    final name = _studentName;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -406,9 +501,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
             ),
             const SizedBox(height: 22),
             FilledButton.icon(
-              // TODO: Connect to the tutor-discovery screen when it exists.
-              onPressed: () =>
-                  _showMessage('Tutor discovery will be connected soon.'),
+              onPressed: _openTutorSearch,
               icon: const Icon(Icons.search_rounded),
               label: Text(
                 'Find a tutor',
@@ -486,18 +579,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
             ],
           ),
           const SizedBox(height: 20),
+          // No route lists a student's bookings yet, so there is no real
+          // next session to show. Booked sessions will appear here once
+          // that route exists.
           Text(
-            'ACCOUNTING 101',
-            style: GoogleFonts.poppins(
-              color: Colors.white.withValues(alpha: 0.78),
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            'Exam Prep Session',
+            'No upcoming sessions',
             style: GoogleFonts.poppins(
               color: Colors.white,
               fontSize: 21,
@@ -506,93 +592,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ),
           const SizedBox(height: 7),
           Text(
-            'Get ready to review key concepts and build confidence.',
+            'When you book and pay for a session, it will show up here.',
             style: GoogleFonts.poppins(
               color: Colors.white.withValues(alpha: 0.84),
               fontSize: 11,
               height: 1.7,
-            ),
-          ),
-          const SizedBox(height: 21),
-          Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  height: 43,
-                  width: 43,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: const Icon(
-                    Icons.person_rounded,
-                    color: _primaryBlue,
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Joseph Mungula',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.videocam_outlined,
-                            color: Colors.white70,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Online session',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white70,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'TODAY',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white70,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '14:00',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
             ),
           ),
           const SizedBox(height: 17),
@@ -600,9 +604,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
             width: double.infinity,
             height: 47,
             child: ElevatedButton(
-              onPressed: () {
-                _showMessage('Session details will be available soon.');
-              },
+              onPressed: _openTutorSearch,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: _primaryBlue,
@@ -615,7 +617,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    'View Session Details',
+                    'Book a Session',
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -1006,11 +1008,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
               ),
             ),
             TextButton(
-              onPressed: () {
-                _showMessage(
-                  'The full tutor directory will be available soon.',
-                );
-              },
+              onPressed: _openTutorSearch,
               child: Text(
                 'Explore',
                 style: GoogleFonts.poppins(
@@ -1023,15 +1021,37 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ],
         ),
         const SizedBox(height: 17),
-        ..._topTutors.map(_buildTutorCard),
+        if (_loadingTutors)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: CircularProgressIndicator(color: _primaryBlue),
+            ),
+          )
+        else if (_tutorsError != null)
+          _buildTutorsMessage(
+            _tutorsError!,
+            action: TextButton(
+              onPressed: _loadTopTutors,
+              child: Text(
+                'Retry',
+                style: GoogleFonts.poppins(
+                  color: _primaryBlue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          )
+        else if (_topTutors.isEmpty)
+          _buildTutorsMessage('No approved tutors are available yet.')
+        else
+          ..._topTutors.map(_buildTutorCard),
         const SizedBox(height: 5),
         SizedBox(
           width: double.infinity,
           height: 47,
           child: OutlinedButton(
-            onPressed: () {
-              _showMessage('All tutors will be available soon.');
-            },
+            onPressed: _openTutorSearch,
             style: OutlinedButton.styleFrom(
               foregroundColor: _primaryBlue,
               side: const BorderSide(color: Color(0xFFD9E3FF)),
@@ -1059,10 +1079,38 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  Widget _buildTutorCard(Map<String, dynamic> tutor) {
-    final tags = tutor['tags'] as List<String>;
-
+  Widget _buildTutorsMessage(String message, {Widget? action}) {
     return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 13),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: const Color(0xFFEDF0F7)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(color: _textMuted, fontSize: 12),
+          ),
+          ?action,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTutorCard(Tutor tutor) {
+    final subjects = tutor.subjects.map((s) => s.subjectName).toList();
+    final tags = subjects.take(2).toList();
+    final rating = tutor.averageRating;
+    final photo = tutor.profilePhoto;
+
+    return GestureDetector(
+      onTap: () => _openTutor(tutor),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 13),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -1084,20 +1132,18 @@ class _StudentDashboardState extends State<StudentDashboard> {
               Container(
                 height: 57,
                 width: 57,
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: tutor['color'] as Color,
+                  color: _avatarColors[tutor.tutorId % _avatarColors.length],
                   borderRadius: BorderRadius.circular(17),
                 ),
-                child: Center(
-                  child: Text(
-                    tutor['initials'] as String,
-                    style: GoogleFonts.poppins(
-                      color: _darkBlue,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
+                child: photo != null && photo.isNotEmpty
+                    ? Image.network(
+                        photo,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _tutorInitials(tutor),
+                      )
+                    : _tutorInitials(tutor),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -1105,7 +1151,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      tutor['name'] as String,
+                      tutor.name,
                       style: GoogleFonts.poppins(
                         color: _textDark,
                         fontSize: 13,
@@ -1114,7 +1160,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      tutor['subject'] as String,
+                      subjects.isEmpty ? 'Tutor' : subjects.join(', '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
                         color: _textMuted,
                         fontSize: 11,
@@ -1130,7 +1178,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          tutor['rating'] as String,
+                          rating == null ? 'New' : rating.toStringAsFixed(1),
                           style: GoogleFonts.poppins(
                             color: _textDark,
                             fontSize: 10,
@@ -1139,7 +1187,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '(${tutor['reviews']} reviews)',
+                          '(${tutor.reviewCount} '
+                          '${tutor.reviewCount == 1 ? 'review' : 'reviews'})',
                           style: GoogleFonts.poppins(
                             color: _textMuted,
                             fontSize: 9,
@@ -1182,22 +1231,44 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 ),
               ),
               const Spacer(),
-              const Icon(Icons.circle, color: Color(0xFF43B581), size: 8),
-              const SizedBox(width: 5),
-              Text(
-                'Available',
-                style: GoogleFonts.poppins(
-                  color: const Color(0xFF339B6A),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
+              if (tutor.experience != null && tutor.experience!.isNotEmpty)
+                Text(
+                  tutor.experience!,
+                  style: GoogleFonts.poppins(
+                    color: _textMuted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
             ],
           ),
         ],
       ),
+      ),
     );
   }
+
+  Widget _tutorInitials(Tutor tutor) {
+    return Center(
+      child: Text(
+        _initials(tutor.name),
+        style: GoogleFonts.poppins(
+          color: _darkBlue,
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  // "Lerato Dube" -> "LD"
+  String _initials(String name) => name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .take(2)
+      .map((part) => part[0].toUpperCase())
+      .join();
 
   // ── BOTTOM NAVIGATION ───────────────────────────────────
 

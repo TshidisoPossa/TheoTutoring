@@ -4,9 +4,9 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/tutor_bookings.dart';
-import 'package:theo_tutoring_backend/tutorlanding_session.dart';
+import '../../../lib/tutorlanding_session.dart';
 
-import '../../../routes/TutorLandingpage/bookings.dart' as route;
+import '../../../routes/TutorLandingpage/bookings/index.dart' as route;
 
 class _MockContext extends Mock implements RequestContext {}
 

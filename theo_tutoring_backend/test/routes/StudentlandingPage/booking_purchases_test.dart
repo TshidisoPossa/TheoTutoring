@@ -9,7 +9,7 @@ import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/booking_purchase.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 
-import '../../../routes/students/booking-purchases/index.dart' as route;
+import '../../../routes/StudentlandingPage/booking-purchases/index.dart' as route;
 
 class _MockRequestContext extends Mock implements RequestContext {}
 

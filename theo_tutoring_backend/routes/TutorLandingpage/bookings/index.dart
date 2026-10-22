@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/tutor_bookings.dart';
-import 'package:theo_tutoring_backend/tutorlanding_session.dart';
+// Relative import: must be the same TutorSession type the middleware provides.
+import '../../../lib/tutorlanding_session.dart'; // TutorSession
 
 // GET /TutorLandingpage/bookings[?status=Confirmed&limit=50]
 // Lists the signed-in tutor's own bookings. The folder middleware verifies the

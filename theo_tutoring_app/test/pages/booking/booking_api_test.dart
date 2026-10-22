@@ -41,7 +41,7 @@ void main() {
       expect(request.method, 'POST');
       expect(
         request.url.path,
-        '/students/booking-purchases/42/payment-attempts',
+        '/StudentlandingPage/booking-purchases/42/payment-attempts',
       );
       expect(request.headers['authorization'], 'Bearer test-token');
       expect(jsonDecode(request.body), {

@@ -1,5 +1,6 @@
 import 'package:mysql_client/mysql_client.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
+import 'package:theo_tutoring_backend/session_rate.dart';
 
 class BookingAvailabilityUnavailable implements Exception {
   const BookingAvailabilityUnavailable();
@@ -79,15 +80,10 @@ class MySqlBookingAvailabilityRepository
       throw const BookingAvailabilityUnavailable();
     }
 
-    final rateResult = await connection.execute(
-      'SELECT TutoringRate FROM PlatformSettings WHERE SettingsID = 1 LIMIT 1',
-    );
-    if (rateResult.rows.isEmpty) {
-      throw const BookingAvailabilityUnavailable();
+    final rate = await getCurrentSessionRate(connection);
+    if (rate == null) {
+      throw const BookingAvailabilityUnavailable(); // no rate set yet
     }
-    final rate = _requiredDatabaseString(
-      rateResult.rows.first.colByName('TutoringRate'),
-    );
 
     final availabilityResult = await connection.execute(
       '''

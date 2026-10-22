@@ -119,6 +119,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
   String? _tutorPhoto;
   bool _loading = true;
   String? _error;
+  int? _errorStatus; // HTTP status of the failed load (403 = not approved yet)
 
   static const _tabs        = ['Upcoming', 'New', 'Past', 'All'];
   static const _dateFilters = ['All Dates', 'Today', 'Tomorrow', 'This Week'];
@@ -178,7 +179,13 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _errorStatus = e is TutorApiException ? e.statusCode : null;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -443,109 +450,134 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
       return const Center(child: CircularProgressIndicator(color: _blue));
     }
     if (_error != null) {
+      // 403: a Pending tutor, whose schedule opens once they are approved
+      final pending = _errorStatus == 403;
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.wifi_off_rounded, color: _muted, size: 40),
+              Icon(pending ? Icons.hourglass_top_rounded : Icons.wifi_off_rounded,
+                  color: _muted, size: 40),
               const SizedBox(height: 12),
-              Text(_error!,
+              Text(
+                  pending
+                      ? 'Your schedule opens once your tutor application '
+                          'has been approved.'
+                      : _error!,
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: _muted, fontSize: 13)),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: _load,
+                onPressed:
+                    pending ? () => openTutorTab(context, 0, current: 1) : _load,
                 style: ElevatedButton.styleFrom(
                     backgroundColor: _blue, foregroundColor: Colors.white),
-                child: const Text('Retry'),
+                child: Text(pending ? 'Back to Dashboard' : 'Retry'),
               ),
             ],
           ),
         ),
       );
     }
-    if (_days.isEmpty) return _buildEmpty();
     return RefreshIndicator(
       onRefresh: _load,
       color: _blue,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          ..._days.map((d) => _buildDateGroup(d.label, d.sessions)),
-          _buildAllCaughtUp(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmpty() {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-            color: _card,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _border)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                  color: _blue.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(50)),
-              child:
-                  const Icon(Icons.mail_outline, color: _blue, size: 32),
+      child: _days.isEmpty
+          // a scrollable list, so pull-to-refresh still works when empty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(24),
+              children: [_buildEmpty()],
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              children: [
+                ..._days.map((d) => _buildDateGroup(d.label, d.sessions)),
+              ],
             ),
-            const SizedBox(height: 16),
-            const Text('All caught up!',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: _text1)),
-            const SizedBox(height: 8),
-            const Text(
-                'New student booking requests will arrive\nhere in real-time.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: _muted)),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _buildAllCaughtUp() {
+  bool get _filtering =>
+      _dateFilter != _dateFilters.first || _subjectFilter.isNotEmpty;
+
+  void _clearFilters() {
+    setState(() {
+      _dateFilter = _dateFilters.first;
+      _subjectFilter.clear();
+    });
+    _load();
+  }
+
+  // What to say when a tab has nothing to show
+  Widget _buildEmpty() {
+    final (IconData icon, String title, String message) = _filtering
+        ? (
+            Icons.filter_alt_off_outlined,
+            'No sessions match your filters',
+            'Try another date or subject, or clear the filters.',
+          )
+        : switch (_tabController.index) {
+            0 => (
+                Icons.event_available_outlined,
+                'No upcoming sessions',
+                'Sessions appear here once a student has booked and paid.',
+              ),
+            1 => (
+                Icons.mail_outline,
+                'All caught up!',
+                'New booking requests from students will arrive here.',
+              ),
+            2 => (
+                Icons.history_rounded,
+                'No past sessions yet',
+                'Sessions you have finished will be listed here.',
+              ),
+            _ => (
+                Icons.calendar_month_outlined,
+                'No sessions yet',
+                'Your confirmed and completed sessions will appear here.',
+              ),
+          };
+
     return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
           color: _card,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: _border)),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-                color: _blue.withOpacity(0.12),
+                color: _blue.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(50)),
-            child:
-                const Icon(Icons.mail_outline, color: _blue, size: 28),
+            child: Icon(icon, color: _blue, size: 32),
           ),
-          const SizedBox(height: 14),
-          const Text('All caught up!',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _text1)),
-          const SizedBox(height: 6),
-          const Text(
-              'New student booking requests will arrive\nhere in real-time.',
+          const SizedBox(height: 16),
+          Text(title,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: _muted)),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700, color: _text1)),
+          const SizedBox(height: 8),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: _muted)),
+          if (_filtering) ...[
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: _clearFilters,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _blue,
+                side: const BorderSide(color: _border),
+              ),
+              child: const Text('Clear filters'),
+            ),
+          ],
         ],
       ),
     );

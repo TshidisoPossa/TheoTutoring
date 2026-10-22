@@ -62,12 +62,36 @@ class DashboardSession {
   Color get color => _palette[subjectId % _palette.length];
 }
 
+class DashboardReview {
+  final String studentName;
+  final int rating; // 1 to 5
+  final String? comment;
+  final String? createdAt; // "2026-10-21 14:03:00"
+
+  DashboardReview({
+    required this.studentName,
+    required this.rating,
+    this.comment,
+    this.createdAt,
+  });
+
+  // One row of latestReviews from GET /TutorLandingpage/LandingPageScreen
+  factory DashboardReview.fromJson(Map<String, dynamic> j) => DashboardReview(
+        studentName: j['StudentName']?.toString() ?? 'Student',
+        rating: (int.tryParse(j['Rating']?.toString() ?? '') ?? 0).clamp(0, 5),
+        comment: j['Comment']?.toString(),
+        createdAt: j['Created_At']?.toString(),
+      );
+}
+
 class DashboardData {
   final String accountStatus; // 'Active' or 'Pending'
   final Map<String, dynamic>? application; // Pending tutors only
   final int activeStudents;
   final int upcomingToday;
+  final double averageRating; // 0 when the tutor has no reviews yet
   final List<DashboardSession> todaySchedule;
+  final List<DashboardReview> latestReviews;
   final String tutorName;
   final String? tutorPhotoUrl;
   final String tutorInitials;
@@ -77,13 +101,20 @@ class DashboardData {
     this.application,
     required this.activeStudents,
     required this.upcomingToday,
+    required this.averageRating,
     required this.todaySchedule,
+    required this.latestReviews,
     required this.tutorName,
     this.tutorPhotoUrl,
     required this.tutorInitials,
   });
 
   bool get isPending => accountStatus != 'Active';
+
+  String get firstName {
+    final parts = tutorName.trim().split(RegExp(r'\s+'));
+    return parts.isEmpty || parts.first.isEmpty ? 'there' : parts.first;
+  }
 
   factory DashboardData.fromJson(Map<String, dynamic> j) {
     final tutor = j['tutor'] as Map<String, dynamic>?;
@@ -94,8 +125,13 @@ class DashboardData {
       activeStudents:
           int.tryParse(j['activeStudents']?.toString() ?? '') ?? 0,
       upcomingToday: int.tryParse(j['upcomingToday']?.toString() ?? '') ?? 0,
+      averageRating:
+          double.tryParse(j['averageRating']?.toString() ?? '') ?? 0,
       todaySchedule: (j['todaysSchedule'] as List<dynamic>? ?? [])
           .map((e) => DashboardSession.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      latestReviews: (j['latestReviews'] as List<dynamic>? ?? [])
+          .map((e) => DashboardReview.fromJson(e as Map<String, dynamic>))
           .toList(),
       tutorName: name,
       tutorPhotoUrl: tutor?['profilePhotoUrl']?.toString(),
@@ -122,8 +158,14 @@ class _TutorDashboardState extends State<TutorDashboard> {
   bool _loading = true;
   String? _error;
 
-  static const _blue = Color(0xFF246BFE);
-  static const _bg   = Color(0xFFF2F4F8);
+  static const _blue  = Color(0xFF246BFE);
+  static const _bg    = Color(0xFFF2F4F8);
+  static const _dark  = Color(0xFF1A1A2E);
+  static const _muted = Color(0xFF9CA3AF);
+  static const _grey  = Color(0xFF6B7280);
+  static const _amber = Color(0xFFF59E0B);
+  static const _green = Color(0xFF10B981);
+  static const _red   = Color(0xFFE53935);
 
   @override
   void initState() {
@@ -157,6 +199,21 @@ class _TutorDashboardState extends State<TutorDashboard> {
     if (changed == true) _load(); // postponed: it may have left today
   }
 
+  // Bottom bar and shortcuts. A Pending tutor may open the dashboard, chats
+  // and profile; the schedule needs an approved (Active) account.
+  void _openTab(int index) {
+    if (index == 1 && (_data?.isPending ?? false)) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text(
+              'Your schedule opens once your application has been approved.'),
+        ));
+      return;
+    }
+    openTutorTab(context, index, current: 0);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -180,15 +237,21 @@ class _TutorDashboardState extends State<TutorDashboard> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const SizedBox(height: 6),
-                                _buildTitle(),
+                                const SizedBox(height: 18),
+                                _buildGreeting(),
                                 const SizedBox(height: 20),
-                                if (_data!.isPending)
-                                  _buildApplicationStatus()
-                                else ...[
+                                if (_data!.isPending) ...[
+                                  _buildApplicationStatus(),
+                                  const SizedBox(height: 16),
+                                  _buildWhileYouWait(),
+                                ] else ...[
                                   _buildStatsRow(),
+                                  const SizedBox(height: 12),
+                                  _buildRatingCard(),
                                   const SizedBox(height: 24),
                                   _buildTodaySchedule(),
+                                  const SizedBox(height: 24),
+                                  _buildLatestReviews(),
                                 ],
                               ],
                             ),
@@ -249,7 +312,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
               style: GoogleFonts.inter(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: const Color(0xFF1A1A2E),
+                color: _dark,
               ),
             ),
           ),
@@ -258,41 +321,82 @@ class _TutorDashboardState extends State<TutorDashboard> {
           IconButton(
             onPressed: () {},
             icon: const Icon(Icons.notifications_outlined,
-                color: Color(0xFF1A1A2E), size: 24),
+                color: _dark, size: 24),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
 
           const SizedBox(width: 4),
 
-          // Avatar with initials / photo
-          CircleAvatar(
-            radius: 20,
-            backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-            backgroundColor: _blue,
-            child: photoUrl == null
-                ? Text(initials,
-                    style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700))
-                : null,
+          // Avatar with initials / photo: opens the Profile tab
+          GestureDetector(
+            onTap: () => _openTab(3),
+            child: CircleAvatar(
+              radius: 20,
+              backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+              backgroundColor: _blue,
+              child: photoUrl == null
+                  ? Text(initials,
+                      style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700))
+                  : null,
+            ),
           ),
         ],
       ),
     );
   }
 
-  // ── TITLE ─────────────────────────────────────────────────────────────────────
+  // ── GREETING ──────────────────────────────────────────────────────────────────
 
-  Widget _buildTitle() {
-    return Text(
-      'Dashboard',
-      style: GoogleFonts.inter(
-        fontSize: 28,
-        fontWeight: FontWeight.bold,
-        color: const Color(0xFF1A1A2E),
-      ),
+  Widget _buildGreeting() {
+    final now = DateTime.now();
+    final partOfDay = now.hour < 12
+        ? 'Good morning'
+        : now.hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+    const weekdays = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', //
+      'Sunday',
+    ];
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June', //
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${weekdays[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}'
+              .toUpperCase(),
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+            color: _muted,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '$partOfDay, ${_data?.firstName ?? 'there'}',
+          style: GoogleFonts.inter(
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+            color: _dark,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _data?.isPending ?? false
+              ? 'Here is where your tutor application stands.'
+              : 'Here is your teaching overview for today.',
+          style: GoogleFonts.inter(fontSize: 13, color: _grey),
+        ),
+      ],
     );
   }
 
@@ -303,70 +407,268 @@ class _TutorDashboardState extends State<TutorDashboard> {
     final status = app?['status']?.toString() ?? 'Pending';
     final feedback = app?['adminFeedback']?.toString();
     final submitted = app?['submittedAt']?.toString();
+    final reviewed = app?['reviewedAt']?.toString();
 
-    final (IconData icon, Color color, String message) = switch (status) {
+    final (IconData icon, Color color, String title, String message) =
+        switch (status) {
       'Rejected' => (
           Icons.cancel_outlined,
-          const Color(0xFFE53935),
-          'Your application was not approved.',
+          _red,
+          'Application not approved',
+          'An administrator reviewed your application and did not approve it.',
         ),
       'Approved' => (
           Icons.check_circle_outline,
-          const Color(0xFF10B981),
-          'Your application was approved. Your account will be activated shortly.',
+          _green,
+          'Application approved',
+          'Your account will be activated shortly. Pull down to refresh.',
         ),
       _ => (
           Icons.hourglass_top_rounded,
-          const Color(0xFFF59E0B),
-          'Your application is under review. You will be notified once an '
-              'administrator approves your account.',
+          _amber,
+          'Application under review',
+          'An administrator is reviewing your application. You will be '
+              'notified once a decision has been made.',
         ),
     };
 
+    // The three steps of the tracker
+    final steps = [
+      (
+        'Application submitted',
+        _shortDate(submitted) ?? 'Done',
+        _StepState.done,
+      ),
+      (
+        'Admin review',
+        status == 'Pending' ? 'In progress' : (_shortDate(reviewed) ?? 'Done'),
+        status == 'Pending' ? _StepState.current : _StepState.done,
+      ),
+      (
+        status == 'Rejected' ? 'Not approved' : 'Account approved',
+        status == 'Pending' ? 'Waiting' : (_shortDate(reviewed) ?? ''),
+        switch (status) {
+          'Approved' => _StepState.done,
+          'Rejected' => _StepState.failed,
+          _ => _StepState.upcoming,
+        },
+      ),
+    ];
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: color, size: 22),
-              const SizedBox(width: 8),
-              Text('Application $status',
-                  style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A1A2E))),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(title,
+                    style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _dark)),
+              ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Text(message,
-              style: GoogleFonts.inter(
-                  fontSize: 13, color: const Color(0xFF6B7280), height: 1.5)),
-          if (submitted != null && submitted.length >= 10) ...[
-            const SizedBox(height: 8),
-            Text('Submitted ${formatLongDate(submitted.substring(0, 10))}',
-                style: GoogleFonts.inter(
-                    fontSize: 12, color: const Color(0xFF9CA3AF))),
-          ],
+              style: GoogleFonts.inter(fontSize: 13, color: _grey, height: 1.5)),
+          const SizedBox(height: 18),
+          for (var i = 0; i < steps.length; i++)
+            _buildStep(
+              title: steps[i].$1,
+              subtitle: steps[i].$2,
+              state: steps[i].$3,
+              isLast: i == steps.length - 1,
+            ),
           if (feedback != null && feedback.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text('Feedback from the administrator',
-                style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A1A2E))),
-            const SizedBox(height: 4),
-            Text(feedback,
-                style: GoogleFonts.inter(
-                    fontSize: 13, color: const Color(0xFF6B7280))),
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _bg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Feedback from the administrator',
+                      style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _dark)),
+                  const SizedBox(height: 4),
+                  Text(feedback,
+                      style: GoogleFonts.inter(fontSize: 13, color: _grey)),
+                ],
+              ),
+            ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildStep({
+    required String title,
+    required String subtitle,
+    required _StepState state,
+    required bool isLast,
+  }) {
+    final (Color color, IconData? icon) = switch (state) {
+      _StepState.done => (_green, Icons.check_rounded),
+      _StepState.current => (_amber, null),
+      _StepState.failed => (_red, Icons.close_rounded),
+      _StepState.upcoming => (const Color(0xFFD1D5DB), null),
+    };
+    final filled = state != _StepState.upcoming;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Dot and the line down to the next step
+          SizedBox(
+            width: 24,
+            child: Column(
+              children: [
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: filled ? color : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: color, width: 2),
+                  ),
+                  child: icon != null
+                      ? Icon(icon, size: 14, color: Colors.white)
+                      : state == _StepState.current
+                          ? const Center(
+                              child: CircleAvatar(
+                                  radius: 3, backgroundColor: Colors.white))
+                          : null,
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: state == _StepState.done
+                          ? _green
+                          : const Color(0xFFE5E7EB),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: state == _StepState.upcoming ? _muted : _dark)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: GoogleFonts.inter(fontSize: 12, color: _muted)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Things a Pending tutor can already do (business rule 5)
+  Widget _buildWhileYouWait() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('While you wait'),
+        const SizedBox(height: 12),
+        _actionTile(
+          icon: Icons.person_outline_rounded,
+          color: _blue,
+          title: 'Complete your profile',
+          subtitle: 'Add a photo and check your subjects and qualifications.',
+          onTap: () => _openTab(3),
+        ),
+        const SizedBox(height: 10),
+        _actionTile(
+          icon: Icons.event_available_outlined,
+          color: _green,
+          title: 'Check your availability',
+          subtitle: 'Students can only book the times you mark as available.',
+          onTap: () => _openTab(3),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionTile({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _dark)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: GoogleFonts.inter(fontSize: 12, color: _grey)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: _muted),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -393,13 +695,16 @@ class _TutorDashboardState extends State<TutorDashboard> {
                 Row(
                   children: [
                     const Icon(Icons.person_outline,
-                        color: Color(0xFF9CA3AF), size: 20),
+                        color: _muted, size: 20),
                     const SizedBox(width: 6),
-                    Text('Active Students',
-                        style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: const Color(0xFF9CA3AF),
-                            fontWeight: FontWeight.w500)),
+                    Flexible(
+                      child: Text('Active Students',
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: _muted,
+                              fontWeight: FontWeight.w500)),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -408,7 +713,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                   style: GoogleFonts.inter(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1A1A2E),
+                    color: _dark,
                   ),
                 ),
               ],
@@ -434,11 +739,14 @@ class _TutorDashboardState extends State<TutorDashboard> {
                     const Icon(Icons.calendar_today_outlined,
                         color: Colors.white70, size: 20),
                     const SizedBox(width: 6),
-                    Text('Upcoming Today',
-                        style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w500)),
+                    Flexible(
+                      child: Text('Upcoming Today',
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w500)),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -458,6 +766,79 @@ class _TutorDashboardState extends State<TutorDashboard> {
     );
   }
 
+  // ── RATING CARD ───────────────────────────────────────────────────────────────
+
+  Widget _buildRatingCard() {
+    final rating = _data?.averageRating ?? 0;
+    final hasRating = rating > 0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: _cardDecoration(),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _amber.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.star_rounded, color: _amber, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Average Rating',
+                    style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: _muted,
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 4),
+                Text(
+                  hasRating ? 'From your students\' reviews' : 'No ratings yet',
+                  style: GoogleFonts.inter(fontSize: 12, color: _grey),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                hasRating ? rating.toStringAsFixed(1) : '–',
+                style: GoogleFonts.inter(
+                    fontSize: 26, fontWeight: FontWeight.bold, color: _dark),
+              ),
+              _stars(rating, size: 14),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 4.5 -> four full stars and a half star
+  Widget _stars(double rating, {double size = 16}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 1; i <= 5; i++)
+          Icon(
+            rating >= i
+                ? Icons.star_rounded
+                : rating >= i - 0.5
+                    ? Icons.star_half_rounded
+                    : Icons.star_outline_rounded,
+            color: rating >= i - 0.5 ? _amber : const Color(0xFFD1D5DB),
+            size: size,
+          ),
+      ],
+    );
+  }
+
   // ── TODAY'S SCHEDULE ──────────────────────────────────────────────────────────
 
   Widget _buildTodaySchedule() {
@@ -469,43 +850,29 @@ class _TutorDashboardState extends State<TutorDashboard> {
         // Header row
         Row(
           children: [
-            Text(
-              "Today's Schedule",
-              style: GoogleFonts.inter(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF1A1A2E)),
-            ),
+            _sectionTitle("Today's Schedule"),
             const SizedBox(width: 8),
             if (sessions.isNotEmpty)
               Text(
                 '${sessions.length} session${sessions.length > 1 ? 's' : ''}',
-                style: GoogleFonts.inter(
-                    fontSize: 13, color: const Color(0xFF9CA3AF)),
+                style: GoogleFonts.inter(fontSize: 13, color: _muted),
               ),
             const Spacer(),
-            // + button
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                  color: _blue, borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.add, color: Colors.white, size: 20),
+            TextButton(
+              onPressed: () => _openTab(1),
+              child: Text('View all',
+                  style: GoogleFonts.inter(
+                      color: _blue, fontWeight: FontWeight.w600, fontSize: 13)),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
 
         if (sessions.isEmpty)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 28),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text('No sessions today',
-                style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 13)),
+          _emptyCard(
+            icon: Icons.event_available_outlined,
+            title: 'No sessions today',
+            message: 'Booked sessions for today will show up here.',
           )
         else
           ...sessions.map((s) => GestureDetector(
@@ -538,9 +905,9 @@ class _TutorDashboardState extends State<TutorDashboard> {
 
     // Parse "In X hrs/min" badge colour: orange for < 1 hr, green for >= 1 hr
     final startsIn = session.startsIn ?? '';
-    Color badgeColor = const Color(0xFFF59E0B); // amber default
+    Color badgeColor = _amber; // amber default
     if (startsIn.contains('hr') || startsIn.contains('hrs')) {
-      badgeColor = const Color(0xFF10B981); // green
+      badgeColor = _green; // green
     }
 
     return Container(
@@ -550,7 +917,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 8,
               offset: const Offset(0, 2)),
         ],
@@ -595,7 +962,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: badgeColor.withOpacity(0.12),
+                              color: badgeColor.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
@@ -625,7 +992,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                                 style: GoogleFonts.inter(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF1A1A2E),
+                                  color: _dark,
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -633,7 +1000,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                                 'with ${session.studentName}',
                                 style: GoogleFonts.inter(
                                   fontSize: 12,
-                                  color: const Color(0xFF9CA3AF),
+                                  color: _muted,
                                 ),
                               ),
                             ],
@@ -648,8 +1015,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                             color: const Color(0xFFF3F4F6),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Icon(platformIcon,
-                              size: 18, color: const Color(0xFF6B7280)),
+                          child: Icon(platformIcon, size: 18, color: _grey),
                         ),
                       ],
                     ),
@@ -659,14 +1025,17 @@ class _TutorDashboardState extends State<TutorDashboard> {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          const Icon(Icons.circle,
-                              size: 6, color: Color(0xFF10B981)),
+                          const Icon(Icons.circle, size: 6, color: _green),
                           const SizedBox(width: 5),
-                          Text(
-                            session.note!,
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: const Color(0xFF6B7280),
+                          Expanded(
+                            child: Text(
+                              session.note!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: _grey,
+                              ),
                             ),
                           ),
                         ],
@@ -682,6 +1051,145 @@ class _TutorDashboardState extends State<TutorDashboard> {
     );
   }
 
+  // ── LATEST REVIEWS ────────────────────────────────────────────────────────────
+
+  Widget _buildLatestReviews() {
+    final reviews = _data?.latestReviews ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle('Latest Reviews'),
+        const SizedBox(height: 12),
+        if (reviews.isEmpty)
+          _emptyCard(
+            icon: Icons.rate_review_outlined,
+            title: 'No reviews yet',
+            message: 'Students can review you after a completed session.',
+          )
+        else
+          ...reviews.map(_reviewCard),
+      ],
+    );
+  }
+
+  Widget _reviewCard(DashboardReview review) {
+    final date = _shortDate(review.createdAt);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: _blue.withValues(alpha: 0.12),
+                child: Text(initialsOf(review.studentName),
+                    style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _blue)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(review.studentName,
+                        style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _dark)),
+                    if (date != null)
+                      Text(date,
+                          style: GoogleFonts.inter(fontSize: 11, color: _muted)),
+                  ],
+                ),
+              ),
+              _stars(review.rating.toDouble(), size: 14),
+            ],
+          ),
+          if (review.comment != null && review.comment!.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              '"${review.comment!.trim()}"',
+              style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: _grey,
+                  fontStyle: FontStyle.italic,
+                  height: 1.5),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── SHARED PIECES ─────────────────────────────────────────────────────────────
+
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.inter(
+          fontSize: 17, fontWeight: FontWeight.bold, color: _dark),
+    );
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: [
+        BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2)),
+      ],
+    );
+  }
+
+  Widget _emptyCard({
+    required IconData icon,
+    required String title,
+    required String message,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
+      decoration: _cardDecoration(),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _blue.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: _blue, size: 26),
+          ),
+          const SizedBox(height: 12),
+          Text(title,
+              style: GoogleFonts.inter(
+                  fontSize: 14, fontWeight: FontWeight.w600, color: _dark)),
+          const SizedBox(height: 4),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 12, color: _muted)),
+        ],
+      ),
+    );
+  }
+
+  // "2026-10-22 10:18:09" -> "Thu, 22 Oct 2026"
+  String? _shortDate(String? dateTime) {
+    if (dateTime == null || dateTime.length < 10) return null;
+    return formatLongDate(dateTime.substring(0, 10));
+  }
+
   // ── BOTTOM NAV ────────────────────────────────────────────────────────────────
 
   Widget _buildBottomNav() {
@@ -690,7 +1198,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 10,
               offset: const Offset(0, -2))
         ],
@@ -700,11 +1208,11 @@ class _TutorDashboardState extends State<TutorDashboard> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         selectedItemColor: _blue,
-        unselectedItemColor: const Color(0xFF9CA3AF),
+        unselectedItemColor: _muted,
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,
         unselectedFontSize: 11,
-        onTap: (i) => openTutorTab(context, i, current: 0),
+        onTap: _openTab,
         items: const [
           BottomNavigationBarItem(
               icon: Icon(Icons.grid_view_rounded), label: 'Dashboard'),
@@ -719,3 +1227,6 @@ class _TutorDashboardState extends State<TutorDashboard> {
     );
   }
 }
+
+// Where a step of the application tracker is
+enum _StepState { done, current, upcoming, failed }

@@ -18,10 +18,10 @@ import 'package:theo_tutoring_backend/tutor_bookings.dart';
 import 'package:theo_tutoring_backend/tutorlanding_session.dart';
 
 import '../../routes/TutorLandingpage/LandingPageScreen.dart' as dashboard;
-import '../../routes/students/availability.dart' as availability;
-import '../../routes/students/booking-purchases/[purchaseId]/payment-attempts.dart'
+import '../../routes/StudentlandingPage/availability.dart' as availability;
+import '../../routes/StudentlandingPage/booking-purchases/[purchaseId]/payment-attempts.dart'
     as payments;
-import '../../routes/students/booking-purchases/index.dart' as purchases;
+import '../../routes/StudentlandingPage/booking-purchases/index.dart' as purchases;
 
 class _MockRequestContext extends Mock implements RequestContext {}
 
@@ -177,7 +177,7 @@ void main() {
         method: HttpMethod.get,
         token: token,
         uri: Uri.parse(
-          '/students/availability?tutorId=$tutorA&subjectId=$subjectId'
+          '/StudentlandingPage/availability?tutorId=$tutorA&subjectId=$subjectId'
           '&from=$lessonDate&through=$lessonDate',
         ),
       );

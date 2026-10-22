@@ -1,4 +1,5 @@
 import 'package:mysql_client/mysql_client.dart';
+import 'package:theo_tutoring_backend/session_rate.dart';
 
 class TutorSearchOptions {
   const TutorSearchOptions({
@@ -113,8 +114,7 @@ String buildTutorSearchCountSql(TutorSearchFilter filter) =>
 String buildTutorSearchPageSql(TutorSearchFilter filter) =>
     '''
   SELECT tp.TutorID, u.Name, u.ProfilePhoto, tp.Bio, tp.Experience,
-    (SELECT ps.TutoringRate FROM PlatformSettings ps
-     WHERE ps.SettingsID = 1) AS HourlyRate,
+    $currentSessionRateSubquery AS HourlyRate,
     (SELECT AVG(r.Rating) FROM Reviews r
      WHERE r.TutorID = tp.TutorID) AS AverageRating,
     (SELECT COUNT(*) FROM Reviews r

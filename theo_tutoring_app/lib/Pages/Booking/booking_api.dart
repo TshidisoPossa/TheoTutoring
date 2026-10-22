@@ -204,7 +204,7 @@ class HttpBookingFlowApi implements BookingFlowApi {
     required String from,
     required String through,
   }) async {
-    final uri = Uri.parse('$apiBaseUrl/students/availability').replace(
+    final uri = Uri.parse('$apiBaseUrl/StudentlandingPage/availability').replace(
       queryParameters: {
         'tutorId': '$tutorId',
         'subjectId': '$subjectId',
@@ -245,7 +245,7 @@ class HttpBookingFlowApi implements BookingFlowApi {
     try {
       final response = await _client
           .post(
-            Uri.parse('$apiBaseUrl/students/booking-purchases'),
+            Uri.parse('$apiBaseUrl/StudentlandingPage/booking-purchases'),
             headers: await _headers(),
             body: jsonEncode(request),
           )
@@ -281,7 +281,7 @@ class HttpBookingFlowApi implements BookingFlowApi {
       final response = await _client
           .post(
             Uri.parse(
-              '$apiBaseUrl/students/booking-purchases/'
+              '$apiBaseUrl/StudentlandingPage/booking-purchases/'
               '$purchaseId/payment-attempts',
             ),
             headers: await _headers(),

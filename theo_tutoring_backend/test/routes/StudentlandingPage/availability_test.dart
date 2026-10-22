@@ -8,7 +8,7 @@ import 'package:theo_tutoring_backend/booking_availability.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 
-import '../../../routes/students/availability.dart' as route;
+import '../../../routes/StudentlandingPage/availability.dart' as route;
 
 class _MockRequestContext extends Mock implements RequestContext {}
 
@@ -110,13 +110,13 @@ void main() {
       () => request.uri,
     ).thenReturn(
       Uri.parse(
-        '/students/availability?tutorId=6&subjectId=12&from=2026-10-19&through=2026-10-20',
+        '/StudentlandingPage/availability?tutorId=6&subjectId=12&from=2026-10-19&through=2026-10-20',
       ),
     );
     when(() => request.headers).thenReturn({'Authorization': 'Bearer token'});
   });
 
-  group('GET /students/availability', () {
+  group('GET /StudentlandingPage/availability', () {
     test('returns slots, timezone, and the configured rate', () async {
       final repository = _FakeRepository(
         AvailabilitySnapshot(
@@ -173,7 +173,7 @@ void main() {
     ]) {
       test('rejects malformed query: $query', () async {
         when(() => request.uri).thenReturn(
-          Uri.parse('/students/availability?$query'),
+          Uri.parse('/StudentlandingPage/availability?$query'),
         );
         var identityResolved = false;
 

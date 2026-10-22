@@ -6,6 +6,7 @@ import 'package:mysql_client/exception.dart';
 import 'booking_domain.dart';
 import 'booking_purchase.dart';
 import 'database.dart';
+import 'session_rate.dart';
 
 typedef BookingPurchaseConnectionFactory = Future<MySQLConnection> Function();
 
@@ -561,13 +562,10 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     );
     if (eligibility.rows.isEmpty) throw const BookingPurchaseNotFound();
 
-    final rateResult = await connection.execute(
-      'SELECT TutoringRate FROM PlatformSettings WHERE SettingsID = 1 LIMIT 1',
-    );
-    if (rateResult.rows.isEmpty) {
-      throw const BookingPurchaseServiceUnavailable();
+    final rate = await getCurrentSessionRate(connection);
+    if (rate == null) {
+      throw const BookingPurchaseServiceUnavailable(); // no rate set yet
     }
-    final rate = _string(rateResult.rows.first.colByName('TutoringRate'));
     final price = calculateBookingPrice(
       platformRate: rate,
       purchaseType: command.purchaseType,

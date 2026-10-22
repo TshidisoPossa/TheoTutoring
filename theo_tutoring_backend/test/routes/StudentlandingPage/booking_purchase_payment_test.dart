@@ -7,7 +7,7 @@ import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/booking_purchase.dart';
 import 'package:theo_tutoring_backend/demo_payment_config.dart';
 
-import '../../../routes/students/booking-purchases/[purchaseId]/payment-attempts.dart'
+import '../../../routes/StudentlandingPage/booking-purchases/[purchaseId]/payment-attempts.dart'
     as route;
 
 class _MockRequestContext extends Mock implements RequestContext {}
@@ -159,7 +159,7 @@ void main() {
     when(() => context.request).thenReturn(request);
     when(() => request.method).thenReturn(HttpMethod.post);
     when(() => request.uri).thenReturn(
-      Uri.parse('/students/booking-purchases/27/payment-attempts'),
+      Uri.parse('/StudentlandingPage/booking-purchases/27/payment-attempts'),
     );
     when(() => request.headers).thenReturn({'Authorization': '******'});
     when(() => request.json()).thenAnswer((_) async => body());
@@ -200,7 +200,7 @@ void main() {
 
     // The route parameter wins over whatever the raw URI contains.
     when(() => request.uri).thenReturn(
-      Uri.parse('/students/booking-purchases/not-a-number/payment-attempts'),
+      Uri.parse('/StudentlandingPage/booking-purchases/not-a-number/payment-attempts'),
     );
     final precedence = await route.handleCreatePaymentAttempt(
       context,

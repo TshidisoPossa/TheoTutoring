@@ -25,70 +25,74 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
     'Saturday',
   ];
 
-  final _slots = <_AvailabilitySlot>[_AvailabilitySlot()];
+  // The weekly grid from the documentation (9.3 / 11.1): each period is a
+  // fixed block of hours, in minutes after midnight. The tutor's Profile
+  // page uses the same three periods.
+  static const _periods = {
+    'Morning': (start: 480, end: 720), // 08:00-12:00
+    'Afternoon': (start: 720, end: 1020), // 12:00-17:00
+    'Evening': (start: 1020, end: 1200), // 17:00-20:00
+  };
+
+  final _selected = <String, Set<String>>{}; // day -> ticked periods
   bool _isSubmitting = false;
   bool _showValidation = false;
 
-  @override
-  void dispose() {
-    for (final slot in _slots) {
-      slot.dispose();
-    }
-    super.dispose();
+  bool _isTicked(String day, String period) =>
+      _selected[day]?.contains(period) ?? false;
+
+  void _toggle(String day, String period) {
+    if (_isSubmitting) return;
+    setState(() {
+      final periods = _selected.putIfAbsent(day, () => {});
+      if (!periods.remove(period)) periods.add(period);
+    });
   }
 
-  int? _minutes(TimeOfDay? time) =>
-      time == null ? null : time.hour * 60 + time.minute;
-
-  String _formatTime(TimeOfDay time) =>
-      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  String _formatTime(int minutes) =>
+      '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+      '${(minutes % 60).toString().padLeft(2, '0')}';
 
   String? _validationError() {
-    if (_slots.isEmpty) return 'Add at least one availability slot.';
-    final ranges = <String, List<(int, int)>>{};
-    for (final slot in _slots) {
-      final start = _minutes(slot.start);
-      final end = _minutes(slot.end);
-      if (slot.day == null || start == null || end == null) {
-        return 'Choose a day, start time, and end time for every slot.';
-      }
-      if (start >= end) return 'Each start time must be before its end time.';
-      ranges.putIfAbsent(slot.day!, () => []).add((start, end));
-    }
-
-    for (final dayRanges in ranges.values) {
-      dayRanges.sort((a, b) => a.$1.compareTo(b.$1));
-      for (var index = 1; index < dayRanges.length; index++) {
-        if (dayRanges[index].$1 < dayRanges[index - 1].$2) {
-          return 'Availability slots on the same day cannot overlap.';
-        }
-      }
+    if (_selected.values.every((periods) => periods.isEmpty)) {
+      return 'Tap at least one time slot you are available.';
     }
     return null;
   }
 
-  Future<void> _chooseTime(
-    _AvailabilitySlot slot, {
-    required bool isStart,
-  }) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime:
-          (isStart ? slot.start : slot.end) ??
-          const TimeOfDay(hour: 9, minute: 0),
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
-      ),
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      if (isStart) {
-        slot.start = picked;
-      } else {
-        slot.end = picked;
+  // The ticked cells as time ranges, one per run of touching periods
+  // (Morning + Afternoon -> 08:00-17:00). This is the same shape the
+  // Profile page saves, so both pages show the grid the same way.
+  List<Map<String, String>> _slotsToSend() {
+    final slots = <Map<String, String>>[];
+    for (final day in _days) {
+      int? start;
+      int? end;
+      for (final entry in _periods.entries) {
+        if (!_isTicked(day, entry.key)) continue;
+        if (end == entry.value.start) {
+          end = entry.value.end; // touches the previous period: extend it
+          continue;
+        }
+        if (start != null) {
+          slots.add({
+            'day': day,
+            'startTime': _formatTime(start),
+            'endTime': _formatTime(end!),
+          });
+        }
+        start = entry.value.start;
+        end = entry.value.end;
       }
-    });
+      if (start != null) {
+        slots.add({
+          'day': day,
+          'startTime': _formatTime(start),
+          'endTime': _formatTime(end!),
+        });
+      }
+    }
+    return slots;
   }
 
   Future<void> _submit() async {
@@ -116,16 +120,7 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
-            body: jsonEncode({
-              'availability': [
-                for (final slot in _slots)
-                  {
-                    'day': slot.day,
-                    'startTime': _formatTime(slot.start!),
-                    'endTime': _formatTime(slot.end!),
-                  },
-              ],
-            }),
+            body: jsonEncode({'availability': _slotsToSend()}),
           )
           .timeout(const Duration(seconds: 20));
 
@@ -218,11 +213,13 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Choose one or more weekly time slots. Times use a 24-hour clock.',
+                    'Tap the times you are usually available each week. '
+                    'You can change this later on your Profile page.',
                   ),
                   const SizedBox(height: 20),
-                  for (var index = 0; index < _slots.length; index++)
-                    _buildSlot(index),
+                  _buildGrid(),
+                  const SizedBox(height: 12),
+                  _buildLegend(),
                   if (validationError != null) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -232,17 +229,6 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
                       ),
                     ),
                   ],
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: _isSubmitting || _slots.length >= 30
-                          ? null
-                          : () =>
-                                setState(() => _slots.add(_AvailabilitySlot())),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add another time slot'),
-                    ),
-                  ),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
@@ -268,83 +254,101 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
     );
   }
 
-  Widget _buildSlot(int index) {
-    final slot = _slots[index];
-    final start = slot.start;
-    final end = slot.end;
+  // Monday to Saturday across the top, Morning / Afternoon / Evening down
+  // the side. Tapping a cell marks that period as available.
+  Widget _buildGrid() {
+    const blue = Colors.blue;
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: slot.day,
-                    decoration: const InputDecoration(labelText: 'Day'),
-                    items: [
-                      for (final day in _days)
-                        DropdownMenuItem(value: day, child: Text(day)),
-                    ],
-                    onChanged: _isSubmitting
-                        ? null
-                        : (day) => setState(() => slot.day = day),
-                  ),
-                ),
-                if (_slots.length > 1)
-                  IconButton(
-                    tooltip: 'Remove slot',
-                    onPressed: _isSubmitting
-                        ? null
-                        : () => setState(() {
-                            _slots.removeAt(index).dispose();
-                          }),
-                    icon: const Icon(Icons.delete_outline),
+                const SizedBox(width: 78),
+                for (final day in _days)
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        day.substring(0, 3),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ),
                   ),
               ],
             ),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isSubmitting
-                        ? null
-                        : () => _chooseTime(slot, isStart: true),
-                    icon: const Icon(Icons.schedule),
-                    label: Text(
-                      start == null ? 'Start time' : _formatTime(start),
+            for (final period in _periods.keys)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 78,
+                      child: Text(
+                        period,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                        ),
+                      ),
                     ),
-                  ),
+                    for (final day in _days)
+                      Expanded(
+                        child: Semantics(
+                          button: true,
+                          selected: _isTicked(day, period),
+                          label: '$day $period',
+                          child: GestureDetector(
+                            onTap: () => _toggle(day, period),
+                            child: Container(
+                              height: 36,
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              decoration: BoxDecoration(
+                                color: _isTicked(day, period)
+                                    ? blue
+                                    : blue.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: _isTicked(day, period)
+                                  ? const Icon(
+                                      Icons.check,
+                                      size: 16,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isSubmitting
-                        ? null
-                        : () => _chooseTime(slot, isStart: false),
-                    icon: const Icon(Icons.schedule),
-                    label: Text(end == null ? 'End time' : _formatTime(end)),
-                  ),
-                ),
-              ],
-            ),
+              ),
           ],
         ),
       ),
     );
   }
-}
 
-class _AvailabilitySlot {
-  String? day = 'Monday';
-  TimeOfDay? start;
-  TimeOfDay? end;
-
-  void dispose() {}
+  // The hours behind each period
+  Widget _buildLegend() {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 4,
+      children: [
+        for (final entry in _periods.entries)
+          Text(
+            '${entry.key}: ${_formatTime(entry.value.start)}–'
+            '${_formatTime(entry.value.end)}',
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+      ],
+    );
+  }
 }
 
 class _SubmissionFailure implements Exception {
