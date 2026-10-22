@@ -151,7 +151,9 @@ class _TutorRegistrationState extends State<TutorRegistration> {
           _profilePhotoUrl = url;
         });
       }
-    } on Exception {
+    } on CloudinaryUploadException catch (e) {
+      if (mounted) _showMessage('Profile photo upload failed. ${e.message}');
+    } catch (_) {
       if (mounted) {
         _showMessage('Profile photo upload failed. Please try again.');
       }
@@ -176,12 +178,17 @@ class _TutorRegistrationState extends State<TutorRegistration> {
     try {
       final url = await uploadToCloudinary(picked);
       if (!_isCloudinaryImageUrl(url)) {
-        throw const FormatException(
-          'The uploaded item is not a certificate image.',
+        throw const CloudinaryUploadException(
+          'Choose a JPG or PNG scan and retry.',
         );
       }
       if (mounted) setState(() => _certificateUrl = url);
-    } on Exception {
+    } on CloudinaryUploadException catch (e) {
+      if (mounted) {
+        setState(() => _certificateName = null);
+        _showMessage('Certificate upload failed. ${e.message}');
+      }
+    } catch (_) {
       if (mounted) {
         setState(() => _certificateName = null);
         _showMessage(
@@ -468,7 +475,7 @@ class _TutorRegistrationState extends State<TutorRegistration> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          for (final subject in _subjects)
+                          for (final subject in _shownSubjects)
                             FilterChip(
                               label: Text(subject.name),
                               selected: _selectedSubjectIds.contains(
@@ -481,6 +488,12 @@ class _TutorRegistrationState extends State<TutorRegistration> {
                                   _selectedSubjectIds.remove(subject.id);
                                 }
                               }),
+                            ),
+                          if (_hiddenSubjects.isNotEmpty)
+                            ActionChip(
+                              avatar: const Icon(Icons.add, size: 18),
+                              label: const Text('Add subject'),
+                              onPressed: _isSubmitting ? null : _addSubject,
                             ),
                         ],
                       ),
@@ -607,6 +620,97 @@ class _TutorRegistrationState extends State<TutorRegistration> {
     );
   }
 
+  // Only the first few subjects are shown as chips; the rest are added
+  // through the "+ Add subject" chip so the page stays short.
+  static const _subjectsShown = 5;
+
+  // The first five subjects plus any extra ones the tutor has added.
+  List<_TutorSubject> get _shownSubjects => [
+    for (var i = 0; i < _subjects.length; i++)
+      if (i < _subjectsShown || _selectedSubjectIds.contains(_subjects[i].id))
+        _subjects[i],
+  ];
+
+  // Subjects that can still be added with the + chip.
+  List<_TutorSubject> get _hiddenSubjects {
+    final shown = _shownSubjects.map((s) => s.id).toSet();
+    return [
+      for (final s in _subjects)
+        if (!shown.contains(s.id)) s,
+    ];
+  }
+
+  // Opens a searchable list of the other subjects; picking one selects it.
+  Future<void> _addSubject() async {
+    final options = _hiddenSubjects;
+    final picked = await showModalBottomSheet<_TutorSubject>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        var query = '';
+        return StatefulBuilder(
+          builder: (sheetContext, setSheet) {
+            final matches = [
+              for (final s in options)
+                if (s.name.toLowerCase().contains(query.toLowerCase())) s,
+            ];
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(sheetContext).size.height * 0.6,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Add a subject you teach',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Search subjects',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) => setSheet(() => query = value),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: matches.isEmpty
+                          ? const Center(child: Text('No subjects found.'))
+                          : ListView(
+                              children: [
+                                for (final s in matches)
+                                  ListTile(
+                                    title: Text(s.name),
+                                    trailing: const Icon(Icons.add),
+                                    onTap: () =>
+                                        Navigator.pop(sheetContext, s),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _selectedSubjectIds.add(picked.id));
+  }
+
   Widget _buildProfilePhoto() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -624,11 +728,7 @@ class _TutorRegistrationState extends State<TutorRegistration> {
               backgroundImage: _profilePhotoBytes == null
                   ? null
                   : MemoryImage(_profilePhotoBytes!),
-              child: _uploadingPhoto
-                  ? const CircularProgressIndicator()
-                  : _profilePhotoBytes == null
-                  ? Icon(Icons.camera_alt, color: Colors.blue.shade300)
-                  : null,
+              child: _uploadingPhoto ? const CircularProgressIndicator() : null,
             ),
             const SizedBox(width: 14),
             OutlinedButton.icon(

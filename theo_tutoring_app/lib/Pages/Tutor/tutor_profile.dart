@@ -160,7 +160,11 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       if (!mounted) return;
       setState(() => _uploading = false);
       _showMessage(
-          e is TutorApiException ? e.message : 'Could not upload the photo.',
+          switch (e) {
+            TutorApiException(:final message) => message,
+            CloudinaryUploadException(:final message) => message,
+            _ => 'Could not upload the photo.',
+          },
           error: true);
     }
   }
