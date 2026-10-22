@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'search_tutor.dart';
+import 'student_dashboard_api.dart';
+
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key, this.studentName});
 
@@ -16,36 +19,77 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   DateTime _selectedDate = DateTime.now();
   DateTime _displayedMonth = DateTime.now();
+  final StudentDashboardApi _dashboardApi = StudentDashboardApi();
+  Map<String, dynamic>? _dashboard;
+  bool _loadingDashboard = true;
+  String? _dashboardError;
 
-  final List<Map<String, dynamic>> _topTutors = [
-    {
-      'name': 'Joseph Mungula',
-      'subject': 'Accounting',
-      'rating': '4.9',
-      'reviews': '120',
-      'initials': 'JM',
-      'color': const Color(0xFFE4ECFF),
-      'tags': ['Exam Prep', 'Online'],
-    },
-    {
-      'name': 'Sarah Williams',
-      'subject': 'Mathematics',
-      'rating': '4.8',
-      'reviews': '98',
-      'initials': 'SW',
-      'color': const Color(0xFFFFE9DD),
-      'tags': ['Calculus', 'Online'],
-    },
-    {
-      'name': 'Thabo Nkosi',
-      'subject': 'Computer Science',
-      'rating': '4.9',
-      'reviews': '85',
-      'initials': 'TN',
-      'color': const Color(0xFFE2F5EC),
-      'tags': ['Programming', 'Online'],
-    },
-  ];
+  List<Map<String, dynamic>> get _upcomingSessions =>
+      (_dashboard?['upcomingSessions'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+  List<Map<String, dynamic>> get _topTutors =>
+      (_dashboard?['tutors'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
+  }
+
+  @override
+  void dispose() {
+    _dashboardApi.close();
+    super.dispose();
+  }
+
+  Future<void> _loadDashboard() async {
+    setState(() {
+      _loadingDashboard = true;
+      _dashboardError = null;
+    });
+    try {
+      final data = await _dashboardApi.fetch();
+      if (mounted) setState(() => _dashboard = data);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _dashboardError = error.toString());
+      }
+    } finally {
+      if (mounted) setState(() => _loadingDashboard = false);
+    }
+  }
+
+  Widget _buildDashboardError() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off_rounded, size: 42, color: _textMuted),
+          const SizedBox(height: 12),
+          Text(
+            _dashboardError ?? 'Dashboard could not be loaded.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(color: _textMuted),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: _loadDashboard, child: const Text('Retry')),
+        ],
+      ),
+    ),
+  );
+
+  bool _hasSessionOn(DateTime date) => _upcomingSessions.any((session) {
+    final sessionDate = DateTime.tryParse('${session['date']}');
+    return sessionDate != null &&
+        sessionDate.year == date.year &&
+        sessionDate.month == date.month &&
+        sessionDate.day == date.day;
+  });
 
   final List<String> _drawerItems = [
     'Home',
@@ -82,33 +126,41 @@ class _StudentDashboardState extends State<StudentDashboard> {
       ),
       body: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
+        child: _loadingDashboard && _dashboard == null
+            ? const Center(child: CircularProgressIndicator())
+            : _dashboardError != null && _dashboard == null
+            ? _buildDashboardError()
+            : RefreshIndicator(
+                onRefresh: _loadDashboard,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+                  child: Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 850),
-                      child: _buildWelcomeSection(),
+                      constraints: const BoxConstraints(maxWidth: 1100),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 850),
+                              child: _buildWelcomeSection(),
+                            ),
+                          ),
+                          const SizedBox(height: 26),
+                          const _OrganisationLogoCarousel(),
+                          const SizedBox(height: 26),
+                          _buildUpNextCard(),
+                          const SizedBox(height: 30),
+                          _buildCalendar(),
+                          const SizedBox(height: 32),
+                          _buildTopTutors(),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 26),
-                  const _OrganisationLogoCarousel(),
-                  const SizedBox(height: 26),
-                  _buildUpNextCard(),
-                  const SizedBox(height: 30),
-                  _buildCalendar(),
-                  const SizedBox(height: 32),
-                  _buildTopTutors(),
-                ],
+                ),
               ),
-            ),
-          ),
-        ),
       ),
       bottomNavigationBar: _buildBottomNav(),
     );
@@ -349,7 +401,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
   // ── WELCOME SECTION ─────────────────────────────────────
 
   Widget _buildWelcomeSection() {
-    final name = widget.studentName?.trim();
+    final name =
+        (_dashboard?['studentName'] as String?)?.trim() ??
+        widget.studentName?.trim();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -406,9 +460,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
             ),
             const SizedBox(height: 22),
             FilledButton.icon(
-              // TODO: Connect to the tutor-discovery screen when it exists.
-              onPressed: () =>
-                  _showMessage('Tutor discovery will be connected soon.'),
+              onPressed: _openTutorSearch,
               icon: const Icon(Icons.search_rounded),
               label: Text(
                 'Find a tutor',
@@ -435,6 +487,19 @@ class _StudentDashboardState extends State<StudentDashboard> {
   // ── UPCOMING SESSION ────────────────────────────────────
 
   Widget _buildUpNextCard() {
+    final session = _upcomingSessions.isEmpty ? null : _upcomingSessions.first;
+    final sessionDate = session == null
+        ? null
+        : DateTime.tryParse('${session['date']}');
+    final today = DateTime.now();
+    final dateLabel = sessionDate == null
+        ? ''
+        : sessionDate.year == today.year &&
+              sessionDate.month == today.month &&
+              sessionDate.day == today.day
+        ? 'TODAY'
+        : '${sessionDate.day} ${_monthName(sessionDate.month).toUpperCase()}';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(21),
@@ -453,186 +518,137 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 11,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Text(
+      child: session == null
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   'UP NEXT',
                   style: GoogleFonts.poppins(
-                    color: Colors.white,
+                    color: Colors.white70,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
                   ),
                 ),
-              ),
-              const Spacer(),
-              const Icon(
-                Icons.event_available_rounded,
-                color: Colors.white70,
-                size: 21,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'ACCOUNTING 101',
-            style: GoogleFonts.poppins(
-              color: Colors.white.withValues(alpha: 0.78),
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            'Exam Prep Session',
-            style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            'Get ready to review key concepts and build confidence.',
-            style: GoogleFonts.poppins(
-              color: Colors.white.withValues(alpha: 0.84),
-              fontSize: 11,
-              height: 1.7,
-            ),
-          ),
-          const SizedBox(height: 21),
-          Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  height: 43,
-                  width: 43,
-                  decoration: BoxDecoration(
+                const SizedBox(height: 14),
+                Text(
+                  'No confirmed upcoming sessions',
+                  style: GoogleFonts.poppins(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: const Icon(
-                    Icons.person_rounded,
-                    color: _primaryBlue,
-                    size: 26,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Joseph Mungula',
+                const SizedBox(height: 8),
+                Text(
+                  'Your next confirmed lesson will appear here.',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.tonalIcon(
+                  onPressed: _openTutorSearch,
+                  icon: const Icon(Icons.search_rounded),
+                  label: const Text('Find a tutor'),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'UP NEXT',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Icon(
+                      Icons.event_available_rounded,
+                      color: Colors.white70,
+                      size: 21,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  '${session['subject'] ?? 'Tutoring session'}'.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                    color: Colors.white70,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  'Confirmed session',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.person_rounded,
+                      color: Colors.white,
+                      size: 23,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${session['tutorName'] ?? 'Tutor'}',
                         style: GoogleFonts.poppins(
                           color: Colors.white,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.videocam_outlined,
-                            color: Colors.white70,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            'Online session',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white70,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'TODAY',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white70,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                      ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '14:00',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          dateLabel,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white70,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${session['startTime'] ?? ''}',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 17),
-          SizedBox(
-            width: double.infinity,
-            height: 47,
-            child: ElevatedButton(
-              onPressed: () {
-                _showMessage('Session details will be available soon.');
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: _primaryBlue,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(13),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'View Session Details',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward_rounded, size: 17),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
-  // ── CALENDAR ────────────────────────────────────────────
+  void _openTutorSearch() {
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const SearchTutorPage()));
+  }
 
   Widget _buildCalendar() {
     final firstDay = DateTime(_displayedMonth.year, _displayedMonth.month, 1);
@@ -830,6 +846,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       date.year == today.year &&
                       date.month == today.month &&
                       date.day == today.day;
+                  final hasSession = _hasSessionOn(date);
 
                   return Expanded(
                     child: GestureDetector(
@@ -848,17 +865,30 @@ class _StudentDashboardState extends State<StudentDashboard> {
                               ? Border.all(color: _primaryBlue, width: 1.3)
                               : null,
                         ),
-                        child: Center(
-                          child: Text(
-                            '$dayNumber',
-                            style: GoogleFonts.poppins(
-                              color: selected ? Colors.white : _textDark,
-                              fontSize: 11,
-                              fontWeight: selected || isToday
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$dayNumber',
+                              style: GoogleFonts.poppins(
+                                color: selected ? Colors.white : _textDark,
+                                fontSize: 11,
+                                fontWeight: selected || isToday
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
                             ),
-                          ),
+                            if (hasSession)
+                              Container(
+                                height: 3,
+                                width: 3,
+                                margin: const EdgeInsets.only(top: 2),
+                                decoration: BoxDecoration(
+                                  color: selected ? Colors.white : _primaryBlue,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
@@ -990,7 +1020,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Recommended Tutors',
+                    'Available Tutors',
                     style: GoogleFonts.poppins(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -1006,11 +1036,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
               ),
             ),
             TextButton(
-              onPressed: () {
-                _showMessage(
-                  'The full tutor directory will be available soon.',
-                );
-              },
+              onPressed: _openTutorSearch,
               child: Text(
                 'Explore',
                 style: GoogleFonts.poppins(
@@ -1023,15 +1049,22 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ],
         ),
         const SizedBox(height: 17),
-        ..._topTutors.map(_buildTutorCard),
+        if (_topTutors.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            child: Text(
+              'No approved tutors are available right now.',
+              style: GoogleFonts.poppins(fontSize: 12, color: _textMuted),
+            ),
+          )
+        else
+          ..._topTutors.map(_buildTutorCard),
         const SizedBox(height: 5),
         SizedBox(
           width: double.infinity,
           height: 47,
           child: OutlinedButton(
-            onPressed: () {
-              _showMessage('All tutors will be available soon.');
-            },
+            onPressed: _openTutorSearch,
             style: OutlinedButton.styleFrom(
               foregroundColor: _primaryBlue,
               side: const BorderSide(color: Color(0xFFD9E3FF)),
@@ -1060,7 +1093,18 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   Widget _buildTutorCard(Map<String, dynamic> tutor) {
-    final tags = tutor['tags'] as List<String>;
+    final name = '${tutor['name'] ?? 'Tutor'}';
+    final subjects = (tutor['subjects'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map((subject) => '${subject['subjectName'] ?? ''}')
+        .where((subject) => subject.isNotEmpty)
+        .take(2)
+        .toList();
+    final rating = tutor['averageRating'];
+    final ratingLabel = rating == null
+        ? '—'
+        : (rating as num).toStringAsFixed(1);
+    final reviewCount = tutor['reviewCount'] ?? 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 13),
@@ -1085,12 +1129,17 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 height: 57,
                 width: 57,
                 decoration: BoxDecoration(
-                  color: tutor['color'] as Color,
+                  color: const Color(0xFFE4ECFF),
                   borderRadius: BorderRadius.circular(17),
                 ),
                 child: Center(
                   child: Text(
-                    tutor['initials'] as String,
+                    name
+                        .split(RegExp(r'\s+'))
+                        .where((part) => part.isNotEmpty)
+                        .take(2)
+                        .map((part) => part[0].toUpperCase())
+                        .join(),
                     style: GoogleFonts.poppins(
                       color: _darkBlue,
                       fontSize: 16,
@@ -1105,7 +1154,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      tutor['name'] as String,
+                      name,
                       style: GoogleFonts.poppins(
                         color: _textDark,
                         fontSize: 13,
@@ -1114,7 +1163,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      tutor['subject'] as String,
+                      subjects.isEmpty
+                          ? 'Subject not listed'
+                          : subjects.join(' · '),
                       style: GoogleFonts.poppins(
                         color: _textMuted,
                         fontSize: 11,
@@ -1130,7 +1181,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          tutor['rating'] as String,
+                          ratingLabel,
                           style: GoogleFonts.poppins(
                             color: _textDark,
                             fontSize: 10,
@@ -1139,7 +1190,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '(${tutor['reviews']} reviews)',
+                          '($reviewCount reviews)',
                           style: GoogleFonts.poppins(
                             color: _textMuted,
                             fontSize: 9,
@@ -1160,7 +1211,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
           const SizedBox(height: 13),
           Row(
             children: [
-              ...tags.map(
+              ...subjects.map(
                 (tag) => Container(
                   margin: const EdgeInsets.only(right: 7),
                   padding: const EdgeInsets.symmetric(
@@ -1179,17 +1230,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                ),
-              ),
-              const Spacer(),
-              const Icon(Icons.circle, color: Color(0xFF43B581), size: 8),
-              const SizedBox(width: 5),
-              Text(
-                'Available',
-                style: GoogleFonts.poppins(
-                  color: const Color(0xFF339B6A),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
