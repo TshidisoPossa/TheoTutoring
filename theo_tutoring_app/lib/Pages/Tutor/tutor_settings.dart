@@ -1,4 +1,65 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+// ── Service ────────────────────────────────────────────────────────────────
+
+class TutorSettingsService {
+  static String get _base =>
+      kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
+
+  static Future<Map<String, dynamic>> fetchSettings() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Not authenticated');
+    final token = await user.getIdToken();
+    final res = await http.get(
+      Uri.parse('$_base/tutor/settings'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (res.statusCode != 200) {
+      throw Exception('Failed to load settings (${res.statusCode})');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<void> saveSettings({
+    required String email,
+    required String phone,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Not authenticated');
+    final token = await user.getIdToken();
+    final res = await http.put(
+      Uri.parse('$_base/tutor/settings'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'email': email, 'phone': phone}),
+    );
+    if (res.statusCode != 200) {
+      final body = jsonDecode(res.body);
+      throw Exception(body['error'] ?? 'Failed to save settings');
+    }
+  }
+
+  static Future<void> changePassword() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Not authenticated');
+    final token = await user.getIdToken();
+    final res = await http.post(
+      Uri.parse('$_base/tutor/settings/change-password'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (res.statusCode != 200) {
+      throw Exception('Failed to send password reset');
+    }
+  }
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────
 
 class TutorSettings extends StatefulWidget {
   const TutorSettings({super.key});
@@ -8,222 +69,369 @@ class TutorSettings extends StatefulWidget {
 }
 
 class _TutorSettingsState extends State<TutorSettings> {
-  bool sessionReminders = true;
-  bool newBookingAlerts = true;
-  bool directMessages = true;
-  bool newReviews = false;
-  bool darkMode = false;
-  int _selectedIndex = 3;
+  // palette — matches dashboard light theme
+  static const _bg    = Color(0xFFF2F4F8);
+  static const _blue  = Color(0xFF246BFE);
+  static const _text1 = Color(0xFF111827);
+  static const _text2 = Color(0xFF374151);
+  static const _text3 = Color(0xFF6B7280);
+  static const _border= Color(0xFFE5E7EB);
+  static const _red   = Color(0xFFDC2626);
+
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+
+  bool _loading = true;
+  bool _saving  = false;
+  bool _loggingOut = false;
+  String? _error;
+  String? _successMsg;
+
+  // notification toggles (UI only — backend returns hardcoded for now)
+  bool _sessionReminders = true;
+  bool _newBookingAlerts = true;
+  bool _directMessages   = true;
+  bool _newReviews       = false;
+
+  final int _selectedIndex = 3; // Profile tab
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: const BackButton(color: Colors.black),
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final data = await TutorSettingsService.fetchSettings();
+      _emailCtrl.text = data['email']?.toString() ?? '';
+      _phoneCtrl.text = data['phone']?.toString() ?? '';
+      final notif = data['notifications'] as Map<String, dynamic>? ?? {};
+      setState(() {
+        _sessionReminders = notif['sessionReminders'] as bool? ?? true;
+        _newBookingAlerts = notif['newBookingAlerts'] as bool? ?? true;
+        _directMessages   = notif['directMessages']   as bool? ?? true;
+        _newReviews       = notif['newReviews']       as bool? ?? false;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _save() async {
+    final email = _emailCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    if (email.isEmpty) {
+      _showSnack('Email cannot be empty', isError: true);
+      return;
+    }
+    if (phone.isEmpty) {
+      _showSnack('Phone number cannot be empty', isError: true);
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await TutorSettingsService.saveSettings(email: email, phone: phone);
+      _showSnack('Settings saved successfully');
+    } catch (e) {
+      _showSnack(e.toString(), isError: true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _sendPasswordReset() async {
+    try {
+      await TutorSettingsService.changePassword();
+      _showSnack('Password reset email sent');
+    } catch (e) {
+      _showSnack(e.toString(), isError: true);
+    }
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log Out'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: _text3)),
           ),
-        ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Icon(Icons.more_vert, color: Colors.black),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionCard([
-              const Text(
-                'Account Settings',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Email Address',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 4),
-              _inputBox('joseph.mungula@example.com'),
-              const SizedBox(height: 12),
-              const Text(
-                'Phone Number',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 4),
-              _inputBox('+27 82 123 4567'),
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text('Change Password', style: TextStyle(fontSize: 14)),
-                  Icon(Icons.chevron_right, color: Colors.grey),
-                ],
-              ),
-            ]),
-            const SizedBox(height: 16),
-            _sectionCard([
-              const Text(
-                'Notification Preferences',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-              ),
-              const SizedBox(height: 12),
-              _toggleRow(
-                'Session Reminders',
-                'Before upcoming tutoring session starts',
-                sessionReminders,
-                (val) => setState(() => sessionReminders = val),
-              ),
-              const Divider(height: 24),
-              _toggleRow(
-                'New Booking Alerts',
-                'When a student sends a session request',
-                newBookingAlerts,
-                (val) => setState(() => newBookingAlerts = val),
-              ),
-              const Divider(height: 24),
-              _toggleRow(
-                'Direct Messages',
-                'When you receive new messages from students',
-                directMessages,
-                (val) => setState(() => directMessages = val),
-              ),
-              const Divider(height: 24),
-              _toggleRow(
-                'New Reviews',
-                'Get notified when a student gives feedback',
-                newReviews,
-                (val) => setState(() => newReviews = val),
-              ),
-            ]),
-            const SizedBox(height: 16),
-            _sectionCard([
-              const Text(
-                'Payment Settings',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text(
-                    'Payout Bank Account',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                  Text(
-                    'FNB (*5678)',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-              const Divider(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text('View Payout History', style: TextStyle(fontSize: 14)),
-                  Icon(Icons.chevron_right, color: Colors.grey),
-                ],
-              ),
-            ]),
-            const SizedBox(height: 16),
-            _sectionCard([
-              const Text(
-                'App Preferences',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text('App Language', style: TextStyle(fontSize: 14)),
-                  Row(
-                    children: [
-                      Text(
-                        'English',
-                        style: TextStyle(fontSize: 14, color: Colors.grey),
-                      ),
-                      Icon(Icons.chevron_right, color: Colors.grey),
-                    ],
-                  ),
-                ],
-              ),
-              const Divider(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Dark Mode', style: TextStyle(fontSize: 14)),
-                  Switch(
-                    value: darkMode,
-                    onChanged: (val) => setState(() => darkMode = val),
-                    activeColor: const Color(0xFF1A73E8),
-                  ),
-                ],
-              ),
-            ]),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () {},
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Log Out',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF1A73E8),
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.book_outlined),
-            label: 'Lessons',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
-            label: 'Chat',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Log Out',
+                style: TextStyle(color: _red, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
+    if (confirm != true) return;
+    setState(() => _loggingOut = true);
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        Navigator.of(context)
+            .pushNamedAndRemoveUntil('/login', (route) => false);
+      }
+    } catch (e) {
+      _showSnack('Failed to log out: $e', isError: true);
+      if (mounted) setState(() => _loggingOut = false);
+    }
   }
+
+  void _showSnack(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: isError ? _red : const Color(0xFF16A34A),
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  void _onNavTap(int index) {
+    if (index == _selectedIndex) return;
+    switch (index) {
+      case 0:
+        Navigator.pushReplacementNamed(context, '/tutor/dashboard');
+        break;
+      case 1:
+        Navigator.pushReplacementNamed(context, '/tutor/schedule');
+        break;
+      case 2:
+        Navigator.pushReplacementNamed(context, '/tutor/chats');
+        break;
+      case 3:
+        break; // already here
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _bg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: const BackButton(color: _text1),
+        title: const Text(
+          'Settings',
+          style: TextStyle(
+              color: _text1, fontWeight: FontWeight.w700, fontSize: 18),
+        ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: Icon(Icons.more_vert, color: _text1),
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: _blue))
+          : _error != null
+              ? _buildError()
+              : _buildBody(),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onNavTap,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: _blue,
+        unselectedItemColor: _text3,
+        backgroundColor: Colors.white,
+        elevation: 8,
+        items: const [
+          BottomNavigationBarItem(
+              icon: Icon(Icons.grid_view_rounded), label: 'Dashboard'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.inbox_rounded), label: 'Schedule'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.chat_bubble_outline_rounded), label: 'Chats'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.person_rounded), label: 'Profile'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off_rounded, color: _text3, size: 40),
+            const SizedBox(height: 12),
+            Text(_error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _text3, fontSize: 13)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _load,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: _blue, foregroundColor: Colors.white),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Account Settings ──────────────────────────────────────────
+          _sectionCard([
+            _sectionTitle('Account Settings'),
+            const SizedBox(height: 12),
+            _fieldLabel('Email Address'),
+            const SizedBox(height: 4),
+            _inputField(_emailCtrl, 'Email address',
+                keyboardType: TextInputType.emailAddress),
+            const SizedBox(height: 12),
+            _fieldLabel('Phone Number'),
+            const SizedBox(height: 4),
+            _inputField(_phoneCtrl, 'Phone number',
+                keyboardType: TextInputType.phone),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                child: _saving
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : const Text('Save Changes',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 14)),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Divider(height: 24),
+            _chevronRow('Change Password', onTap: _sendPasswordReset),
+          ]),
+
+          const SizedBox(height: 16),
+
+          // ── Notification Preferences ──────────────────────────────────
+          _sectionCard([
+            _sectionTitle('Notification Preferences'),
+            const SizedBox(height: 12),
+            _toggleRow(
+              'Session Reminders',
+              'Before upcoming tutoring session starts',
+              _sessionReminders,
+              (val) => setState(() => _sessionReminders = val),
+            ),
+            const Divider(height: 24),
+            _toggleRow(
+              'New Booking Alerts',
+              'When a student sends a session request',
+              _newBookingAlerts,
+              (val) => setState(() => _newBookingAlerts = val),
+            ),
+            const Divider(height: 24),
+            _toggleRow(
+              'Direct Messages',
+              'When you receive new messages from students',
+              _directMessages,
+              (val) => setState(() => _directMessages = val),
+            ),
+            const Divider(height: 24),
+            _toggleRow(
+              'New Reviews',
+              'Get notified when a student gives feedback',
+              _newReviews,
+              (val) => setState(() => _newReviews = val),
+            ),
+          ]),
+
+          const SizedBox(height: 16),
+
+          // ── Payment Settings ──────────────────────────────────────────
+          _sectionCard([
+            _sectionTitle('Payment Settings'),
+            const SizedBox(height: 12),
+            _chevronRow('Payout Bank Account',
+                trailing: const Text('FNB (*5678)',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: _text2))),
+            const Divider(height: 24),
+            _chevronRow('View Payout History'),
+          ]),
+
+          const SizedBox(height: 16),
+
+          // ── App Preferences ───────────────────────────────────────────
+          _sectionCard([
+            _sectionTitle('App Preferences'),
+            const SizedBox(height: 12),
+            _chevronRow('App Language',
+                trailing: const Text('English',
+                    style: TextStyle(fontSize: 14, color: _text3))),
+          ]),
+
+          const SizedBox(height: 24),
+
+          // ── Log Out ───────────────────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _loggingOut ? null : _logout,
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: _red),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: _loggingOut
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                          color: _red, strokeWidth: 2))
+                  : const Text('Log Out',
+                      style: TextStyle(
+                          color: _red,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15)),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   Widget _sectionCard(List<Widget> children) {
     return Container(
@@ -232,39 +440,76 @@ class _TutorSettingsState extends State<TutorSettings> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 2)),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
+          crossAxisAlignment: CrossAxisAlignment.start, children: children),
+    );
+  }
+
+  Widget _sectionTitle(String title) => Text(title,
+      style: const TextStyle(
+          fontWeight: FontWeight.w700, fontSize: 15, color: _text1));
+
+  Widget _fieldLabel(String label) => Text(label,
+      style: const TextStyle(fontSize: 12, color: _text3));
+
+  Widget _inputField(TextEditingController ctrl, String hint,
+      {TextInputType? keyboardType}) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: keyboardType,
+      style: const TextStyle(fontSize: 14, color: _text1),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: _text3),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: _border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: _border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: _blue, width: 1.5),
+        ),
       ),
     );
   }
 
-  Widget _inputBox(String text) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(8),
+  Widget _chevronRow(String label,
+      {Widget? trailing, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 14, color: _text2)),
+          Row(
+            children: [
+              if (trailing != null) trailing,
+              const Icon(Icons.chevron_right, color: _text3),
+            ],
+          ),
+        ],
       ),
-      child: Text(text, style: const TextStyle(fontSize: 14)),
     );
   }
 
   Widget _toggleRow(
-    String title,
-    String subtitle,
-    bool value,
-    Function(bool) onChanged,
-  ) {
+      String title, String subtitle, bool value, Function(bool) onChanged) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -272,25 +517,21 @@ class _TutorSettingsState extends State<TutorSettings> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: _text1)),
               const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
+              Text(subtitle,
+                  style: const TextStyle(fontSize: 12, color: _text3)),
             ],
           ),
         ),
         Switch(
           value: value,
           onChanged: onChanged,
-          activeColor: const Color(0xFF1A73E8),
+          activeColor: _blue,
         ),
       ],
     );
