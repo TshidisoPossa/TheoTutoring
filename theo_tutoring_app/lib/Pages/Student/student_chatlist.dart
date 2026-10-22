@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 
+import 'Services/student_chat_models.dart';
+import 'Services/student_chat_service.dart';
 
 class AppColors {
-  static const ink = Color(0xFF1B2433);         
-  static const muted = Color(0xFF6B7585);      
-  static const hint = Color(0xFF9AA3B2);       
-  static const border = Color(0xFFDDE3EC);     
-  static const brand = Color(0xFF2A66B0);      
-  static const tagBg = Color(0xFFE8F0FB);      
-  static const online = Color(0xFF16B97A);     
-  static const inactive = Color(0xFF5B6B84);   
+  static const ink = Color(0xFF1B2433);
+  static const muted = Color(0xFF6B7585);
+  static const hint = Color(0xFF9AA3B2);
+  static const border = Color(0xFFDDE3EC);
+  static const brand = Color(0xFF2A66B0);
+  static const tagBg = Color(0xFFE8F0FB);
+  static const inactive = Color(0xFF5B6B84);
 }
 
 class TutorApp extends StatelessWidget {
@@ -24,54 +25,11 @@ class TutorApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: Colors.white,
         colorSchemeSeed: AppColors.brand,
-        fontFamily: 'Inter', // add google_fonts / asset if desired; falls back to system font
       ),
       home: const ChatsScreen(),
     );
   }
 }
-
-
-class ChatPreview {
-  final String name;
-  final String subject;
-  final String message;
-  final String time;
-  final String avatarUrl;
-  final bool online;
-  final int unread;
-
-  const ChatPreview({
-    required this.name,
-    required this.subject,
-    required this.message,
-    required this.time,
-    required this.avatarUrl,
-    this.online = false,
-    this.unread = 0,
-  });
-}
-
-const _chats = <ChatPreview>[
-  ChatPreview(
-    name: 'Theophilus Nkhabu',
-    subject: 'Mathematics',
-    message: 'Absolutely, those are key topics. I will...',
-    time: '10:10 AM',
-    avatarUrl: 'https://i.pravatar.cc/200?img=12',
-    online: true,
-    unread: 2,
-  ),
-  ChatPreview(
-    name: 'Dr. Sarah Smith',
-    subject: 'Statistics',
-    message: 'See you on Monday for our session, remember...',
-    time: 'Yesterday',
-    avatarUrl: 'https://i.pravatar.cc/200?img=47',
-  ),
-
-];
-
 
 class ChatsScreen extends StatefulWidget {
   const ChatsScreen({super.key});
@@ -82,8 +40,19 @@ class ChatsScreen extends StatefulWidget {
 
 class _ChatsScreenState extends State<ChatsScreen> {
   final _searchController = TextEditingController();
+  final _chatService = StudentChatService();
+  List<StudentChatContact> _chats = [];
   String _query = '';
-  int _tabIndex = 2; 
+  int _tabIndex = 2;
+  bool _isLoading = true;
+  bool _hasLoadError = false;
+  Object? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChats();
+  }
 
   @override
   void dispose() {
@@ -91,25 +60,48 @@ class _ChatsScreenState extends State<ChatsScreen> {
     super.dispose();
   }
 
-  List<ChatPreview> get _filtered {
+  Future<void> _loadChats() async {
+    setState(() {
+      _isLoading = true;
+      _hasLoadError = false;
+      _loadError = null;
+    });
+
+    try {
+      final chats = await _chatService.getConversations();
+      if (!mounted) return;
+      setState(() {
+        _chats = chats;
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _hasLoadError = true;
+        _loadError = error;
+      });
+    }
+  }
+
+  List<StudentChatContact> get _filtered {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return _chats;
     return _chats
-        .where((c) =>
-            c.name.toLowerCase().contains(q) ||
-            c.subject.toLowerCase().contains(q))
+        .where(
+          (c) =>
+              c.name.toLowerCase().contains(q) ||
+              c.lastMessage.toLowerCase().contains(q),
+        )
         .toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final chats = _filtered;
-
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: Row(
@@ -126,8 +118,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   ),
                   IconButton(
                     onPressed: () {},
-                    icon: const Icon(Icons.search,
-                        size: 28, color: AppColors.ink),
+                    icon: const Icon(
+                      Icons.search,
+                      size: 28,
+                      color: AppColors.ink,
+                    ),
                   ),
                 ],
               ),
@@ -141,11 +136,16 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 onChanged: (v) => setState(() => _query = v),
                 style: const TextStyle(fontSize: 16, color: AppColors.ink),
                 decoration: InputDecoration(
-                  hintText: 'Search tutors or subjects...',
-                  hintStyle:
-                      const TextStyle(color: AppColors.hint, fontSize: 16),
-                  prefixIcon: const Icon(Icons.search,
-                      color: AppColors.inactive, size: 24),
+                  hintText: 'Search conversations...',
+                  hintStyle: const TextStyle(
+                    color: AppColors.hint,
+                    fontSize: 16,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    color: AppColors.inactive,
+                    size: 24,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -153,29 +153,16 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide:
-                        const BorderSide(color: AppColors.brand, width: 1.5),
+                    borderSide: const BorderSide(
+                      color: AppColors.brand,
+                      width: 1.5,
+                    ),
                   ),
                 ),
               ),
             ),
 
-            
-            Expanded(
-              child: chats.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No tutors match your search',
-                        style: TextStyle(color: AppColors.muted),
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      itemCount: chats.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (_, i) => ChatTile(chat: chats[i]),
-                    ),
-            ),
+            Expanded(child: _buildChatList()),
           ],
         ),
       ),
@@ -185,11 +172,54 @@ class _ChatsScreenState extends State<ChatsScreen> {
       ),
     );
   }
+
+  Widget _buildChatList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_hasLoadError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Could not load conversations. Please try again.',
+              style: TextStyle(color: AppColors.muted),
+            ),
+            if (_loadError != null)
+              Text(
+                '$_loadError',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.muted),
+              ),
+            TextButton(onPressed: _loadChats, child: const Text('Try again')),
+          ],
+        ),
+      );
+    }
+
+    final chats = _filtered;
+    if (chats.isEmpty) {
+      return Center(
+        child: Text(
+          _chats.isEmpty
+              ? 'No conversations yet'
+              : 'No conversations match your search',
+          style: const TextStyle(color: AppColors.muted),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      itemCount: chats.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (_, i) => ChatTile(chat: chats[i]),
+    );
+  }
 }
 
-
 class ChatTile extends StatelessWidget {
-  final ChatPreview chat;
+  final StudentChatContact chat;
   const ChatTile({super.key, required this.chat});
 
   @override
@@ -208,7 +238,7 @@ class ChatTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Avatar(url: chat.avatarUrl, online: chat.online),
+              _Avatar(url: chat.profilePhotoUrl, initials: chat.initials),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -232,27 +262,29 @@ class ChatTile extends StatelessWidget {
                         Text(
                           chat.time,
                           style: const TextStyle(
-                              fontSize: 14, color: AppColors.muted),
+                            fontSize: 14,
+                            color: AppColors.muted,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    _SubjectChip(label: chat.subject),
                     const SizedBox(height: 6),
                     Row(
                       children: [
                         Expanded(
                           child: Text(
-                            chat.message,
+                            chat.lastMessage,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                                fontSize: 16, color: AppColors.muted),
+                              fontSize: 16,
+                              color: AppColors.muted,
+                            ),
                           ),
                         ),
-                        if (chat.unread > 0) ...[
+                        if (chat.unreadCount > 0) ...[
                           const SizedBox(width: 8),
-                          _UnreadBadge(count: chat.unread),
+                          _UnreadBadge(count: chat.unreadCount),
                         ],
                       ],
                     ),
@@ -268,68 +300,38 @@ class ChatTile extends StatelessWidget {
 }
 
 class _Avatar extends StatelessWidget {
-  final String url;
-  final bool online;
-  const _Avatar({required this.url, required this.online});
+  final String? url;
+  final String initials;
+  const _Avatar({required this.url, required this.initials});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 48,
       height: 48,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          ClipOval(
-            child: Image.network(
-              url,
-              width: 48,
-              height: 48,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: AppColors.tagBg,
-                child: const Icon(Icons.person, color: AppColors.brand),
+      child: ClipOval(
+        child: url == null || url!.isEmpty
+            ? _fallbackAvatar()
+            : Image.network(
+                url!,
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _fallbackAvatar(),
               ),
-            ),
-          ),
-          if (online)
-            Positioned(
-              left: 38 - 12 + 2,
-              bottom: 2,
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: AppColors.online,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.5),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }
-}
 
-class _SubjectChip extends StatelessWidget {
-  final String label;
-  const _SubjectChip({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _fallbackAvatar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.tagBg,
-        borderRadius: BorderRadius.circular(6),
-      ),
+      color: AppColors.tagBg,
+      alignment: Alignment.center,
       child: Text(
-        label,
+        initials,
         style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
           color: AppColors.brand,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -361,7 +363,6 @@ class _UnreadBadge extends StatelessWidget {
     );
   }
 }
-
 
 class _BottomNav extends StatelessWidget {
   final int index;
