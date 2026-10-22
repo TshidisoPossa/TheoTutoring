@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/tutor.dart';
-import '../../services/tutor_search_api.dart';
 import '../login_page.dart';
 import 'search_tutor.dart';
-import 'student_api.dart';
+import 'student_dashboard_api.dart';
 import 'student_tutor_profile.dart';
 
 class StudentDashboard extends StatefulWidget {
@@ -25,17 +24,12 @@ class _StudentDashboardState extends State<StudentDashboard> {
   DateTime _selectedDate = DateTime.now();
   DateTime _displayedMonth = DateTime.now();
 
-  // The signed-in student's name; login passes it, otherwise it is loaded
-  // from GET /StudentlandingPage/myprofile.
-  String? _studentName;
-
-  // Top Tutors for You: the best-rated approved tutors from GET /tutors.
-  final _tutorSearchApi = TutorSearchApi();
-  List<Tutor> _topTutors = [];
-  bool _loadingTutors = true;
-  String? _tutorsError;
-
-  static const _topTutorCount = 3;
+  // Everything on the page comes from GET /students/dashboard: the student's
+  // name, their upcoming Confirmed sessions and approved tutors.
+  final StudentDashboardApi _dashboardApi = StudentDashboardApi();
+  Map<String, dynamic>? _dashboard;
+  bool _loadingDashboard = true;
+  String? _dashboardError;
 
   // Background colours for tutor initials, picked by tutor ID.
   static const _avatarColors = [
@@ -44,65 +38,94 @@ class _StudentDashboardState extends State<StudentDashboard> {
     Color(0xFFE2F5EC),
   ];
 
+  // The name from the dashboard, or the one login passed in while it loads.
+  String? get _studentName {
+    final fromServer = (_dashboard?['studentName'] as String?)?.trim();
+    if (fromServer != null && fromServer.isNotEmpty) return fromServer;
+    return widget.studentName?.trim();
+  }
+
+  List<Map<String, dynamic>> get _upcomingSessions =>
+      (_dashboard?['upcomingSessions'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
+  // The dashboard's tutors have the same shape as GET /tutors, so they are
+  // read with the shared Tutor model; best rated first (most reviews when
+  // ratings are equal).
+  List<Tutor> get _topTutors {
+    final tutors = <Tutor>[];
+    for (final item in _dashboard?['tutors'] as List? ?? const []) {
+      if (item is! Map<String, dynamic>) continue;
+      try {
+        tutors.add(Tutor.fromJson(item));
+      } on FormatException {
+        // skip a tutor the app cannot read rather than failing the page
+      }
+    }
+    tutors.sort((a, b) {
+      final byRating = (b.averageRating ?? 0).compareTo(a.averageRating ?? 0);
+      return byRating != 0 ? byRating : b.reviewCount.compareTo(a.reviewCount);
+    });
+    return tutors;
+  }
+
   @override
   void initState() {
     super.initState();
-    _studentName = widget.studentName?.trim();
-    if (_studentName == null || _studentName!.isEmpty) _loadStudentName();
-    _loadTopTutors();
+    _loadDashboard();
   }
 
   @override
   void dispose() {
-    _tutorSearchApi.close();
+    _dashboardApi.close();
     super.dispose();
   }
 
-  Future<void> _loadStudentName() async {
+  Future<void> _loadDashboard() async {
+    setState(() {
+      _loadingDashboard = true;
+      _dashboardError = null;
+    });
     try {
-      final profile = await fetchStudentProfile();
-      final name = profile['name']?.toString().trim();
-      if (mounted && name != null && name.isNotEmpty) {
-        setState(() => _studentName = name);
+      final data = await _dashboardApi.fetch();
+      if (mounted) setState(() => _dashboard = data);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _dashboardError = error.toString());
       }
-    } on StudentApiException {
-      // The page still works without the name ("Welcome back!").
+    } finally {
+      if (mounted) setState(() => _loadingDashboard = false);
     }
   }
 
-  Future<void> _loadTopTutors() async {
-    setState(() {
-      _loadingTutors = true;
-      _tutorsError = null;
-    });
-    try {
-      // The search returns tutors by name, so take a page and keep the
-      // best rated (most reviews first when ratings are equal).
-      final page = await _tutorSearchApi.search(limit: 20);
-      final tutors = [...page.tutors]
-        ..sort((a, b) {
-          final byRating = (b.averageRating ?? 0).compareTo(
-            a.averageRating ?? 0,
-          );
-          return byRating != 0
-              ? byRating
-              : b.reviewCount.compareTo(a.reviewCount);
-        });
-      if (!mounted) return;
-      setState(() {
-        _topTutors = tutors.take(_topTutorCount).toList();
-        _loadingTutors = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _tutorsError = e is TutorSearchException
-            ? e.message
-            : 'Tutors are temporarily unavailable. Please try again.';
-        _loadingTutors = false;
-      });
-    }
-  }
+  Widget _buildDashboardError() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off_rounded, size: 42, color: _textMuted),
+          const SizedBox(height: 12),
+          Text(
+            _dashboardError ?? 'Dashboard could not be loaded.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(color: _textMuted),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: _loadDashboard, child: const Text('Retry')),
+        ],
+      ),
+    ),
+  );
+
+  bool _hasSessionOn(DateTime date) => _upcomingSessions.any((session) {
+    final sessionDate = DateTime.tryParse('${session['date']}');
+    return sessionDate != null &&
+        sessionDate.year == date.year &&
+        sessionDate.month == date.month &&
+        sessionDate.day == date.day;
+  });
 
   void _openTutorSearch() {
     Navigator.push(
@@ -165,33 +188,41 @@ class _StudentDashboardState extends State<StudentDashboard> {
       ),
       body: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
+        child: _loadingDashboard && _dashboard == null
+            ? const Center(child: CircularProgressIndicator())
+            : _dashboardError != null && _dashboard == null
+            ? _buildDashboardError()
+            : RefreshIndicator(
+                onRefresh: _loadDashboard,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+                  child: Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 850),
-                      child: _buildWelcomeSection(),
+                      constraints: const BoxConstraints(maxWidth: 1100),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 850),
+                              child: _buildWelcomeSection(),
+                            ),
+                          ),
+                          const SizedBox(height: 26),
+                          const _OrganisationLogoCarousel(),
+                          const SizedBox(height: 26),
+                          _buildUpNextCard(),
+                          const SizedBox(height: 30),
+                          _buildCalendar(),
+                          const SizedBox(height: 32),
+                          _buildTopTutors(),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 26),
-                  const _OrganisationLogoCarousel(),
-                  const SizedBox(height: 26),
-                  _buildUpNextCard(),
-                  const SizedBox(height: 30),
-                  _buildCalendar(),
-                  const SizedBox(height: 32),
-                  _buildTopTutors(),
-                ],
+                ),
               ),
-            ),
-          ),
-        ),
       ),
       bottomNavigationBar: _buildBottomNav(),
     );
@@ -528,6 +559,19 @@ class _StudentDashboardState extends State<StudentDashboard> {
   // ── UPCOMING SESSION ────────────────────────────────────
 
   Widget _buildUpNextCard() {
+    final session = _upcomingSessions.isEmpty ? null : _upcomingSessions.first;
+    final sessionDate = session == null
+        ? null
+        : DateTime.tryParse('${session['date']}');
+    final today = DateTime.now();
+    final dateLabel = sessionDate == null
+        ? ''
+        : sessionDate.year == today.year &&
+              sessionDate.month == today.month &&
+              sessionDate.day == today.day
+        ? 'TODAY'
+        : '${sessionDate.day} ${_monthName(sessionDate.month).toUpperCase()}';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(21),
@@ -546,91 +590,130 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 11,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Text(
+      child: session == null
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   'UP NEXT',
                   style: GoogleFonts.poppins(
-                    color: Colors.white,
+                    color: Colors.white70,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
                   ),
                 ),
-              ),
-              const Spacer(),
-              const Icon(
-                Icons.event_available_rounded,
-                color: Colors.white70,
-                size: 21,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // No route lists a student's bookings yet, so there is no real
-          // next session to show. Booked sessions will appear here once
-          // that route exists.
-          Text(
-            'No upcoming sessions',
-            style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            'When you book and pay for a session, it will show up here.',
-            style: GoogleFonts.poppins(
-              color: Colors.white.withValues(alpha: 0.84),
-              fontSize: 11,
-              height: 1.7,
-            ),
-          ),
-          const SizedBox(height: 17),
-          SizedBox(
-            width: double.infinity,
-            height: 47,
-            child: ElevatedButton(
-              onPressed: _openTutorSearch,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: _primaryBlue,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(13),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Book a Session',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
+                const SizedBox(height: 14),
+                Text(
+                  'No confirmed upcoming sessions',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward_rounded, size: 17),
-                ],
-              ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Your next confirmed lesson will appear here.',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.tonalIcon(
+                  onPressed: _openTutorSearch,
+                  icon: const Icon(Icons.search_rounded),
+                  label: const Text('Find a tutor'),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'UP NEXT',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Icon(
+                      Icons.event_available_rounded,
+                      color: Colors.white70,
+                      size: 21,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  '${session['subject'] ?? 'Tutoring session'}'.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                    color: Colors.white70,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  'Confirmed session',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.person_rounded,
+                      color: Colors.white,
+                      size: 23,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${session['tutorName'] ?? 'Tutor'}',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          dateLabel,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white70,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${session['startTime'] ?? ''}',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -832,6 +915,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       date.year == today.year &&
                       date.month == today.month &&
                       date.day == today.day;
+                  final hasSession = _hasSessionOn(date);
 
                   return Expanded(
                     child: GestureDetector(
@@ -850,17 +934,30 @@ class _StudentDashboardState extends State<StudentDashboard> {
                               ? Border.all(color: _primaryBlue, width: 1.3)
                               : null,
                         ),
-                        child: Center(
-                          child: Text(
-                            '$dayNumber',
-                            style: GoogleFonts.poppins(
-                              color: selected ? Colors.white : _textDark,
-                              fontSize: 11,
-                              fontWeight: selected || isToday
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$dayNumber',
+                              style: GoogleFonts.poppins(
+                                color: selected ? Colors.white : _textDark,
+                                fontSize: 11,
+                                fontWeight: selected || isToday
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
                             ),
-                          ),
+                            if (hasSession)
+                              Container(
+                                height: 3,
+                                width: 3,
+                                margin: const EdgeInsets.only(top: 2),
+                                decoration: BoxDecoration(
+                                  color: selected ? Colors.white : _primaryBlue,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
@@ -992,7 +1089,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Recommended Tutors',
+                    'Available Tutors',
                     style: GoogleFonts.poppins(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -1021,29 +1118,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ],
         ),
         const SizedBox(height: 17),
-        if (_loadingTutors)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: CircularProgressIndicator(color: _primaryBlue),
-            ),
-          )
-        else if (_tutorsError != null)
-          _buildTutorsMessage(
-            _tutorsError!,
-            action: TextButton(
-              onPressed: _loadTopTutors,
-              child: Text(
-                'Retry',
-                style: GoogleFonts.poppins(
-                  color: _primaryBlue,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          )
-        else if (_topTutors.isEmpty)
-          _buildTutorsMessage('No approved tutors are available yet.')
+        // loading and errors are handled for the whole page
+        if (_topTutors.isEmpty)
+          _buildTutorsMessage('No approved tutors are available right now.')
         else
           ..._topTutors.map(_buildTutorCard),
         const SizedBox(height: 5),
