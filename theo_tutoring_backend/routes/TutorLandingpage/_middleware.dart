@@ -7,12 +7,12 @@ import '../../lib/tutor_account_status.dart';
 import '../../lib/tutor_presence.dart'; // markTutorActive
 import '../../lib/tutorlanding_session.dart'; // TutorSession
 
-// The dashboard is the only tutor page a Pending tutor may open, so they
-// can see their application status (all other routes need an Active account).
+// The dashboard is the only tutor page a Pending or Rejected tutor may open,
+// so they can see their application status (all other routes need Active).
 // Its bell icon opens the notifications, so those are allowed too.
 // A Pending tutor may also complete their profile while they wait
 // (project documentation 4.3 / business rule 5).
-// The app's presence ping runs on the dashboard, so it is allowed as well.
+
 const _dashboardPath = '/TutorLandingpage/LandingPageScreen';
 const _notificationsPath = '/TutorLandingpage/notifications';
 const _profilePath = '/TutorLandingpage/Profile';
@@ -80,10 +80,10 @@ Handler middleware(Handler handler) {
     }
     final uid = user.uid;
     final tutor = await _findTutor(uid); // map UID to TutorID + status
-    if (tutor == null ||
-        !(canAccessTutorLandingPage(tutor.status) ||
-            (_pendingTutorMayOpen(context.request.uri) &&
-                canViewTutorDashboard(tutor.status)))) {
+    final uri = context.request.uri;
+    final canOpenTutorRoute =
+        tutor != null && canAccessTutorRoute(tutor.status, uri);
+    if (tutor == null || !canOpenTutorRoute) {
       return Response.json(
         statusCode: 403,
         body: {'error': 'An active tutor account is required.'},

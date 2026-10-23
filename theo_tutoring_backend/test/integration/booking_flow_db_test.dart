@@ -576,7 +576,9 @@ void main() {
           final b = await asTutor(tutorB);
           expect(b['activeStudents'], 0);
         },
-        skip: env['DB_NAME'] == _testDatabase
+        skip: _password == null
+            ? 'Set THEO_TEST_DB_PASSWORD to run database-backed tests.'
+            : env['DB_NAME'] == _testDatabase
             ? false
             : 'The dashboard route uses the .env database; run from a '
                   'working copy whose .env targets $_testDatabase.',

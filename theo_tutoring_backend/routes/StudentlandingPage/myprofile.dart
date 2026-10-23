@@ -38,6 +38,13 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     final row = result.rows.first;
+    final accountStatus = row.colByName('AccountStatus');
+    if (accountStatus == 'Suspended' || accountStatus == 'Deactivated') {
+      return Response.json(
+        statusCode: 403,
+        body: {'error': 'This account is not active.'},
+      );
+    }
     return Response.json(
       body: {
         'userId': int.parse(row.colByName('UserId')!),

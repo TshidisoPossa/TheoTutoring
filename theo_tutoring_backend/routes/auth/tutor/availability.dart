@@ -1,9 +1,11 @@
 import 'package:dart_frog/dart_frog.dart';
+import 'package:mysql_client/mysql_client.dart';
 
 import '../../../lib/database.dart';
 import '../../../lib/firebase_auth.dart';
 import '../../../lib/request_utils.dart';
 import '../../../lib/tutor_account_status.dart';
+import '../../../lib/tutor_application_status.dart';
 
 // POST /auth/tutor/availability  (Tutor registration, Step 3 of 3)
 //
@@ -33,7 +35,16 @@ typedef TutorAvailabilitySlot = ({
   int endMinutes,
 });
 
-Future<Response> onRequest(RequestContext context) async {
+Future<Response> onRequest(RequestContext context) =>
+    handleTutorAvailability(context);
+
+/// Optional seams let the focused integration test use only its isolated DB
+/// and a verified test identity, while production keeps the normal defaults.
+Future<Response> handleTutorAvailability(
+  RequestContext context, {
+  Future<FirebaseUser> Function(String?) tokenVerifier = verifyFirebaseToken,
+  Future<MySQLConnection> Function() connectionFactory = getConnection,
+}) async {
   if (context.request.method != HttpMethod.post) {
     return jsonError(405, 'Method not allowed');
   }
@@ -42,7 +53,7 @@ Future<Response> onRequest(RequestContext context) async {
     // ── Verify the Firebase ID token ──
     final FirebaseUser firebaseUser;
     try {
-      firebaseUser = await verifyFirebaseToken(
+      firebaseUser = await tokenVerifier(
         context.request.headers['Authorization'],
       );
     } on AuthTokenException catch (e) {
@@ -53,7 +64,7 @@ Future<Response> onRequest(RequestContext context) async {
     final body = await readJsonObject(context);
     final slots = parseTutorAvailabilitySlots(body['availability']);
 
-    final db = await getConnection();
+    final db = await connectionFactory();
 
     // ── Find the tutor and check that Step 2 is complete ──
     final tutorResult = await db.execute(
@@ -103,7 +114,61 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     // ── Save slots, submit the application, all in one transaction ──
-    await db.transactional((conn) async {
+    final submitted = await db.transactional((conn) async {
+      await conn.execute(
+        '''
+        SELECT TutApplication
+        FROM TutorApplication
+        WHERE TutorID = :tutorId
+        ORDER BY TutApplication ASC
+        FOR UPDATE
+        ''',
+        {'tutorId': tutorId},
+      );
+      await conn.execute(
+        'SELECT TutorID FROM TutorProfile WHERE TutorID = :tutorId FOR UPDATE',
+        {'tutorId': tutorId},
+      );
+      final lockedUser = await conn.execute(
+        'SELECT AccountStatus FROM `User` WHERE UserId = :userId FOR UPDATE',
+        {'userId': userId},
+      );
+      if (lockedUser.rows.isEmpty) {
+        throw const TutorApplicationSubmissionBlocked();
+      }
+      final latest = await conn.execute(
+        '''
+        SELECT Status
+        FROM TutorApplication
+        WHERE TutorID = :tutorId
+        ORDER BY SubmittedAt DESC, TutApplication DESC
+        LIMIT 1
+        FOR UPDATE
+        ''',
+        {'tutorId': tutorId},
+      );
+      final pendingApplications = await conn.execute(
+        '''
+        SELECT TutApplication
+        FROM TutorApplication
+        WHERE TutorID = :tutorId AND Status = 'Pending'
+        FOR UPDATE
+        ''',
+        {'tutorId': tutorId},
+      );
+      final plan = planTutorApplicationSubmission(
+        accountStatus: lockedUser.rows.first.colByName('AccountStatus'),
+        requestAccountStatus: accountStatus,
+        latestApplicationStatus: latest.rows.isEmpty
+            ? null
+            : latest.rows.first.colByName('Status'),
+        hasPendingApplication: pendingApplications.rows.isNotEmpty,
+      );
+      if (plan == TutorApplicationSubmissionPlan.blocked) {
+        throw const TutorApplicationSubmissionBlocked();
+      }
+      if (plan == TutorApplicationSubmissionPlan.alreadyPending) return false;
+
       await conn.execute(
         'DELETE FROM TutAvailability WHERE TutorID = :tutorId',
         {'tutorId': tutorId},
@@ -124,41 +189,44 @@ Future<Response> onRequest(RequestContext context) async {
         );
       }
 
-      // Registration is now complete: incomplete → pending.
       await conn.execute(
         '''
         UPDATE User SET AccountStatus = 'Pending'
-        WHERE UserId = :userId AND AccountStatus = 'Incomplete'
+        WHERE UserId = :userId
         ''',
         {'userId': userId},
       );
-
-      // Create the application for the admin queue, unless the tutor is
-      // resubmitting Step 3 and already has one.
-      final existingApplication = await conn.execute(
-        'SELECT TutApplication FROM TutorApplication WHERE TutorID = :tutorId',
+      await conn.execute(
+        '''
+        UPDATE TutorProfile
+        SET VerificationStat = 'Pending'
+        WHERE TutorID = :tutorId
+        ''',
         {'tutorId': tutorId},
       );
-
-      if (existingApplication.rows.isEmpty) {
-        await conn.execute(
-          '''
-          INSERT INTO TutorApplication (TutorID, Status, SubmittedAt)
-          VALUES (:tutorId, 'Pending', NOW())
-          ''',
-          {'tutorId': tutorId},
-        );
-      }
+      await conn.execute(
+        '''
+        INSERT INTO TutorApplication (TutorID, Status, SubmittedAt)
+        VALUES (:tutorId, 'Pending', NOW())
+        ''',
+        {'tutorId': tutorId},
+      );
+      return true;
     });
 
     return Response.json(
       body: {
-        'message':
-            'Registration complete! Your application is under review. '
-            'You will be notified once an admin approves your account.',
+        'message': submitted
+            ? 'Registration complete! Your application is under review.'
+            : 'Your application is already under review.',
         'tutorId': tutorId,
         'status': 'Pending',
       },
+    );
+  } on TutorApplicationSubmissionBlocked {
+    return jsonError(
+      409,
+      'This account cannot submit another tutor application in its current state.',
     );
   } on FormatException catch (e) {
     return jsonError(400, e.message);

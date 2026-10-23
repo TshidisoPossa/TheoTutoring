@@ -18,12 +18,14 @@ class TutorRegistration extends StatefulWidget {
     required this.email,
     required this.password,
     required this.phoneNumber,
+    this.existingFirebaseUser,
   });
 
   final String fullName;
   final String email;
   final String password;
   final String phoneNumber;
+  final User? existingFirebaseUser;
 
   @override
   State<TutorRegistration> createState() => _TutorRegistrationState();
@@ -61,7 +63,9 @@ class _TutorRegistrationState extends State<TutorRegistration> {
   @override
   void initState() {
     super.initState();
-    _registrationPassword = widget.password;
+    _firebaseUser = widget.existingFirebaseUser;
+    _stepOneCompleted = widget.existingFirebaseUser != null;
+    _registrationPassword = _stepOneCompleted ? null : widget.password;
     unawaited(_loadSubjects());
   }
 
@@ -693,8 +697,7 @@ class _TutorRegistrationState extends State<TutorRegistration> {
                                   ListTile(
                                     title: Text(s.name),
                                     trailing: const Icon(Icons.add),
-                                    onTap: () =>
-                                        Navigator.pop(sheetContext, s),
+                                    onTap: () => Navigator.pop(sheetContext, s),
                                   ),
                               ],
                             ),

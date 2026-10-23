@@ -9,8 +9,26 @@ import 'tutor_schedule.dart';
 /// Dashboard, Schedule and Profile replace each other so the back button
 /// does not walk through every tab; Chats opens on top because it closes
 /// itself with its own back arrow.
+/// Set by the dashboard once the tutor's real account status is known, so
+/// every screen using the bottom bar applies the same rule.
+bool tutorAccountIsActive = true;
+
+void _blocked(BuildContext context, String what) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text('$what opens once your application has been approved.'),
+      ),
+    );
+}
+
 void openTutorTab(BuildContext context, int index, {required int current}) {
   if (index == current) return;
+  if (!tutorAccountIsActive && (index == 1 || index == 2)) {
+    _blocked(context, index == 1 ? 'Your schedule' : 'Chats');
+    return;
+  }
   if (index == 2) {
     Navigator.push(
       context,

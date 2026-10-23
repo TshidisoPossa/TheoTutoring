@@ -53,6 +53,93 @@ void main() {
     }
   });
 
+  group('canViewTutorApplicationStatus', () {
+    final dashboard = Uri.parse(
+      'https://example.test/TutorLandingpage/LandingPageScreen',
+    );
+
+    test('allows rejected accounts on the application status page only', () {
+      expect(canViewTutorApplicationStatus('Rejected', dashboard), isTrue);
+      expect(
+        canViewTutorApplicationStatus(
+          'Rejected',
+          Uri.parse('https://example.test/TutorLandingpage/bookings'),
+        ),
+        isFalse,
+      );
+      expect(
+        canViewTutorApplicationStatus(
+          'Rejected',
+          Uri.parse('https://example.test/TutorLandingpage/Profile'),
+        ),
+        isFalse,
+      );
+      expect(canViewTutorApplicationStatus('Pending', dashboard), isTrue);
+      expect(canViewTutorApplicationStatus('Active', dashboard), isFalse);
+    });
+  });
+
+  group('canAccessTutorRoute', () {
+    test('rejected tutors may open only the status dashboard', () {
+      expect(
+        canAccessTutorRoute(
+          'Rejected',
+          Uri.parse('https://example.test/TutorLandingpage/LandingPageScreen'),
+        ),
+        isTrue,
+      );
+      for (final path in [
+        '/TutorLandingpage/Profile',
+        '/TutorLandingpage/notifications',
+        '/TutorLandingpage/bookings',
+        '/TutorLandingpage/LandingPageScreen/extra',
+      ]) {
+        expect(
+          canAccessTutorRoute(
+            'Rejected',
+            Uri.parse('https://example.test$path'),
+          ),
+          isFalse,
+          reason: path,
+        );
+      }
+    });
+
+    test('pending exceptions and active tutor access stay unchanged', () {
+      expect(
+        canAccessTutorRoute(
+          'Pending',
+          Uri.parse('https://example.test/TutorLandingpage/Profile'),
+        ),
+        isTrue,
+      );
+      expect(
+        canAccessTutorRoute(
+          'Pending',
+          Uri.parse('https://example.test/TutorLandingpage/bookings'),
+        ),
+        isFalse,
+      );
+      expect(
+        canAccessTutorRoute(
+          'Active',
+          Uri.parse('https://example.test/TutorLandingpage/bookings'),
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  test(
+    'rejected tutors may correct registration but are not active tutors',
+    () {
+      expect(canUpdateTutorRegistrationProfile('Rejected'), isTrue);
+      expect(canSubmitTutorAvailability('Rejected'), isTrue);
+      expect(canAccessTutorLandingPage('Rejected'), isFalse);
+      expect(canViewTutorDashboard('Rejected'), isFalse);
+    },
+  );
+
   test('Pending is the only status the dashboard allows beyond Active', () {
     const statuses = <String?>[
       'Active',

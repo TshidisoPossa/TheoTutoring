@@ -2,6 +2,7 @@ import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
 import 'package:mysql_client/mysql_client.dart'; // IResultSet
 import 'package:theo_tutoring_backend/database.dart'; // getConnection()
 import 'package:theo_tutoring_backend/header_tutor.dart'; // shared tutor name + photo
+import 'package:theo_tutoring_backend/tutor_application_status.dart';
 import '../../lib/tutorlanding_session.dart'; // TutorSession
 
 //Tutor dashboard (landing page after registration)
@@ -33,25 +34,38 @@ Future<Response> onRequest(RequestContext context) async {
   // Application still under review: show its status instead of bookings
   if (!tutor.isActive) {
     final app = await conn.execute(
-      'SELECT Status, AdminFeedback, SubmittedAt, Review_at '
-      'FROM TutorApplication WHERE TutorID = :tid '
-      'ORDER BY SubmittedAt DESC, TutApplication DESC LIMIT 1', // latest application
+      '''
+      SELECT latest.Status, latest.AdminFeedback, latest.SubmittedAt,
+             latest.Review_at,
+             CASE WHEN latest.Status = 'Pending' THEN (
+               SELECT rejected.AdminFeedback
+               FROM TutorApplication rejected
+               WHERE rejected.TutorID = latest.TutorID
+                 AND rejected.Status = 'Rejected'
+               ORDER BY rejected.SubmittedAt DESC, rejected.TutApplication DESC
+               LIMIT 1
+             ) ELSE NULL END AS LatestRejectedFeedback
+      FROM TutorApplication latest
+      WHERE latest.TutorID = :tid
+      ORDER BY latest.SubmittedAt DESC, latest.TutApplication DESC
+      LIMIT 1
+      ''',
       p,
     );
     final a = app.rows.isEmpty ? null : app.rows.first.assoc();
     return Response.json(
-      body: {
-        'tutor': header, // name + profile picture
-        'accountStatus': tutor.accountStatus, // 'Pending'
-        'application': a == null
-            ? null
-            : {
-                'status': a['Status'], // Pending / Approved / Rejected
-                'adminFeedback': a['AdminFeedback'],
-                'submittedAt': a['SubmittedAt'],
-                'reviewedAt': a['Review_at'],
-              },
-      },
+      body: tutorApplicationStatusPayload(
+        tutor: header,
+        accountStatus: tutor.accountStatus,
+        applicationStatus: a?['Status'],
+        adminFeedback: tutorApplicationStatusFeedback(
+          applicationStatus: a?['Status']?.toString(),
+          currentFeedback: a?['AdminFeedback']?.toString(),
+          latestRejectedFeedback: a?['LatestRejectedFeedback']?.toString(),
+        ),
+        submittedAt: a?['SubmittedAt'],
+        reviewedAt: a?['Review_at'],
+      ),
     );
   }
 

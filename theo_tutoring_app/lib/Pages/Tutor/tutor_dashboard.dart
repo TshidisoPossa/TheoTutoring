@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
+import '../tutor_registration.dart';
 import 'tutor_api.dart';
 import 'tutor_booking_detail.dart';
 import 'tutor_format.dart';
@@ -173,6 +175,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
     final initial = widget.initialData;
     if (initial != null) {
       _data = DashboardData.fromJson(initial);
+      tutorAccountIsActive = !_data!.isPending;
       _loading = false;
     } else {
       _load();
@@ -183,6 +186,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
     setState(() { _loading = true; _error = null; });
     try {
       final data = DashboardData.fromJson(await fetchTutorDashboard());
+      tutorAccountIsActive = !data.isPending;
       if (mounted) setState(() { _data = data; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
@@ -199,19 +203,31 @@ class _TutorDashboardState extends State<TutorDashboard> {
     if (changed == true) _load(); // postponed: it may have left today
   }
 
-  // Bottom bar and shortcuts. A Pending tutor may open the dashboard, chats
-  // and profile; the schedule needs an approved (Active) account.
-  void _openTab(int index) {
-    if (index == 1 && (_data?.isPending ?? false)) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text(
-              'Your schedule opens once your application has been approved.'),
-        ));
+  // Bottom bar and shortcuts. Tutors who are not Active may open the
+  // dashboard and profile only; openTutorTab blocks Schedule and Chats.
+  void _openTab(int index) => openTutorTab(context, index, current: 0);
+
+  Future<void> _resubmitRejectedApplication() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in again to update your application.'),
+        ),
+      );
       return;
     }
-    openTutorTab(context, index, current: 0);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TutorRegistration(
+          fullName: _data?.tutorName ?? user.displayName ?? '',
+          email: user.email ?? '',
+          password: '',
+          phoneNumber: user.phoneNumber ?? '',
+          existingFirebaseUser: user,
+        ),
+      ),
+    );
   }
 
   @override
@@ -514,6 +530,17 @@ class _TutorDashboardState extends State<TutorDashboard> {
                   Text(feedback,
                       style: GoogleFonts.inter(fontSize: 13, color: _grey)),
                 ],
+              ),
+            ),
+          ],
+          if (status == 'Rejected') ...[
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                onPressed: _resubmitRejectedApplication,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Correct and resubmit'),
               ),
             ),
           ],
