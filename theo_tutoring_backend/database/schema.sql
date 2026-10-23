@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS TutorProfile (
         NOT NULL DEFAULT 'Pending',
     AveRate DECIMAL(3,2) NOT NULL DEFAULT 0,
     UserID INT NOT NULL UNIQUE,
+    -- Last time the tutor used the app; "Available Now" while recent.
+    LastActiveAtUtc DATETIME(6) NULL,
 
     CONSTRAINT chk_tutor_average_rating
         CHECK (AveRate BETWEEN 0 AND 5),
@@ -289,6 +291,7 @@ CREATE TABLE IF NOT EXISTS Booking (
     StartTime TIME NOT NULL,
     EndTime TIME NOT NULL,
     Note TEXT NULL,
+    CancellationReason TEXT NULL,
     Status ENUM(
         'Pending', 'Confirmed', 'Completed',
         'Cancelled', 'Rejected'
@@ -655,6 +658,41 @@ CREATE TABLE IF NOT EXISTS Reviews (
 
     CONSTRAINT fk_review_booking
         FOREIGN KEY (BookingID) REFERENCES Booking(Booking_id)
+);
+
+-- =========================================================
+-- 13b. REPORTS
+-- A student reporting a tutor or a tutor reporting a student.
+-- The administrator reviews them (AdminID = who handled it).
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS Report (
+    ReportID INT AUTO_INCREMENT PRIMARY KEY,
+    ReporterID INT NOT NULL,
+    ReportedUserID INT NOT NULL,
+    BookingID INT NULL,
+    AdminID INT NULL,
+    Reason TEXT NOT NULL,
+    Status ENUM('Open', 'Under review', 'Resolved')
+        NOT NULL DEFAULT 'Open',
+    Created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_report_not_self
+        CHECK (ReporterID <> ReportedUserID),
+
+    CONSTRAINT fk_report_reporter
+        FOREIGN KEY (ReporterID) REFERENCES `User`(UserId),
+
+    CONSTRAINT fk_report_reported_user
+        FOREIGN KEY (ReportedUserID) REFERENCES `User`(UserId),
+
+    CONSTRAINT fk_report_booking
+        FOREIGN KEY (BookingID) REFERENCES Booking(Booking_id),
+
+    CONSTRAINT fk_report_admin
+        FOREIGN KEY (AdminID) REFERENCES Admin(AdminID),
+
+    INDEX idx_report_status (Status, Created_at)
 );
 
 -- =========================================================

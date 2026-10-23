@@ -76,6 +76,27 @@ Future<Map<String, dynamic>> postponeTutorBooking(
   );
 }
 
+/// "I'm still using the app" (POST /TutorLandingpage/presence). Students
+/// see "Available Now" on this tutor's profile while the pings keep coming.
+Future<void> pingTutorPresence() {
+  return _send(
+    'POST',
+    '/TutorLandingpage/presence',
+    body: const {},
+    failMessage: 'Could not update your availability.',
+  );
+}
+
+/// Signed out: show the tutor offline straight away
+/// (DELETE /TutorLandingpage/presence).
+Future<void> clearTutorPresence() {
+  return _send(
+    'DELETE',
+    '/TutorLandingpage/presence',
+    failMessage: 'Could not update your availability.',
+  );
+}
+
 /// Loads the Profile page (GET /TutorLandingpage/Profile).
 Future<Map<String, dynamic>> fetchTutorProfile() {
   return _send(
@@ -175,6 +196,7 @@ Future<Map<String, dynamic>> _send(
     final request = switch (method) {
       'POST' => http.post(uri, headers: headers, body: jsonEncode(body)),
       'PUT' => http.put(uri, headers: headers, body: jsonEncode(body)),
+      'DELETE' => http.delete(uri, headers: headers),
       _ => http.get(uri, headers: headers),
     };
     response = await request.timeout(const Duration(seconds: 15));

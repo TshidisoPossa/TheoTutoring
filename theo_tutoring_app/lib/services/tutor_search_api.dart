@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api.dart';
 import '../models/tutor.dart';
+import '../models/tutor_profile_details.dart';
 
 class TutorSearchApi {
   TutorSearchApi({http.Client? client}) : _client = client ?? http.Client();
@@ -41,6 +42,28 @@ class TutorSearchApi {
       throw const FormatException('Tutor search response is invalid.');
     }
     return TutorSearchPage.fromJson(decoded);
+  }
+
+  /// The Tutor Profile page (GET /tutors/{id}).
+  Future<TutorProfileDetails> profile(int tutorId) async {
+    final response = await _client
+        .get(
+          Uri.parse('$apiBaseUrl/tutors/$tutorId'),
+          headers: const {'Accept': 'application/json'},
+        )
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw TutorSearchException(
+        response.statusCode == 404
+            ? 'This tutor is no longer available.'
+            : 'This profile is temporarily unavailable. Please try again.',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Tutor profile response is invalid.');
+    }
+    return TutorProfileDetails.fromJson(decoded);
   }
 
   Future<List<TutorSubject>> subjects() async {

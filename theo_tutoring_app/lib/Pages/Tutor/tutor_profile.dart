@@ -7,6 +7,7 @@ import '../login_page.dart';
 import 'tutor_api.dart';
 import 'tutor_format.dart';
 import 'tutor_nav.dart';
+import 'tutor_presence.dart';
 
 class TutorProfileScreen extends StatefulWidget {
   const TutorProfileScreen({super.key});
@@ -219,6 +220,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   }
 
   Future<void> _logOut() async {
+    await TutorPresence.instance.stop(); // offline for students straight away
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(

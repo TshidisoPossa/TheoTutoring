@@ -7,21 +7,32 @@ import '../Booking/booking_flow_context.dart';
 import '../Booking/booking_select_lesson.dart';
 import '../../models/tutor.dart';
 import '../../services/tutor_search_api.dart';
+import 'student_bottom_nav.dart';
 import 'student_tutor_profile.dart';
 
+/// Find a Tutor. Pops with the bottom-nav tab the student tapped (0 Home,
+/// 1 Lessons, ...) so the dashboard can switch to it.
 class SearchTutorPage extends StatefulWidget {
-  const SearchTutorPage({super.key});
+  const SearchTutorPage({super.key, this.studentName, this.studentPhoto});
+
+  /// For the avatar in the header (initials when there is no photo).
+  final String? studentName;
+  final String? studentPhoto;
 
   @override
   State<SearchTutorPage> createState() => _SearchTutorPageState();
 }
 
 class _SearchTutorPageState extends State<SearchTutorPage> {
-  static const Color _primaryBlue = Color(0xFF356AE6);
+  static const Color _brandBlue = Color(0xFF0B4FC8);
   static const Color _darkBlue = Color(0xFF173B8F);
-  static const Color _background = Color(0xFFF7F9FE);
+  static const Color _background = Color(0xFFF7F8FC);
+  static const Color _fieldFill = Color(0xFFEEF1FA);
   static const Color _textDark = Color(0xFF17233D);
-  static const Color _textMuted = Color(0xFF7B8498);
+  static const Color _textMuted = Color(0xFF6B7385);
+  static const Color _tagFill = Color(0xFFE8ECF6);
+  static const Color _tagText = Color(0xFF4A5470);
+  static const Color _star = Color(0xFFF5B301);
 
   final _searchController = TextEditingController();
   final _api = TutorSearchApi();
@@ -152,29 +163,24 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
     }
   }
 
+  static String _initials(String? name) => (name ?? '')
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .take(2)
+      .map((part) => part[0].toUpperCase())
+      .join();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Find a Tutor',
-          style: GoogleFonts.poppins(
-            color: _textDark,
-            fontSize: 19,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        leading: IconButton(
-          tooltip: 'Go back',
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back_rounded, color: _textDark),
-        ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(72),
+        child: _buildTopBar(),
       ),
       body: SafeArea(
+        top: false,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 900),
@@ -187,43 +193,107 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
           ),
         ),
       ),
+      bottomNavigationBar: StudentBottomNav(
+        currentIndex: 0,
+        onTap: (index) => Navigator.of(context).pop(index),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      automaticallyImplyLeading: false,
+      titleSpacing: 20,
+      title: Row(
+        children: [
+          Image.asset(
+            'assets/logo.png',
+            height: 40,
+            width: 40,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => Container(
+              height: 40,
+              width: 40,
+              decoration: BoxDecoration(
+                color: _brandBlue,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.school_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Find a Tutor',
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.poppins(
+                color: _brandBlue,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 18),
+          child: _buildStudentAvatar(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStudentAvatar() {
+    final fallback = Text(
+      _initials(widget.studentName),
+      style: GoogleFonts.poppins(
+        color: _brandBlue,
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+    final photo = widget.studentPhoto;
+    return CircleAvatar(
+      radius: 20,
+      backgroundColor: const Color(0xFFE4ECFF),
+      child: photo == null
+          ? fallback
+          : ClipOval(
+              child: Image.network(
+                photo,
+                width: 40,
+                height: 40,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Center(child: fallback),
+              ),
+            ),
     );
   }
 
   Widget _buildSearchHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-      color: Colors.white,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Find the right tutor for you',
-            style: GoogleFonts.poppins(
-              color: _darkBlue,
-              fontSize: 21,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Search by name or subject and discover tutors for your studies.',
-            style: GoogleFonts.poppins(
-              color: _textMuted,
-              fontSize: 12,
-              height: 1.6,
-            ),
-          ),
-          const SizedBox(height: 18),
           TextField(
             controller: _searchController,
             onChanged: _searchChanged,
             textInputAction: TextInputAction.search,
+            style: GoogleFonts.poppins(color: _textDark, fontSize: 14),
             decoration: InputDecoration(
-              hintText: 'Search tutor or subject...',
-              hintStyle: GoogleFonts.poppins(color: _textMuted, fontSize: 13),
-              prefixIcon: const Icon(Icons.search_rounded, color: _primaryBlue),
+              hintText: 'Search tutors...',
+              hintStyle: GoogleFonts.poppins(color: _textMuted, fontSize: 14),
+              prefixIcon: const Icon(Icons.search_rounded, color: _textDark),
               suffixIcon: _searchController.text.isEmpty
                   ? null
                   : IconButton(
@@ -236,68 +306,59 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
                       icon: const Icon(Icons.close_rounded),
                     ),
               filled: true,
-              fillColor: _background,
+              fillColor: _fieldFill,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE4EAF5)),
-              ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: _primaryBlue, width: 1.5),
+                borderSide: const BorderSide(color: _brandBlue, width: 1.5),
               ),
             ),
           ),
-          const SizedBox(height: 18),
-          Text(
-            'Browse by subject',
-            style: GoogleFonts.poppins(
-              color: _textDark,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           SizedBox(
-            height: 38,
+            height: 40,
             child: _subjects.isEmpty
                 ? const SizedBox.shrink()
                 : ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _subjects.length + 1,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
                     itemBuilder: (context, index) {
                       final subject = index == 0 ? null : _subjects[index - 1];
-                      final selected = subject?.subjectId == _selectedSubjectId;
-                      return ChoiceChip(
-                        label: Text(subject?.subjectName ?? 'All'),
-                        selected: selected,
-                        showCheckmark: false,
-                        onSelected: (_) => _selectSubject(subject?.subjectId),
-                        labelStyle: GoogleFonts.poppins(
-                          color: selected ? Colors.white : _textDark,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        backgroundColor: Colors.white,
-                        selectedColor: _primaryBlue,
-                        side: BorderSide(
-                          color: selected
-                              ? _primaryBlue
-                              : const Color(0xFFE0E7F2),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                      );
+                      return _buildSubjectChip(subject);
                     },
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSubjectChip(TutorSubject? subject) {
+    final selected = subject?.subjectId == _selectedSubjectId;
+    return Material(
+      color: selected ? _brandBlue : _fieldFill,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: () => _selectSubject(subject?.subjectId),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Center(
+            child: Text(
+              subject?.subjectName ?? 'All',
+              style: GoogleFonts.poppins(
+                color: selected ? Colors.white : _textDark,
+                fontSize: 14,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -316,7 +377,8 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: () => unawaited(_load(loadSubjects: _subjects.isEmpty)),
+                onPressed: () =>
+                    unawaited(_load(loadSubjects: _subjects.isEmpty)),
                 child: const Text('Retry'),
               ),
             ],
@@ -328,79 +390,53 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
       return _buildEmptyState();
     }
     final pages = (_total / 20).ceil();
-    return Column(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '$_total tutors found',
-              style: GoogleFonts.poppins(
-                color: _textDark,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-            children: _tutors.map(_buildTutorCard).toList(),
-          ),
-        ),
+        ..._tutors.map(_buildTutorCard),
         if (pages > 1)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                TextButton(
-                  onPressed: _page > 1
-                      ? () {
-                          setState(() => _page--);
-                          unawaited(_load());
-                        }
-                      : null,
-                  child: const Text('Previous'),
-                ),
-                Text('Page $_page of $pages'),
-                TextButton(
-                  onPressed: _page < pages
-                      ? () {
-                          setState(() => _page++);
-                          unawaited(_load());
-                        }
-                      : null,
-                  child: const Text('Next'),
-                ),
-              ],
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton(
+                onPressed: _page > 1
+                    ? () {
+                        setState(() => _page--);
+                        unawaited(_load());
+                      }
+                    : null,
+                child: const Text('Previous'),
+              ),
+              Text('Page $_page of $pages'),
+              TextButton(
+                onPressed: _page < pages
+                    ? () {
+                        setState(() => _page++);
+                        unawaited(_load());
+                      }
+                    : null,
+                child: const Text('Next'),
+              ),
+            ],
           ),
       ],
     );
   }
 
   Widget _buildTutorCard(Tutor tutor) {
-    final initials = tutor.name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .take(2)
-        .map((part) => part[0].toUpperCase())
-        .join();
+    final initials = _initials(tutor.name);
+    final firstName = tutor.name.trim().split(RegExp(r'\s+')).first;
+    final rating = tutor.averageRating;
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE8EDF6)),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: _darkBlue.withValues(alpha: 0.035),
-            blurRadius: 12,
+            color: _darkBlue.withValues(alpha: 0.06),
+            blurRadius: 14,
             offset: const Offset(0, 4),
           ),
         ],
@@ -411,55 +447,94 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
           Row(
             children: [
               CircleAvatar(
-                radius: 27,
+                radius: 32,
                 backgroundColor: const Color(0xFFE4ECFF),
                 child: tutor.profilePhoto == null
                     ? Text(
                         initials,
                         style: GoogleFonts.poppins(
                           color: _darkBlue,
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
                       )
                     : ClipOval(
                         child: Image.network(
                           tutor.profilePhoto!,
-                          width: 54,
-                          height: 54,
+                          width: 64,
+                          height: 64,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) => Text(
                             initials,
                             style: GoogleFonts.poppins(
                               color: _darkBlue,
+                              fontSize: 18,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                       ),
               ),
-              const SizedBox(width: 13),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       tutor.name,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
                         color: _textDark,
-                        fontSize: 14,
+                        fontSize: 21,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      tutor.averageRating == null
-                          ? 'No reviews yet'
-                          : '${tutor.averageRating!.toStringAsFixed(1)} '
-                                '(${tutor.reviewCount} reviews)',
-                      style: GoogleFonts.poppins(
-                        color: _textMuted,
-                        fontSize: 11,
+                    if (tutor.qualification != null)
+                      Text(
+                        tutor.qualification!,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          color: _textMuted,
+                          fontSize: 14,
+                        ),
                       ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          rating == null
+                              ? Icons.star_border_rounded
+                              : Icons.star_rounded,
+                          color: _star,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        if (rating != null) ...[
+                          Text(
+                            rating.toStringAsFixed(1),
+                            style: GoogleFonts.poppins(
+                              color: _textDark,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Flexible(
+                          child: Text(
+                            rating == null
+                                ? 'New tutor · no reviews yet'
+                                : '(${tutor.reviewCount} '
+                                      '${tutor.reviewCount == 1 ? 'review' : 'reviews'})',
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              color: _textMuted,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -467,95 +542,127 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
             ],
           ),
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: tutor.subjects
-                .map(
-                  (subject) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEEF3FF),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      subject.subjectName,
-                      style: GoogleFonts.poppins(
-                        color: _darkBlue,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 12),
           Text(
-            tutor.experience ?? 'Experience not provided',
-            style: GoogleFonts.poppins(color: _textMuted, fontSize: 11),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            tutor.bio ?? 'Biography not provided.',
+            tutor.bio ?? 'This tutor has not written a bio yet.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.poppins(
-              color: _textDark,
-              fontSize: 12,
-              height: 1.6,
+              color: _textDark.withValues(alpha: 0.85),
+              fontSize: 14,
+              height: 1.55,
             ),
           ),
-          const SizedBox(height: 7),
-          Text(
-            tutor.hourlyRate == null
-                ? 'Hourly rate unavailable'
-                : 'Hourly rate: ${tutor.hourlyRate!.toStringAsFixed(2)}',
-            style: GoogleFonts.poppins(color: _textMuted, fontSize: 11),
-          ),
-          const SizedBox(height: 14),
+          if (tutor.subjects.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: tutor.subjects
+                  .map(
+                    (subject) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _tagFill,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        subject.subjectName,
+                        style: GoogleFonts.poppins(
+                          color: _tagText,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          if (tutor.hourlyRate != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.sell_outlined, size: 16, color: _brandBlue),
+                const SizedBox(width: 6),
+                Text(
+                  'R${tutor.hourlyRate!.toStringAsFixed(2)} per session',
+                  style: GoogleFonts.poppins(
+                    color: _brandBlue,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _openProfile(tutor),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _darkBlue,
-                    side: const BorderSide(color: Color(0xFFD9E3FF)),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'View profile',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
+                child: Tooltip(
+                  message:
+                      "See $firstName's qualifications, reviews and "
+                      'availability',
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openProfile(tutor),
+                    icon: const Icon(Icons.account_circle_outlined, size: 19),
+                    label: const Text('View Profile'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _brandBlue,
+                      backgroundColor: const Color(0xFFE6EDFF),
+                      side: const BorderSide(color: Color(0xFFC3D4FF)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      textStyle: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
-                child: OutlinedButton(
-                  onPressed: tutor.subjects.isEmpty
-                      ? null
-                      : () => _chooseSubject(tutor),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _primaryBlue,
-                    side: const BorderSide(color: _primaryBlue),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: Tooltip(
+                  message: tutor.subjects.isEmpty
+                      ? '$firstName has not added any subjects yet'
+                      : 'Choose a subject and time with $firstName',
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: tutor.subjects.isEmpty
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: _brandBlue.withValues(alpha: 0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
                     ),
-                  ),
-                  child: Text(
-                    'Choose tutor',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
+                    child: FilledButton.icon(
+                      onPressed: tutor.subjects.isEmpty
+                          ? null
+                          : () => _chooseSubject(tutor),
+                      icon: const Icon(Icons.event_available_rounded, size: 19),
+                      label: const Text('Book Session'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _brandBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        textStyle: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -572,7 +679,11 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(Icons.person_search_rounded, color: Color(0xFF9BAAC5), size: 54),
+        const Icon(
+          Icons.person_search_rounded,
+          color: Color(0xFF9BAAC5),
+          size: 54,
+        ),
         const SizedBox(height: 12),
         Text(
           'No tutors found',

@@ -6,6 +6,7 @@ import '../../models/tutor.dart';
 import '../login_page.dart';
 import 'search_tutor.dart';
 import 'student_dashboard_api.dart';
+import 'student_lesson.dart';
 import 'student_tutor_profile.dart';
 
 class StudentDashboard extends StatefulWidget {
@@ -165,11 +166,26 @@ class _StudentDashboardState extends State<StudentDashboard> {
         sessionDate.day == date.day;
   });
 
-  void _openTutorSearch() {
-    Navigator.push(
+  Future<void> _openTutorSearch() async {
+    // The search page pops with the bottom-nav tab the student tapped there
+    final tab = await Navigator.push<int>(
       context,
-      MaterialPageRoute<void>(builder: (_) => const SearchTutorPage()),
+      MaterialPageRoute<int>(
+        builder: (_) => SearchTutorPage(
+          studentName: _studentName,
+          studentPhoto: _studentPhoto,
+        ),
+      ),
     );
+    if (tab == null || !mounted) return;
+    if (tab <= 1) {
+      setState(() {
+        _currentIndex = tab;
+        _selectedDrawerIndex = tab * 2;
+      });
+    } else {
+      _showMessage('${tab == 2 ? 'Chat' : 'Profile'} will be connected soon.');
+    }
   }
 
   void _openTutor(Tutor tutor) {
@@ -220,48 +236,55 @@ class _StudentDashboardState extends State<StudentDashboard> {
     return Scaffold(
       backgroundColor: _background,
       drawer: _buildSideDrawer(),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(76),
-        child: _buildTopBar(),
-      ),
-      body: SafeArea(
-        top: false,
-        child: _loadingDashboard && _dashboard == null
-            ? const Center(child: CircularProgressIndicator())
-            : _dashboardError != null && _dashboard == null
-            ? _buildDashboardError()
-            : RefreshIndicator(
-                onRefresh: _loadDashboard,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1100),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 850),
-                              child: _buildWelcomeSection(),
+      // The Lessons tab has its own "My Schedule" header
+      appBar: _currentIndex == 1
+          ? null
+          : PreferredSize(
+              preferredSize: const Size.fromHeight(76),
+              child: _buildTopBar(),
+            ),
+      body: _currentIndex == 1
+          ? const StudentLessonsPage()
+          : SafeArea(
+              top: false,
+              child: _loadingDashboard && _dashboard == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : _dashboardError != null && _dashboard == null
+                  ? _buildDashboardError()
+                  : RefreshIndicator(
+                      onRefresh: _loadDashboard,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1100),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Center(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 850,
+                                    ),
+                                    child: _buildWelcomeSection(),
+                                  ),
+                                ),
+                                const SizedBox(height: 26),
+                                const _OrganisationLogoCarousel(),
+                                const SizedBox(height: 26),
+                                _buildUpNextCard(),
+                                const SizedBox(height: 30),
+                                _buildCalendar(),
+                                const SizedBox(height: 32),
+                                _buildTopTutors(),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 26),
-                          const _OrganisationLogoCarousel(),
-                          const SizedBox(height: 26),
-                          _buildUpNextCard(),
-                          const SizedBox(height: 30),
-                          _buildCalendar(),
-                          const SizedBox(height: 32),
-                          _buildTopTutors(),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ),
-      ),
+            ),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -449,10 +472,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         });
                         Navigator.pop(context);
 
-                        if (index == 1) {
+                        if (index == 0) {
+                          setState(() => _currentIndex = 0);
+                        } else if (index == 1) {
                           // Subjects: the tutor search filters by subject
                           _openTutorSearch();
-                        } else if (index != 0) {
+                        } else if (index == 2) {
+                          // Schedule: the Lessons tab
+                          setState(() => _currentIndex = 1);
+                        } else {
                           _showMessage(
                             '${_drawerItems[index]} will be connected soon.',
                           );
@@ -1406,9 +1434,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   onTap: () {
                     setState(() {
                       _currentIndex = index;
+                      // Home and Lessons match the drawer's Home and Schedule
+                      if (index <= 1) _selectedDrawerIndex = index * 2;
                     });
 
-                    if (index != 0) {
+                    if (index > 1) {
                       _showMessage('${item.label} will be connected soon.');
                     }
                   },

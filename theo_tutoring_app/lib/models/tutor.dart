@@ -28,6 +28,7 @@ class Tutor {
     required this.hourlyRate,
     required this.averageRating,
     required this.reviewCount,
+    this.qualification,
   });
 
   final int tutorId;
@@ -39,6 +40,9 @@ class Tutor {
   final double? hourlyRate;
   final double? averageRating;
   final int reviewCount;
+
+  /// The tutor's latest degree from registration (Qualification.Degree).
+  final String? qualification;
 
   factory Tutor.fromJson(Map<String, dynamic> json) {
     final rawSubjects = json['subjects'];
@@ -61,6 +65,7 @@ class Tutor {
       hourlyRate: _nullableDouble(json['hourlyRate'], 'hourlyRate'),
       averageRating: _nullableDouble(json['averageRating'], 'averageRating'),
       reviewCount: _requiredInt(json['reviewCount'], 'reviewCount'),
+      qualification: _nullableString(json['qualification']),
     );
   }
 }
