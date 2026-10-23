@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
- 
+
 void main() => runApp(const MyApp());
- 
+
 class AppColors {
   static const background = Color(0xFFF0F4FA);
   static const primary = Color(0xFF2A6BB2);
@@ -11,11 +11,13 @@ class AppColors {
   static const cancelBg = Color(0xFFF1F5F9);
   static const confirmedBg = Color(0xFFDCFCE7);
   static const confirmedText = Color(0xFF16A34A);
+  static const cancelledBg = Color(0xFFFEE2E2);
+  static const cancelledText = Color(0xFFDC2626);
 }
- 
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
- 
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -31,7 +33,7 @@ class MyApp extends StatelessWidget {
     );
   }
 }
- 
+
 class Lesson {
   final String tutorName;
   final String subject;
@@ -39,7 +41,8 @@ class Lesson {
   final String dateTime;
   final String status;
   final String? avatarUrl;
- 
+  final String? cancellationReason;
+
   const Lesson({
     required this.tutorName,
     required this.subject,
@@ -47,21 +50,22 @@ class Lesson {
     required this.dateTime,
     required this.status,
     this.avatarUrl,
+    this.cancellationReason,
   });
 }
- 
+
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
- 
+
   @override
   State<ScheduleScreen> createState() => _ScheduleScreenState();
 }
- 
+
 class _ScheduleScreenState extends State<ScheduleScreen> {
   int _tabIndex = 0; // 0 = Upcoming, 1 = Cancelled
   int _navIndex = 1; // Lessons
- 
-  final List<Lesson> _upcoming = const [
+
+  final List<Lesson> _upcoming = [
     Lesson(
       tutorName: 'Lerato M.',
       subject: 'Engineering',
@@ -71,13 +75,36 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       // avatarUrl: 'https://your-cdn.com/lerato.jpg',
     ),
   ];
- 
-  final List<Lesson> _cancelled = const [];
- 
+
+  final List<Lesson> _cancelled = [];
+
+  Future<void> _cancelLesson(Lesson lesson) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => const _CancellationReasonDialog(),
+    );
+    if (reason == null || !mounted) return;
+
+    setState(() {
+      _upcoming.remove(lesson);
+      _cancelled.add(
+        Lesson(
+          tutorName: lesson.tutorName,
+          subject: lesson.subject,
+          duration: lesson.duration,
+          dateTime: lesson.dateTime,
+          status: 'CANCELLED',
+          avatarUrl: lesson.avatarUrl,
+          cancellationReason: reason,
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final lessons = _tabIndex == 0 ? _upcoming : _cancelled;
- 
+
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -92,15 +119,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   if (lessons.isEmpty)
                     _buildEmptyState()
                   else
-                    ...lessons.map((l) => Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: LessonCard(
-                            lesson: l,
-                            showActions: _tabIndex == 0,
-                            onCancel: () {},
-                            onStart: () {},
-                          ),
-                        )),
+                    ...lessons.map(
+                      (l) => Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: LessonCard(
+                          lesson: l,
+                          showActions: _tabIndex == 0,
+                          onCancel: () => _cancelLesson(l),
+                          onStart: () {},
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -110,7 +139,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       bottomNavigationBar: _buildBottomNav(),
     );
   }
- 
+
   Widget _buildHeader() {
     return Container(
       color: Colors.white,
@@ -134,7 +163,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       ),
     );
   }
- 
+
   Widget _buildTabs() {
     return Row(
       children: [
@@ -144,7 +173,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       ],
     );
   }
- 
+
   Widget _tabButton(String label, int index) {
     final selected = _tabIndex == index;
     return GestureDetector(
@@ -171,7 +200,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       ),
     );
   }
- 
+
   Widget _buildEmptyState() {
     return const Padding(
       padding: EdgeInsets.only(top: 80),
@@ -183,7 +212,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       ),
     );
   }
- 
+
   Widget _buildBottomNav() {
     return Container(
       decoration: const BoxDecoration(
@@ -198,8 +227,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         elevation: 0,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textGrey,
-        selectedLabelStyle:
-            const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+        selectedLabelStyle: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
         unselectedLabelStyle: const TextStyle(fontSize: 13),
         items: const [
           BottomNavigationBarItem(
@@ -223,13 +254,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 }
- 
+
 class LessonCard extends StatelessWidget {
   final Lesson lesson;
   final bool showActions;
   final VoidCallback onCancel;
   final VoidCallback onStart;
- 
+
   const LessonCard({
     super.key,
     required this.lesson,
@@ -237,7 +268,7 @@ class LessonCard extends StatelessWidget {
     required this.onStart,
     this.showActions = true,
   });
- 
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -287,8 +318,10 @@ class LessonCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Text('·',
-                            style: TextStyle(color: AppColors.textGrey)),
+                        const Text(
+                          '·',
+                          style: TextStyle(color: AppColors.textGrey),
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           lesson.duration,
@@ -307,14 +340,17 @@ class LessonCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Divider(height: 1, color: AppColors.border),
- 
+
           // Date row
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
             child: Row(
               children: [
-                const Icon(Icons.calendar_today_outlined,
-                    size: 20, color: AppColors.textGrey),
+                const Icon(
+                  Icons.calendar_today_outlined,
+                  size: 20,
+                  color: AppColors.textGrey,
+                ),
                 const SizedBox(width: 12),
                 Text(
                   lesson.dateTime,
@@ -327,7 +363,18 @@ class LessonCard extends StatelessWidget {
             ),
           ),
           const Divider(height: 1, color: AppColors.border),
- 
+
+          if (lesson.cancellationReason != null) ...[
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Cancellation reason: ${lesson.cancellationReason}',
+                style: const TextStyle(fontSize: 14, color: AppColors.textGrey),
+              ),
+            ),
+          ],
+
           if (showActions) ...[
             const SizedBox(height: 14),
             Row(
@@ -357,44 +404,47 @@ class LessonCard extends StatelessWidget {
     );
   }
 }
- 
+
 class _StatusBadge extends StatelessWidget {
   final String label;
   const _StatusBadge({required this.label});
- 
+
   @override
   Widget build(BuildContext context) {
+    final isCancelled = label == 'CANCELLED';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.confirmedBg,
+        color: isCancelled ? AppColors.cancelledBg : AppColors.confirmedBg,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w700,
-          color: AppColors.confirmedText,
+          color: isCancelled
+              ? AppColors.cancelledText
+              : AppColors.confirmedText,
         ),
       ),
     );
   }
 }
- 
+
 class _ActionButton extends StatelessWidget {
   final String label;
   final Color background;
   final Color foreground;
   final VoidCallback onTap;
- 
+
   const _ActionButton({
     required this.label,
     required this.background,
     required this.foreground,
     required this.onTap,
   });
- 
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -419,4 +469,58 @@ class _ActionButton extends StatelessWidget {
     );
   }
 }
- 
+
+class _CancellationReasonDialog extends StatefulWidget {
+  const _CancellationReasonDialog();
+
+  @override
+  State<_CancellationReasonDialog> createState() =>
+      _CancellationReasonDialogState();
+}
+
+class _CancellationReasonDialogState extends State<_CancellationReasonDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_formKey.currentState!.validate()) {
+      Navigator.pop(context, _controller.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Cancel lesson?'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _controller,
+          autofocus: true,
+          maxLines: 3,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            labelText: 'Why are you cancelling?',
+            border: OutlineInputBorder(),
+          ),
+          validator: (value) => value == null || value.trim().length < 5
+              ? 'Please enter at least 5 characters.'
+              : null,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Keep lesson'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Cancel lesson')),
+      ],
+    );
+  }
+}
