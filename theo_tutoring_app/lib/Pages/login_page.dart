@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api.dart';
+import 'Admin/admin_shell.dart';
+import 'Admin/Services/admin_access_service.dart';
 import 'Student/student_dashboard.dart';
 import 'Tutor/tutor_api.dart';
 import 'Tutor/tutor_dashboard.dart';
@@ -116,6 +118,15 @@ class _LoginPageState extends State<LoginPage> {
 
       // No student profile: this may be a tutor account
       if (response.statusCode == 404) {
+        // Check for an administrator only after the existing student lookup.
+        // Student logins therefore keep their current path unchanged.
+        final adminAccess = await AdminAccessService().checkToken(idToken);
+        if (adminAccess.isAllowed) {
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, AdminRoutes.dashboard);
+          }
+          return;
+        }
         await _openTutorDashboard(idToken);
         return;
       }
@@ -127,6 +138,7 @@ class _LoginPageState extends State<LoginPage> {
               401 =>
                 'Your session could not be verified. Please sign in again.',
               404 => 'No student profile was found for this account.',
+              403 => 'This account is not active. Please contact support.',
               _ =>
                 'We could not verify your student profile. Please try again.',
             };

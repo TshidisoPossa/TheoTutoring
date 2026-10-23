@@ -108,7 +108,7 @@ class BookingDetail {
       recurringTime: r == null ? null : '${r['startTime']} – ${r['endTime']}',
       nextSessions: [
         for (final session in r?['sessions'] as List<dynamic>? ?? [])
-          _dayMonth((session as Map<String, dynamic>)['date']?.toString()),
+          formatLongDate((session as Map<String, dynamic>)['date']?.toString()),
       ],
       totalSessions: r?['totalSessions'] as int? ?? 0,
       totalHours:
@@ -119,10 +119,6 @@ class BookingDetail {
   }
 }
 
-const _monthsShort = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
 const _monthsLong = [
   'January', 'February', 'March', 'April', 'May', 'June', //
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -131,12 +127,6 @@ const _weekdaysLong = [
   'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', //
   'Sunday',
 ];
-
-// "2026-10-30" -> "30 Oct"
-String _dayMonth(String? iso) {
-  final d = iso == null ? null : DateTime.tryParse(iso);
-  return d == null ? (iso ?? '') : '${d.day} ${_monthsShort[d.month - 1]}';
-}
 
 // "2026-10-23" -> "Friday, 23 October 2026"
 String _fullDate(String iso) {

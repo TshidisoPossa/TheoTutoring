@@ -6,25 +6,11 @@ import '../../lib/firebase_auth.dart';
 import '../../lib/tutor_account_status.dart';
 import '../../lib/tutorlanding_session.dart'; // TutorSession
 
-// The dashboard is the only tutor page a Pending tutor may open, so they
-// can see their application status (all other routes need an Active account).
+// The dashboard is the only tutor page a Pending or Rejected tutor may open,
+// so they can see their application status (all other routes need Active).
 // Its bell icon opens the notifications, so those are allowed too.
 // A Pending tutor may also complete their profile while they wait
 // (project documentation 4.3 / business rule 5).
-const _dashboardPath = '/TutorLandingpage/LandingPageScreen';
-const _notificationsPath = '/TutorLandingpage/notifications';
-const _profilePath = '/TutorLandingpage/Profile';
-
-bool _pendingTutorMayOpen(Uri uri) {
-  var path = uri.path;
-  if (path.endsWith('/')) path = path.substring(0, path.length - 1);
-  return path == _dashboardPath ||
-      path == _notificationsPath ||
-      path.startsWith('$_notificationsPath/') ||
-      path == _profilePath ||
-      path.startsWith('$_profilePath/');
-}
-
 // Finds the tutor profile belonging to a Firebase UID.
 Future<({int tutorId, String status})?> _findTutor(String firebaseUid) async {
   final conn = await getConnection(); // shared DB connection (do not close it)
@@ -76,10 +62,10 @@ Handler middleware(Handler handler) {
     }
     final uid = user.uid;
     final tutor = await _findTutor(uid); // map UID to TutorID + status
-    if (tutor == null ||
-        !(canAccessTutorLandingPage(tutor.status) ||
-            (_pendingTutorMayOpen(context.request.uri) &&
-                canViewTutorDashboard(tutor.status)))) {
+    final uri = context.request.uri;
+    final canOpenTutorRoute =
+        tutor != null && canAccessTutorRoute(tutor.status, uri);
+    if (tutor == null || !canOpenTutorRoute) {
       return Response.json(
         statusCode: 403,
         body: {'error': 'An active tutor account is required.'},

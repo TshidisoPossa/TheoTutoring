@@ -1,0 +1,231 @@
+import 'package:theo_tutoring_backend/admin_refunds.dart';
+import 'package:mysql_client/mysql_client.dart';
+import 'package:theo_tutoring_backend/database.dart';
+
+// ignore_for_file: public_member_api_docs
+
+abstract interface class AdminApplicationsRepository {
+  Future<List<Map<String, Object?>>> fetchApplications();
+  Future<void> reviewApplication({
+    required int applicationId,
+    required String decision,
+    required String? feedback,
+    required AdminIdentity admin,
+  });
+}
+
+class AdminApplicationValidation implements Exception {
+  const AdminApplicationValidation(this.message);
+  final String message;
+}
+
+class AdminApplicationNotFound implements Exception {
+  const AdminApplicationNotFound();
+}
+
+class AdminApplicationConflict implements Exception {
+  const AdminApplicationConflict(this.message);
+  final String message;
+}
+
+typedef AdminApplicationsRepositoryFactory =
+    AdminApplicationsRepository Function();
+
+class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
+  MySqlAdminApplicationsRepository({
+    Future<MySQLConnection> Function()? connectionFactory,
+  }) : _connectionFactory = connectionFactory ?? createIndependentConnection;
+
+  final Future<MySQLConnection> Function() _connectionFactory;
+
+  @override
+  Future<List<Map<String, Object?>>> fetchApplications() async {
+    final connection = await _connectionFactory();
+    try {
+      final applications = await connection.execute('''
+        SELECT ta.TutApplication, ta.TutorID, ta.Status, ta.SubmittedAt,
+          ta.AdminFeedback, ta.Review_at, reviewer.Name AS ReviewerName,
+          tp.VerificationStat, tp.Bio, tp.Experience,
+          tp.Certificate, tp.IdDocument, u.Name, u.Email, u.PhoneNum,
+          u.ProfilePhoto, u.AccountStatus
+        FROM TutorApplication ta
+        INNER JOIN TutorProfile tp ON tp.TutorID = ta.TutorID
+        INNER JOIN `User` u ON u.UserId = tp.UserId
+        LEFT JOIN Admin review_admin ON review_admin.AdminID = ta.AdminID
+        LEFT JOIN `User` reviewer ON reviewer.UserId = review_admin.UserId
+        ORDER BY ta.SubmittedAt DESC, ta.TutApplication DESC
+        ''');
+
+      final rows = applications.rows.toList();
+      if (rows.isEmpty) return [];
+
+      final tutorIds = <int>{};
+      for (final row in rows) {
+        final tutorId = int.parse(row.colByName('TutorID')!);
+        tutorIds.add(tutorId);
+      }
+      final parameters = <String, dynamic>{
+        for (final (index, tutorId) in tutorIds.indexed) 'tutor$index': tutorId,
+      };
+      final placeholders = [
+        for (final key in parameters.keys) ':$key',
+      ].join(', ');
+
+      final qualificationResult = await connection.execute(
+        '''
+        SELECT TutorID, Degree, Institution
+        FROM Qualification
+        WHERE TutorID IN ($placeholders)
+        ORDER BY TutorID ASC, QualificationID ASC
+        ''',
+        parameters,
+      );
+      final qualificationsByTutor = <int, List<String>>{};
+      for (final row in qualificationResult.rows) {
+        final tutorId = int.parse(row.colByName('TutorID')!);
+        final degree = row.colByName('Degree')!;
+        final institution = row.colByName('Institution')!;
+        qualificationsByTutor
+            .putIfAbsent(tutorId, () => [])
+            .add('$degree — $institution');
+      }
+
+      final subjectsResult = await connection.execute(
+        '''
+        SELECT ts.TutorID, s.subjectName
+        FROM TutorSubjects ts
+        INNER JOIN Subjects s ON s.subjectId = ts.SubjectID
+        WHERE ts.TutorID IN ($placeholders)
+        ORDER BY ts.TutorID ASC, s.subjectName ASC
+        ''',
+        parameters,
+      );
+      final subjectsByTutor = <int, List<String>>{};
+      for (final row in subjectsResult.rows) {
+        final tutorId = int.parse(row.colByName('TutorID')!);
+        subjectsByTutor
+            .putIfAbsent(tutorId, () => [])
+            .add(row.colByName('subjectName')!);
+      }
+
+      return [
+        for (final row in rows)
+          _applicationJson(
+            row.colByName,
+            qualificationsByTutor,
+            subjectsByTutor,
+          ),
+      ];
+    } finally {
+      await connection.close();
+    }
+  }
+
+  @override
+  Future<void> reviewApplication({
+    required int applicationId,
+    required String decision,
+    required String? feedback,
+    required AdminIdentity admin,
+  }) async {
+    final status = switch (decision) {
+      'approve' => 'Approved',
+      'reject' => 'Rejected',
+      _ => throw const AdminApplicationValidation('Invalid decision.'),
+    };
+    final connection = await _connectionFactory();
+    try {
+      await connection.transactional((transaction) async {
+        final current = await transaction.execute(
+          '''
+          SELECT ta.TutorID, ta.Status
+          FROM TutorApplication ta
+          WHERE ta.TutApplication = :applicationId
+          FOR UPDATE
+          ''',
+          {'applicationId': applicationId},
+        );
+        if (current.rows.isEmpty) throw const AdminApplicationNotFound();
+        if (current.rows.first.colByName('Status') != 'Pending') {
+          throw const AdminApplicationConflict(
+            'This application has already been reviewed.',
+          );
+        }
+        final tutorId = int.parse(current.rows.first.colByName('TutorID')!);
+
+        final update = await transaction.execute(
+          '''
+          UPDATE TutorApplication
+          SET Status = :status,
+              AdminFeedback = :feedback,
+              AdminID = :adminId,
+              Review_at = NOW()
+          WHERE TutApplication = :applicationId AND Status = 'Pending'
+          ''',
+          {
+            'status': status,
+            'feedback': feedback,
+            'adminId': admin.id,
+            'applicationId': applicationId,
+          },
+        );
+        if (update.affectedRows != BigInt.one) {
+          throw const AdminApplicationConflict(
+            'This application has already been reviewed.',
+          );
+        }
+
+        await transaction.execute(
+          '''
+          UPDATE TutorProfile
+          SET VerificationStat = :status
+          WHERE TutorID = :tutorId
+          ''',
+          {'status': status, 'tutorId': tutorId},
+        );
+        await transaction.execute(
+          '''
+          UPDATE `User` u
+          INNER JOIN TutorProfile tp ON tp.UserID = u.UserId
+          SET u.AccountStatus = :accountStatus
+          WHERE tp.TutorID = :tutorId AND u.Role = 'tutor'
+          ''',
+          {
+            'accountStatus': status == 'Approved' ? 'Active' : 'Rejected',
+            'tutorId': tutorId,
+          },
+        );
+      });
+    } finally {
+      if (connection.connected) await connection.close();
+    }
+  }
+
+  Map<String, Object?> _applicationJson(
+    String? Function(String) value,
+    Map<int, List<String>> qualificationsByTutor,
+    Map<int, List<String>> subjectsByTutor,
+  ) {
+    final tutorId = int.parse(value('TutorID')!);
+    return {
+      'id': int.parse(value('TutApplication')!),
+      'fullName': value('Name'),
+      'email': value('Email'),
+      'phone': value('PhoneNum'),
+      'photoUrl': value('ProfilePhoto'),
+      'status': value('Status'),
+      'accountStatus': value('AccountStatus'),
+      'verificationStatus': value('VerificationStat'),
+      'appliedAt': value('SubmittedAt'),
+      'adminFeedback': value('AdminFeedback'),
+      'reviewedAt': value('Review_at'),
+      'reviewerName': value('ReviewerName'),
+      'bio': value('Bio'),
+      'experience': value('Experience'),
+      'qualifications': qualificationsByTutor[tutorId] ?? <String>[],
+      'subjects': subjectsByTutor[tutorId] ?? <String>[],
+      'certificateUrl': value('Certificate'),
+      'idDocumentUrl': value('IdDocument'),
+    };
+  }
+}

@@ -78,6 +78,7 @@ class FirebaseAdmin {
   static const _scopes = [
     'https://www.googleapis.com/auth/datastore', // Firestore
     'https://www.googleapis.com/auth/firebase.messaging', // Cloud Messaging
+    'https://www.googleapis.com/auth/identitytoolkit', // Admin account creation
   ];
 
   String? _accessToken;

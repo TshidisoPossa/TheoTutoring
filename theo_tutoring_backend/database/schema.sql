@@ -91,10 +91,51 @@ CREATE TABLE IF NOT EXISTS TutorProfile (
 CREATE TABLE IF NOT EXISTS Admin (
     AdminID INT AUTO_INCREMENT PRIMARY KEY,
     UserId INT NOT NULL UNIQUE,
+    RoleKey VARCHAR(32) NOT NULL DEFAULT 'admin',
+
+    CONSTRAINT chk_admin_role_key CHECK (RoleKey IN (
+        'super_admin', 'admin', 'application_reviewer', 'finance_admin',
+        'support_admin', 'monitor_admin'
+    )),
 
     CONSTRAINT fk_admin_user
         FOREIGN KEY (UserId) REFERENCES `User`(UserId)
 );
+
+-- Append-only audit of privileged role assignments.
+CREATE TABLE IF NOT EXISTS AdminRoleChangeAudit (
+    AdminRoleChangeAuditID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ActorAdminID INT NOT NULL,
+    TargetAdminID INT NOT NULL,
+    PreviousRoleKey VARCHAR(32) NOT NULL,
+    NewRoleKey VARCHAR(32) NOT NULL,
+    Reason VARCHAR(500) NOT NULL,
+    ChangedAtUtc DATETIME(6) NOT NULL,
+
+    CONSTRAINT chk_admin_role_audit_role CHECK (
+        PreviousRoleKey IN (
+            'super_admin', 'admin', 'application_reviewer', 'finance_admin',
+            'support_admin', 'monitor_admin'
+        ) AND NewRoleKey IN (
+            'super_admin', 'admin', 'application_reviewer', 'finance_admin',
+            'support_admin', 'monitor_admin'
+        )
+    ),
+    CONSTRAINT fk_admin_role_audit_actor
+        FOREIGN KEY (ActorAdminID) REFERENCES Admin(AdminID),
+    CONSTRAINT fk_admin_role_audit_target
+        FOREIGN KEY (TargetAdminID) REFERENCES Admin(AdminID),
+    INDEX idx_admin_role_audit_target (TargetAdminID, ChangedAtUtc)
+) ENGINE=InnoDB;
+
+DELIMITER $$
+CREATE TRIGGER trg_admin_role_audit_no_update
+BEFORE UPDATE ON AdminRoleChangeAudit FOR EACH ROW
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Admin role audit rows are immutable'$$
+CREATE TRIGGER trg_admin_role_audit_no_delete
+BEFORE DELETE ON AdminRoleChangeAudit FOR EACH ROW
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Admin role audit rows are immutable'$$
+DELIMITER ;
 
 ALTER TABLE PlatformSettings
     ADD CONSTRAINT fk_settings_admin
@@ -461,6 +502,63 @@ CREATE TABLE IF NOT EXISTS RefundTransaction (
     UNIQUE KEY uq_refund_transaction_idempotency (RefundID, IdempotencyKey),
     UNIQUE KEY uq_refund_transaction_reference (RefundReference),
     INDEX idx_refund_transaction_status (TransactionStatus, CreatedAtUtc)
+) ENGINE=InnoDB;
+
+-- Administrative refund decisions are kept separately from payment
+-- processing so every approve, deny, or override remains attributable.
+CREATE TABLE IF NOT EXISTS RefundAdminAction (
+    RefundAdminActionID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    RefundID INT NOT NULL,
+    AdminID INT NOT NULL,
+    Action ENUM('Approved', 'Denied', 'Overridden') NOT NULL,
+    Reason TEXT NULL,
+    RefundPercentage DECIMAL(5,2) NULL,
+    RefundAmount DECIMAL(10,2) NULL,
+    CreatedAtUtc DATETIME(6) NOT NULL,
+
+    CONSTRAINT chk_refund_admin_action_percentage
+        CHECK (
+            RefundPercentage IS NULL
+            OR RefundPercentage BETWEEN 0 AND 100
+        ),
+    CONSTRAINT chk_refund_admin_action_amount
+        CHECK (RefundAmount IS NULL OR RefundAmount >= 0),
+    CONSTRAINT fk_refund_action_refund
+        FOREIGN KEY (RefundID) REFERENCES Refund(RefundID),
+    CONSTRAINT fk_refund_action_admin
+        FOREIGN KEY (AdminID) REFERENCES Admin(AdminID),
+
+    INDEX idx_refund_action_history
+        (RefundID, CreatedAtUtc, RefundAdminActionID)
+) ENGINE=InnoDB;
+
+-- User-submitted issues shown in the administrator Refunds & Issues screen.
+CREATE TABLE IF NOT EXISTS UserReport (
+    ReportID INT AUTO_INCREMENT PRIMARY KEY,
+    ReporterUserID INT NOT NULL,
+    ReportedUserID INT NOT NULL,
+    BookingID INT NULL,
+    Reason VARCHAR(191) NOT NULL,
+    Description TEXT NOT NULL,
+    ReportStatus ENUM('Open', 'UnderReview', 'Resolved')
+        NOT NULL DEFAULT 'Open',
+    ResolutionNote TEXT NULL,
+    ResolvedByAdminID INT NULL,
+    CreatedAtUtc DATETIME(6) NOT NULL,
+    ResolvedAtUtc DATETIME(6) NULL,
+
+    CONSTRAINT chk_user_report_distinct_users
+        CHECK (ReporterUserID <> ReportedUserID),
+    CONSTRAINT fk_user_report_reporter
+        FOREIGN KEY (ReporterUserID) REFERENCES `User`(UserId),
+    CONSTRAINT fk_user_report_reported
+        FOREIGN KEY (ReportedUserID) REFERENCES `User`(UserId),
+    CONSTRAINT fk_user_report_booking
+        FOREIGN KEY (BookingID) REFERENCES Booking(Booking_id),
+    CONSTRAINT fk_user_report_admin
+        FOREIGN KEY (ResolvedByAdminID) REFERENCES Admin(AdminID),
+
+    INDEX idx_user_report_status_created (ReportStatus, CreatedAtUtc)
 ) ENGINE=InnoDB;
 
 -- A hold row represents one 60-minute slot in a purchase. Expiration

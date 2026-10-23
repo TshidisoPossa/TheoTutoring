@@ -5,6 +5,16 @@ There is no migration runner. Apply `001_booking_foundation.sql`, then
 deployment process with booking writes stopped. Each ledger version is written
 last by its migration.
 
+`005_admin_rbac.sql` is an additive Admin authorization migration. Apply it
+after the base schema and the existing Admin tables are verified, before
+deploying the RBAC backend. Existing Admin rows receive the standard `admin`
+role; the migration never grants `super_admin`. It creates an append-only role
+change audit table and update/delete-blocking triggers. Review the migration,
+back up first, run it once in a MySQL client supporting `DELIMITER`, then verify
+the RoleKey column, audit table, both triggers and the
+`20261022_01_admin_rbac` ledger row. Do not deploy RBAC code before verifying
+all of those objects.
+
 ## `001_booking_foundation.sql`
 
 Adds `BookingPurchase` (single/package price snapshot), `PaymentAttempt`
