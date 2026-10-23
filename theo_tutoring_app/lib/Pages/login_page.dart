@@ -8,6 +8,7 @@ import '../config/api.dart';
 import 'Student/student_dashboard.dart';
 import 'Tutor/tutor_api.dart';
 import 'Tutor/tutor_dashboard.dart';
+import 'Tutor/tutor_presence.dart';
 import 'role_selection.dart';
 import 'forgot_password.dart';
 
@@ -207,6 +208,8 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final dashboard = await fetchTutorDashboard(idToken: idToken);
       if (!mounted) return;
+      // Students see "Available Now" on this tutor's profile from here on
+      TutorPresence.instance.start();
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(

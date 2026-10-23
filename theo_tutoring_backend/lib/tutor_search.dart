@@ -46,57 +46,79 @@ class MySqlTutorSearchRepository implements TutorSearchRepository {
       buildTutorSearchPageSql(filter),
       {...filter.parameters, 'limit': options.limit, 'offset': options.offset},
     );
+    final tutors = [for (final row in tutorResult.rows) _tutorFromRow(row)];
+    await _attachSubjects(tutors);
+    return TutorSearchResult(tutors: tutors, total: total);
+  }
 
-    final tutors = <Map<String, Object?>>[];
-    for (final row in tutorResult.rows) {
-      final tutorId = int.parse(row.colByName('TutorID')!);
-      final hourlyRate = row.colByName('HourlyRate');
-      final averageRating = row.colByName('AverageRating');
-      tutors.add({
-        'tutorId': tutorId,
-        'name': row.colByName('Name'),
-        'profilePhoto': row.colByName('ProfilePhoto'),
-        'bio': row.colByName('Bio'),
-        'experience': row.colByName('Experience'),
-        'hourlyRate': hourlyRate == null ? null : double.parse(hourlyRate),
-        'averageRating': averageRating == null
-            ? null
-            : double.parse(averageRating),
-        'reviewCount': int.parse(row.colByName('ReviewCount') ?? '0'),
-        'subjects': <Map<String, Object?>>[],
+  /// One approved, active tutor in the same shape as a search result, or
+  /// null when there is no such tutor (the student Tutor Profile page).
+  Future<Map<String, Object?>?> findById(int tutorId) async {
+    final filter = buildTutorSearchFilter(
+      const TutorSearchOptions(query: '', subjectId: null, page: 1, limit: 1),
+    );
+    final result = await connection.execute(
+      buildTutorSearchPageSql(
+        TutorSearchFilter(
+          '${filter.sql} AND tp.TutorID = :tutorId',
+          filter.parameters,
+        ),
+      ),
+      {...filter.parameters, 'tutorId': tutorId, 'limit': 1, 'offset': 0},
+    );
+    if (result.rows.isEmpty) return null;
+    final tutors = [_tutorFromRow(result.rows.first)];
+    await _attachSubjects(tutors);
+    return tutors.single;
+  }
+
+  Map<String, Object?> _tutorFromRow(ResultSetRow row) {
+    final hourlyRate = row.colByName('HourlyRate');
+    final averageRating = row.colByName('AverageRating');
+    return {
+      'tutorId': int.parse(row.colByName('TutorID')!),
+      'name': row.colByName('Name'),
+      'profilePhoto': row.colByName('ProfilePhoto'),
+      'bio': row.colByName('Bio'),
+      'experience': row.colByName('Experience'),
+      'qualification': row.colByName('Qualification'),
+      'hourlyRate': hourlyRate == null ? null : double.parse(hourlyRate),
+      'averageRating': averageRating == null
+          ? null
+          : double.parse(averageRating),
+      'reviewCount': int.parse(row.colByName('ReviewCount') ?? '0'),
+      'subjects': <Map<String, Object?>>[],
+    };
+  }
+
+  Future<void> _attachSubjects(List<Map<String, Object?>> tutors) async {
+    if (tutors.isEmpty) return;
+    final subjectParameters = <String, dynamic>{};
+    final subjectSlots = <String>[];
+    for (var i = 0; i < tutors.length; i++) {
+      final id = tutors[i]['tutorId']! as int;
+      final key = 'tutor$i';
+      subjectParameters[key] = id;
+      subjectSlots.add(':$key');
+    }
+    final subjectResult = await connection.execute(
+      'SELECT ts.TutorID, s.subjectId, s.subjectName '
+      'FROM TutorSubjects ts INNER JOIN Subjects s '
+      'ON s.subjectId = ts.SubjectID '
+      'WHERE ts.TutorID IN (${subjectSlots.join(', ')}) '
+      'ORDER BY s.subjectName ASC',
+      subjectParameters,
+    );
+    final tutorsById = {
+      for (final tutor in tutors) tutor['tutorId']! as int: tutor,
+    };
+    for (final row in subjectResult.rows) {
+      final tutor = tutorsById[int.parse(row.colByName('TutorID')!)];
+      (tutor!['subjects']! as List<Map<String, Object?>>).add({
+        'subjectId': int.parse(row.colByName('subjectId')!),
+        'subjectName': row.colByName('subjectName'),
       });
     }
-
-    if (tutors.isNotEmpty) {
-      final subjectParameters = <String, dynamic>{};
-      final subjectSlots = <String>[];
-      for (var i = 0; i < tutors.length; i++) {
-        final id = tutors[i]['tutorId']! as int;
-        final key = 'tutor$i';
-        subjectParameters[key] = id;
-        subjectSlots.add(':$key');
-      }
-      final subjectResult = await connection.execute(
-        'SELECT ts.TutorID, s.subjectId, s.subjectName '
-        'FROM TutorSubjects ts INNER JOIN Subjects s '
-        'ON s.subjectId = ts.SubjectID '
-        'WHERE ts.TutorID IN (${subjectSlots.join(', ')}) '
-        'ORDER BY s.subjectName ASC',
-        subjectParameters,
-      );
-      final tutorsById = {
-        for (final tutor in tutors) tutor['tutorId']! as int: tutor,
-      };
-      for (final row in subjectResult.rows) {
-        final tutor = tutorsById[int.parse(row.colByName('TutorID')!)];
-        (tutor!['subjects']! as List<Map<String, Object?>>).add({
-          'subjectId': int.parse(row.colByName('subjectId')!),
-          'subjectName': row.colByName('subjectName'),
-        });
-      }
-    }
-
-    return TutorSearchResult(tutors: tutors, total: total);
   }
 }
 
@@ -114,6 +136,9 @@ String buildTutorSearchCountSql(TutorSearchFilter filter) =>
 String buildTutorSearchPageSql(TutorSearchFilter filter) =>
     '''
   SELECT tp.TutorID, u.Name, u.ProfilePhoto, tp.Bio, tp.Experience,
+    (SELECT q.Degree FROM Qualification q
+     WHERE q.TutorID = tp.TutorID
+     ORDER BY q.QualificationID DESC LIMIT 1) AS Qualification,
     $currentSessionRateSubquery AS HourlyRate,
     (SELECT AVG(r.Rating) FROM Reviews r
      WHERE r.TutorID = tp.TutorID) AS AverageRating,

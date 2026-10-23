@@ -1,7 +1,9 @@
 # Database migrations
 
 There is no migration runner. Apply `001_booking_foundation.sql`, then
-`002_booking_purchase_idempotency.sql`, after the base `schema.sql`, from one
+`002_booking_purchase_idempotency.sql`, then
+`003_booking_cancellation_reason.sql`, then `004_report.sql`, then
+`005_tutor_presence.sql`, after the base `schema.sql`, from one
 deployment process with booking writes stopped. Each ledger version is written
 last by its migration.
 
@@ -347,3 +349,24 @@ Purchase-linked `Pending` lesson rows are deliberately excluded from the
 tutor-dashboard pending-request cards and count. After the later payment
 milestone settles a purchase and confirms its lessons, existing confirmed
 schedule queries will show those individual lessons unchanged.
+
+## `003_booking_cancellation_reason.sql`
+
+Adds nullable `Booking.CancellationReason`, the reason a student gives when
+cancelling a lesson from My Schedule (`POST /students/lessons/<id>/cancel`).
+Existing bookings keep NULL.
+
+## `004_report.sql`
+
+Adds the `Report` table from project documentation 11.1: `ReporterID` and
+`ReportedUserID` (both `User.UserId`), optional `BookingID` and `AdminID`,
+`Reason`, `Status` (`Open`, `Under review`, `Resolved`) and `Created_at`.
+Students create reports from My Schedule
+(`POST /students/lessons/<id>/report`); the admin dashboard reviews them.
+
+## `005_tutor_presence.sql`
+
+Adds nullable `TutorProfile.LastActiveAtUtc`. The tutor app pings
+`POST /TutorLandingpage/presence` every minute while open (any tutor request
+also refreshes it) and `DELETE`s it on sign-out. `GET /tutors/<id>` reports
+`availableNow` while it is under 3 minutes old.
