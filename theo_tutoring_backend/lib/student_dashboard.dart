@@ -13,7 +13,7 @@ class MySqlStudentDashboardRepository {
   Future<Map<String, Object?>> load(String firebaseUid) async {
     final student = await connection.execute(
       '''
-      SELECT sp.StudentID, u.Name
+      SELECT sp.StudentID, u.Name, u.ProfilePhoto
       FROM `User` u
       INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
       WHERE u.FirebaseUid = :uid
@@ -66,6 +66,8 @@ class MySqlStudentDashboardRepository {
     );
     return {
       'studentName': student.rows.first.colByName('Name'),
+      // Cloudinary URL saved at registration, null if none was uploaded
+      'studentPhoto': student.rows.first.colByName('ProfilePhoto'),
       'upcomingSessions': sessions,
       'tutors': tutorPage.tutors,
     };

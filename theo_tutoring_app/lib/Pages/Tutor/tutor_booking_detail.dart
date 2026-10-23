@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'tutor_api.dart';
 import 'tutor_format.dart';
@@ -30,7 +31,8 @@ class BookingDetail {
 
   final bool isRecurring;
   final String? recurringPattern;
-  final List<String> nextSessions;
+  final List<String> nextSessions; // "23 Oct", "30 Oct", ...
+  final String? recurringTime; // "10:00 – 11:00"
   final int totalSessions;
   final String? totalHours;
 
@@ -60,6 +62,7 @@ class BookingDetail {
     required this.isRecurring,
     this.recurringPattern,
     this.nextSessions = const [],
+    this.recurringTime,
     required this.totalSessions,
     this.totalHours,
     this.tutorName,
@@ -95,16 +98,17 @@ class BookingDetail {
       canPostpone: b['canPostpone'] == true,
       studentName: s['name']?.toString() ?? '',
       studentPhotoUrl: s['profilePhotoUrl']?.toString(),
-      studentYear: s['year']?.toString(),
+      studentYear: _yearLabel(s['year']?.toString()),
       studentMajor: s['course']?.toString(),
       studentVerified: s['verified'] == true,
       isRecurring: r != null,
       recurringPattern: r == null
           ? null
           : 'Every ${r['weekday']} (${r['frequency'] ?? 'Weekly'})',
+      recurringTime: r == null ? null : '${r['startTime']} – ${r['endTime']}',
       nextSessions: [
         for (final session in r?['sessions'] as List<dynamic>? ?? [])
-          formatLongDate((session as Map<String, dynamic>)['date']?.toString()),
+          _dayMonth((session as Map<String, dynamic>)['date']?.toString()),
       ],
       totalSessions: r?['totalSessions'] as int? ?? 0,
       totalHours:
@@ -113,6 +117,41 @@ class BookingDetail {
       tutorPhotoUrl: t?['profilePhotoUrl']?.toString(),
     );
   }
+}
+
+const _monthsShort = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+const _monthsLong = [
+  'January', 'February', 'March', 'April', 'May', 'June', //
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const _weekdaysLong = [
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', //
+  'Sunday',
+];
+
+// "2026-10-30" -> "30 Oct"
+String _dayMonth(String? iso) {
+  final d = iso == null ? null : DateTime.tryParse(iso);
+  return d == null ? (iso ?? '') : '${d.day} ${_monthsShort[d.month - 1]}';
+}
+
+// "2026-10-23" -> "Friday, 23 October 2026"
+String _fullDate(String iso) {
+  final d = DateTime.tryParse(iso);
+  if (d == null) return iso;
+  return '${_weekdaysLong[d.weekday - 1]}, ${d.day} '
+      '${_monthsLong[d.month - 1]} ${d.year}';
+}
+
+// The year of study as saved at registration: "3" -> "Year 3",
+// "Sophomore" stays as it is.
+String? _yearLabel(String? year) {
+  final y = year?.trim();
+  if (y == null || y.isEmpty) return null;
+  return int.tryParse(y) != null ? 'Year $y' : y;
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────
@@ -162,23 +201,25 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     }
   }
 
-  // Declining does not cancel the session: the tutor picks a new date and
-  // start time (same length as before) and the student must confirm it.
+  // The Cancel button. The backend does not delete the session (that would
+  // need the refund rules in documentation 4.6): it moves it. The tutor
+  // picks a new date and start time (same length as before) and the student
+  // must confirm it.
   Future<void> _decline() async {
     final b = _booking!;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Decline Booking',
+        title: const Text('Cancel this session time?',
             style: TextStyle(color: _text1)),
         content: const Text(
-            'Declining moves this session to a new time. The student will be '
-            'asked to confirm the new time.',
+            'The session will be moved to a new time that you choose. The '
+            'student will be asked to confirm it.',
             style: TextStyle(color: _text3)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: _text3)),
+            child: const Text('Keep session', style: TextStyle(color: _text3)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -257,15 +298,28 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final b = _booking;
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(color: _blue))
-            : _error != null
-                ? _buildError()
-                : _buildContent(),
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(color: _blue))
+                  : _error != null
+                      ? _buildError()
+                      : _buildContent(b!),
+            ),
+          ],
+        ),
       ),
+      // the Cancel button stays at the bottom of the screen
+      bottomNavigationBar:
+          b != null && b.canPostpone && !_loading && _error == null
+              ? _buildCancelBar()
+              : null,
     );
   }
 
@@ -276,7 +330,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.wifi_off_rounded, color: _text4, size: 40),
+            const Icon(Icons.wifi_off_rounded, color: _text4, size: 40),
             const SizedBox(height: 12),
             Text(_error!,
                 textAlign: TextAlign.center,
@@ -294,147 +348,125 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     );
   }
 
-  Widget _buildContent() {
-    final b = _booking!;
-    return Column(
+  Widget _buildContent(BookingDetail b) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
       children: [
-        _buildHeader(b),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildRequestBadge(b),
-              const SizedBox(height: 12),
-              _buildSessionInfo(b),
-              const SizedBox(height: 12),
-              if (b.studentNote != null && b.studentNote!.isNotEmpty) ...[
-                _buildStudentNote(b.studentNote!),
-                const SizedBox(height: 12),
-              ],
-              _buildStudentCard(b),
-              if (b.isRecurring) ...[
-                const SizedBox(height: 12),
-                _buildRecurringSection(b),
-              ],
-              if (b.canPostpone) ...[
-                const SizedBox(height: 20),
-                _buildDeclineButton(),
-              ],
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
+        _buildMetaRow(b),
+        const SizedBox(height: 12),
+        _buildSessionCard(b),
+        const SizedBox(height: 14),
+        _buildStudentCard(b),
+        if (b.isRecurring) ...[
+          const SizedBox(height: 14),
+          _buildRecurringCard(b),
+        ],
       ],
     );
   }
 
-  // ── Header ────────────────────────────────────────────────────────────────
+  // ── Header: back, "THEO TUTORING / Schedule", tutor photo ─────────────────
 
-  Widget _buildHeader(BookingDetail b) {
+  Widget _buildHeader() {
+    final b = _booking;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: const BoxDecoration(
-        color: _white,
-        border: Border(bottom: BorderSide(color: _border)),
-      ),
+      color: _white,
+      padding: const EdgeInsets.fromLTRB(8, 10, 16, 10),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.arrow_back_ios_new,
-                  color: _text1, size: 16),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back_rounded, color: _text1),
+            tooltip: 'Back',
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('THEO TUTORING',
+                    style: TextStyle(
+                        color: _blue,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5)),
+                Text('Schedule',
+                    style: GoogleFonts.libreBaskerville(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: _text1)),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text('Schedule',
-                style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: _text1)),
-          ),
-          const Icon(Icons.notifications_outlined,
-              color: _text3, size: 22),
-          const SizedBox(width: 12),
           CircleAvatar(
-            radius: 18,
+            radius: 20,
             backgroundColor: _blue,
-            backgroundImage: b.tutorPhotoUrl != null
-                ? NetworkImage(b.tutorPhotoUrl!)
+            backgroundImage: b?.tutorPhotoUrl != null
+                ? NetworkImage(b!.tutorPhotoUrl!)
                 : null,
-            child: b.tutorPhotoUrl != null
+            child: b?.tutorPhotoUrl != null
                 ? null
-                : b.tutorName != null
-                    ? Text(initialsOf(b.tutorName!),
+                : b?.tutorName != null
+                    ? Text(initialsOf(b!.tutorName!),
                         style: const TextStyle(
                             color: _white,
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: FontWeight.w700))
-                    : const Icon(Icons.person, color: _white, size: 18),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {},
-            child: const Icon(Icons.more_vert, color: _text3, size: 20),
+                    : const Icon(Icons.person, color: _white, size: 20),
           ),
         ],
       ),
     );
   }
 
-  // ── Request Badge ─────────────────────────────────────────────────────────
+  // ── "• ID #REQ-41   Received 3h ago" ··· status ──────────────────────────
 
-  Widget _buildRequestBadge(BookingDetail b) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: _white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: _blueBg,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              'ID #${b.requestId}',
-              style: const TextStyle(
-                  color: _blue, fontSize: 12, fontWeight: FontWeight.w700),
-            ),
+  Widget _buildMetaRow(BookingDetail b) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8EBF0),
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(width: 8),
-          if (b.receivedAgo.isNotEmpty)
-            Text(
-              'Received ${b.receivedAgo}',
-              style: const TextStyle(color: _text4, fontSize: 12),
-            ),
-          const Spacer(),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: _statusBg(b.status),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(b.status,
-                style: TextStyle(
-                    color: _statusColor(b.status),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600)),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                    color: _text3, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Text('ID #${b.requestId}',
+                  style: const TextStyle(
+                      color: _text2,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+            ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 10),
+        if (b.receivedAgo.isNotEmpty)
+          Text('Received ${b.receivedAgo}',
+              style: const TextStyle(color: _text3, fontSize: 12)),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: _statusBg(b.status),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(b.status,
+              style: TextStyle(
+                  color: _statusColor(b.status),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600)),
+        ),
+      ],
     );
   }
 
@@ -462,349 +494,356 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     }
   }
 
-  // ── Session Info ──────────────────────────────────────────────────────────
+  // ── Session: subject, date, time, and the student's note inside ──────────
 
-  Widget _buildSessionInfo(BookingDetail b) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _border),
-      ),
+  Widget _buildSessionCard(BookingDetail b) {
+    return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Subject chip
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: _blueBg,
-              borderRadius: BorderRadius.circular(6),
+              color: const Color(0xFFF1F3F6),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Text(b.subject.toUpperCase(),
                 style: const TextStyle(
-                    color: _blue,
+                    color: _text2,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5)),
+                    letterSpacing: 0.6)),
           ),
+          const SizedBox(height: 12),
+          Text(_fullDate(b.rawDate),
+              style: GoogleFonts.libreBaskerville(
+                  color: _text1, fontSize: 20, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          // Date bold large
-          Text(b.date,
-              style: const TextStyle(
-                  color: _text1,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-          // Time + duration badge
           Row(
             children: [
-              const Icon(Icons.access_time_outlined,
-                  size: 15, color: _text4),
-              const SizedBox(width: 6),
+              const Icon(Icons.access_time_rounded, size: 17, color: _blue),
+              const SizedBox(width: 8),
               Text('${b.startTime} – ${b.endTime}',
                   style: const TextStyle(
-                      color: _text2,
+                      color: _text1,
                       fontSize: 14,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _blueBg,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(b.durationLabel,
-                    style: const TextStyle(
-                        color: _blue, fontSize: 11)),
-              ),
+                      fontWeight: FontWeight.w700)),
+              if (b.durationLabel.isNotEmpty)
+                Text('  (${b.durationLabel})',
+                    style: const TextStyle(color: _text3, fontSize: 14)),
             ],
           ),
+          if (b.studentNote != null && b.studentNote!.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7F8FA),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFEEF0F3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.format_quote_rounded,
+                          color: _text4, size: 18),
+                      SizedBox(width: 4),
+                      Text('STUDENT NOTE',
+                          style: TextStyle(
+                              color: _text3,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('"${b.studentNote!}"',
+                      style: const TextStyle(
+                          color: _text2,
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                          height: 1.55)),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  // ── Student Note ──────────────────────────────────────────────────────────
-
-  Widget _buildStudentNote(String note) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('STUDENT NOTE',
-              style: TextStyle(
-                  color: _text4,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2)),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.format_quote, color: _blue, size: 20),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(note,
-                    style: const TextStyle(
-                        color: _text3,
-                        fontSize: 13,
-                        fontStyle: FontStyle.italic,
-                        height: 1.5)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Student Card ──────────────────────────────────────────────────────────
+  // ── Student: photo with a verified tick, name, year, major & focus ───────
 
   Widget _buildStudentCard(BookingDetail b) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _border),
-      ),
+    final photo = b.studentPhotoUrl;
+    return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 26,
-                backgroundImage: b.studentPhotoUrl != null
-                    ? NetworkImage(b.studentPhotoUrl!)
-                    : null,
-                backgroundColor: _blueBg,
-                child: b.studentPhotoUrl == null
-                    ? const Icon(Icons.person, color: _blue, size: 26)
-                    : null,
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 26,
+                    backgroundColor: _blueBg,
+                    backgroundImage:
+                        photo != null ? NetworkImage(photo) : null,
+                    child: photo == null
+                        ? Text(initialsOf(b.studentName),
+                            style: const TextStyle(
+                                color: _blue,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700))
+                        : null,
+                  ),
+                  if (b.studentVerified)
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: _blue,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _white, width: 2),
+                        ),
+                        child: const Icon(Icons.check_rounded,
+                            size: 10, color: _white),
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(b.studentName,
-                              style: const TextStyle(
-                                  color: _text1,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                        if (b.studentVerified) ...[
-                          const SizedBox(width: 4),
-                          const Icon(Icons.verified_rounded,
-                              color: _blue, size: 16),
-                        ],
-                      ],
-                    ),
+                    Text(b.studentName,
+                        style: GoogleFonts.libreBaskerville(
+                            color: _text1,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700)),
                     if (b.studentYear != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        b.studentYear!,
-                        style: const TextStyle(
-                            color: _text3, fontSize: 12),
-                      ),
+                      const SizedBox(height: 3),
+                      Text(b.studentYear!,
+                          style:
+                              const TextStyle(color: _text3, fontSize: 13)),
                     ],
                   ],
                 ),
               ),
             ],
           ),
-
           if (b.studentMajor != null) ...[
             const SizedBox(height: 14),
             const Divider(color: _border, height: 1),
-            const SizedBox(height: 12),
-            const Text('MAJOR & FOCUS',
-                style: TextStyle(
-                    color: _text4,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2)),
-            const SizedBox(height: 8),
-            _detailRow(Icons.school_outlined, b.studentMajor!),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F3F6),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.school_outlined,
+                      size: 16, color: _text3),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('MAJOR & FOCUS',
+                          style: TextStyle(
+                              color: _text4,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1)),
+                      const SizedBox(height: 2),
+                      Text(b.studentMajor!,
+                          style: const TextStyle(
+                              color: _text1,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _detailRow(IconData icon, String value) {
-    return Row(
-      children: [
-        Icon(icon, size: 15, color: _text4),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(value,
-              style: const TextStyle(
-                  color: _text2,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500)),
-        ),
-      ],
-    );
-  }
+  // ── Recurring Booking: pattern, next sessions, total ─────────────────────
 
-  // ── Recurring Section ─────────────────────────────────────────────────────
-
-  Widget _buildRecurringSection(BookingDetail b) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _border),
-      ),
+  Widget _buildRecurringCard(BookingDetail b) {
+    final next = b.nextSessions.take(4).toList();
+    return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.repeat_rounded, color: _blue, size: 16),
-              const SizedBox(width: 6),
-              const Text('Recurring Booking',
-                  style: TextStyle(
-                      color: _text1,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700)),
-              const Spacer(),
-              if (b.recurringPattern != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: _blueBg,
-                      borderRadius: BorderRadius.circular(20)),
-                  child: Text(b.recurringPattern!,
-                      style: const TextStyle(
-                          color: _blue,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600)),
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: _blueBg,
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child:
+                    const Icon(Icons.sync_rounded, color: _blue, size: 18),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('Recurring Booking',
+                    style: TextStyle(
+                        color: _text1,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0F2FE),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text('Weekly',
+                    style: TextStyle(
+                        color: Color(0xFF0369A1),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+              ),
             ],
           ),
           const SizedBox(height: 14),
-          if (b.recurringPattern != null) ...[
-            _recurringRow('Pattern', b.recurringPattern!),
-            const SizedBox(height: 10),
-          ],
-          // Next sessions list
-          if (b.nextSessions.isNotEmpty) ...[
-            Text('Next ${b.nextSessions.length.clamp(0, 4)} sessions',
-                style: TextStyle(
-                    color: _text4,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            ...b.nextSessions.take(4).map((session) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F8FA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFEEF0F3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (b.recurringPattern != null)
+                  Row(
                     children: [
-                      const Icon(Icons.calendar_today_outlined,
-                          size: 13, color: _text4),
-                      const SizedBox(width: 8),
-                      Text(session,
+                      const Text('Pattern:',
+                          style: TextStyle(color: _text3, fontSize: 13)),
+                      const Spacer(),
+                      Text(b.recurringPattern!,
                           style: const TextStyle(
-                              color: _text2, fontSize: 13)),
+                              color: _text1,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700)),
                     ],
                   ),
-                )),
-            const SizedBox(height: 8),
-          ],
-          const Divider(color: _border, height: 1),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Total Scheduled',
-                  style: TextStyle(color: _text3, fontSize: 13)),
-              Text(
-                b.totalHours != null
-                    ? '${b.totalSessions} Sessions · ${b.totalHours}'
-                    : '${b.totalSessions} Sessions',
-                style: const TextStyle(
-                    color: _text1,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600),
-              ),
-            ],
+                if (next.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Next ${next.length} sessions: ${next.join(', ')}'
+                    '${b.recurringTime != null ? ' (${b.recurringTime})' : ''}',
+                    style: const TextStyle(
+                        color: _text2, fontSize: 13, height: 1.5),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                const Divider(color: _border, height: 1),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Text('Total Scheduled:',
+                        style: TextStyle(color: _text3, fontSize: 13)),
+                    const Spacer(),
+                    Text(
+                      b.totalHours != null
+                          ? '${b.totalSessions} Sessions • ${b.totalHours}'
+                          : '${b.totalSessions} Sessions',
+                      style: const TextStyle(
+                          color: _text1,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _recurringRow(String label, String value) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(label,
-              style: const TextStyle(color: _text4, fontSize: 12)),
+  // ── Cancel button, pinned to the bottom ──────────────────────────────────
+
+  Widget _buildCancelBar() {
+    return Container(
+      color: _white,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: _declining ? null : _decline,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _red,
+              backgroundColor: _redBg,
+              side: const BorderSide(color: Color(0xFFFECACA)),
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: _declining
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child:
+                        CircularProgressIndicator(color: _red, strokeWidth: 2))
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.close_rounded, size: 18, color: _red),
+                      SizedBox(width: 8),
+                      Text('Cancel',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: _red)),
+                    ],
+                  ),
+          ),
         ),
-        Expanded(
-          child: Text(value,
-              style: const TextStyle(
-                  color: _text2,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500)),
-        ),
-      ],
+      ),
     );
   }
 
-  // ── Decline Button ────────────────────────────────────────────────────────
-
-  Widget _buildDeclineButton() {
-    return SizedBox(
+  Widget _card({required Widget child}) {
+    return Container(
       width: double.infinity,
-      child: OutlinedButton(
-        onPressed: _declining ? null : _decline,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: _red,
-          backgroundColor: _redBg,
-          side: const BorderSide(color: Color(0xFFFECACA)),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: _declining
-            ? const SizedBox(
-                height: 18,
-                width: 18,
-                child: CircularProgressIndicator(
-                    color: _red, strokeWidth: 2))
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.close, size: 16, color: _red),
-                  SizedBox(width: 8),
-                  Text('Decline',
-                      style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: _red)),
-                ],
-              ),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 2)),
+        ],
       ),
+      child: child,
     );
   }
 }

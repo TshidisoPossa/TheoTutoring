@@ -1,7 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../cloudinary_upload.dart';
+import '../login_page.dart';
 import 'tutor_api.dart';
 import 'tutor_format.dart';
 import 'tutor_nav.dart';
@@ -23,10 +25,20 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   // From GET /TutorLandingpage/Profile
   String _name = '';
   String? _photoUrl;
+  String _accountStatus = 'Active'; // 'Active' or 'Pending'
+  double _averageRating = 0; // 0 until the first review
+  int _reviewCount = 0;
   double? _sessionRate; // fixed by the admin, read-only
   String? _about;
-  List<String> _subjects = [];
+  List<({int id, String name})> _subjects = [];
+  Set<int> _lockedSubjectIds = {}; // subjects with an upcoming booking
+  bool _savingSubjects = false;
   List<Map<String, dynamic>> _qualifications = [];
+
+  // Same limits as the backend (registration rules)
+  static const _minAbout = 20;
+  static const _maxAbout = 300;
+  static const _maxSubjects = 10;
 
   // Availability grid, Monday to Saturday (documentation 9.3 / 11.1)
   static const _days = [
@@ -37,7 +49,18 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   Map<String, Set<String>> _saved = {}; // what the server has
   Map<String, Set<String>> _locked = {}; // periods with an upcoming booking
 
-  static const _blue = Color(0xFF1457D9);
+  static const _blue = Color(0xFF2563EB);
+  static const _blueLight = Color(0xFFE8F0FE);
+  static const _bg = Color(0xFFF3F4F8);
+  static const _cellEmpty = Color(0xFFF1F4F9);
+  static const _dark = Color(0xFF111827);
+  static const _grey = Color(0xFF6B7280);
+  static const _muted = Color(0xFF9CA3AF);
+  static const _green = Color(0xFF15803D);
+  static const _greenLight = Color(0xFFDCFCE7);
+  static const _amber = Color(0xFFB45309);
+  static const _amberLight = Color(0xFFFEF3C7);
+  static const _red = Color(0xFFE11D48);
 
   @override
   void initState() {
@@ -53,20 +76,36 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       setState(() {
         _name = p['name']?.toString() ?? '';
         _photoUrl = p['profilePhotoUrl']?.toString();
+        _accountStatus = p['accountStatus']?.toString() ?? 'Active';
+        _averageRating = (p['averageRating'] as num?)?.toDouble() ?? 0;
+        _reviewCount = (p['reviewCount'] as num?)?.toInt() ?? 0;
         _sessionRate = (p['sessionRate'] as num?)?.toDouble();
         _about = p['about']?.toString();
-        _subjects = [
-          for (final s in p['subjects'] as List<dynamic>? ?? [])
-            (s as Map<String, dynamic>)['subjectName']?.toString() ?? '',
-        ];
+        _readSubjects(p['subjects'], p['lockedSubjectIds']);
         _qualifications = (p['qualifications'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>();
         _readGrid(p['availability'] as List<dynamic>? ?? []);
+        _editMode = false;
         _loading = false;
       });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
+  }
+
+  // subjects: [{subjectId, subjectName}], locked: [3, 5]
+  void _readSubjects(Object? subjects, Object? locked) {
+    _subjects = [
+      for (final s in (subjects as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>())
+        (
+          id: (s['subjectId'] as num).toInt(),
+          name: s['subjectName']?.toString() ?? '',
+        ),
+    ];
+    _lockedSubjectIds = {
+      for (final id in locked as List<dynamic>? ?? []) (id as num).toInt(),
+    };
   }
 
   // [{day: Monday, slots: [{period: Morning, ...}], locked: [Morning]}, ...]
@@ -94,9 +133,11 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         return a.length != b.length || !a.containsAll(b);
       });
 
+  bool get _hasLocks => _locked.values.any((l) => l.isNotEmpty);
+
   void _toggle(String day, String slot) {
     if (!_editMode) {
-      _showMessage('Turn on Edit to change your availability.');
+      _showMessage('Tap Edit Profile to change your availability.');
       return;
     }
     final periods = _ticked.putIfAbsent(day, () => {});
@@ -109,6 +150,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     setState(() => periods.contains(slot)
         ? periods.remove(slot)
         : periods.add(slot));
+  }
+
+  void _cancelEditing() {
+    setState(() {
+      _editMode = false;
+      // throw away unsaved changes
+      _ticked = {for (final e in _saved.entries) e.key: {...e.value}};
+    });
   }
 
   Future<void> _saveAvailability() async {
@@ -169,6 +218,255 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     }
   }
 
+  Future<void> _logOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const LoginPage()),
+      (_) => false,
+    );
+  }
+
+  // ✏️ on About Me: edit the bio in a sheet, saved straight away
+  Future<void> _editAbout() async {
+    final controller = TextEditingController(text: _about ?? '');
+    final saved = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        var saving = false;
+        String? error;
+        return StatefulBuilder(
+          builder: (sheetContext, setSheet) {
+            final length = controller.text.trim().length;
+            final valid = length >= _minAbout && length <= _maxAbout;
+
+            Future<void> save() async {
+              setSheet(() {
+                saving = true;
+                error = null;
+              });
+              try {
+                final result = await saveTutorAbout(controller.text.trim());
+                if (sheetContext.mounted) {
+                  Navigator.pop(sheetContext,
+                      result['about']?.toString() ?? controller.text.trim());
+                }
+              } catch (e) {
+                setSheet(() {
+                  saving = false;
+                  error = e.toString();
+                });
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20,
+                  MediaQuery.of(sheetContext).viewInsets.bottom + 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _cardTitle('Edit About Me'),
+                  const SizedBox(height: 4),
+                  const Text(
+                      'Tell students about your experience and how you teach.',
+                      style: TextStyle(fontSize: 12, color: _grey)),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    minLines: 4,
+                    maxLines: 8,
+                    maxLength: _maxAbout,
+                    enabled: !saving,
+                    onChanged: (_) => setSheet(() {}),
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      helperText: length < _minAbout
+                          ? 'At least $_minAbout characters'
+                          : null,
+                    ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 4),
+                    Text(error!,
+                        style: const TextStyle(
+                            color: Color(0xFFDC2626), fontSize: 12)),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed:
+                              saving ? null : () => Navigator.pop(sheetContext),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: valid && !saving ? save : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _blue,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                          ),
+                          child: saving
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                      color: Colors.white, strokeWidth: 2))
+                              : const Text('Save'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    if (saved == null || !mounted) return;
+    setState(() => _about = saved);
+    _showMessage('About Me saved.');
+  }
+
+  // "+ Add Subject": pick from the subjects not taught yet
+  Future<void> _addSubject() async {
+    if (_subjects.length >= _maxSubjects) {
+      _showMessage('You can teach up to $_maxSubjects subjects.');
+      return;
+    }
+    final List<Map<String, dynamic>> all;
+    try {
+      all = await fetchAllSubjects();
+    } catch (e) {
+      _showMessage(e.toString(), error: true);
+      return;
+    }
+    if (!mounted) return;
+    final taught = {for (final s in _subjects) s.id};
+    final options = [
+      for (final s in all)
+        if (!taught.contains((s['subjectId'] as num).toInt()))
+          (
+            id: (s['subjectId'] as num).toInt(),
+            name: s['subjectName']?.toString() ?? '',
+          ),
+    ];
+    if (options.isEmpty) {
+      _showMessage('You already teach every subject on the platform.');
+      return;
+    }
+
+    final picked = await showModalBottomSheet<({int id, String name})>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        var query = '';
+        return StatefulBuilder(
+          builder: (sheetContext, setSheet) {
+            final matches = [
+              for (final s in options)
+                if (s.name.toLowerCase().contains(query.toLowerCase())) s,
+            ];
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16,
+                  MediaQuery.of(sheetContext).viewInsets.bottom + 16),
+              child: SizedBox(
+                height: MediaQuery.of(sheetContext).size.height * 0.6,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _cardTitle('Add a subject you teach'),
+                    const SizedBox(height: 12),
+                    TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Search subjects',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) => setSheet(() => query = value),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: matches.isEmpty
+                          ? const Center(child: Text('No subjects found.'))
+                          : ListView(
+                              children: [
+                                for (final s in matches)
+                                  ListTile(
+                                    title: Text(s.name),
+                                    trailing:
+                                        const Icon(Icons.add, color: _blue),
+                                    onTap: () =>
+                                        Navigator.pop(sheetContext, s),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    await _saveSubjects([for (final s in _subjects) s.id, picked.id],
+        done: '${picked.name} added.');
+  }
+
+  // × on a subject chip
+  Future<void> _removeSubject(({int id, String name}) subject) async {
+    if (_lockedSubjectIds.contains(subject.id)) {
+      _showMessage(
+          '${subject.name} has an upcoming booking, so you cannot remove it '
+          'yet.');
+      return;
+    }
+    if (_subjects.length == 1) {
+      _showMessage('Keep at least one subject.');
+      return;
+    }
+    await _saveSubjects(
+        [for (final s in _subjects) if (s.id != subject.id) s.id],
+        done: '${subject.name} removed.');
+  }
+
+  Future<void> _saveSubjects(List<int> ids, {required String done}) async {
+    setState(() => _savingSubjects = true);
+    try {
+      final result = await saveTutorSubjects(ids);
+      if (!mounted) return;
+      setState(() {
+        _readSubjects(result['subjects'], result['lockedSubjectIds']);
+        _savingSubjects = false;
+      });
+      _showMessage(done);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _savingSubjects = false);
+      _showMessage(e.toString(), error: true);
+    }
+  }
+
+  void _comingSoon(String feature) =>
+      _showMessage('$feature will be available soon.');
+
   void _showMessage(String message, {bool error = false}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -188,22 +486,146 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     return 'R$amount / session';
   }
 
+  // ── PAGE ────────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(color: _blue))
-            : _error != null
-                ? _buildError()
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    color: _blue,
-                    child: _buildContent(),
+      backgroundColor: _bg,
+      appBar: _buildAppBar(),
+      drawer: _buildDrawer(),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: _blue))
+          : _error != null
+              ? _buildError()
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  color: _blue,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                    children: [
+                      _buildHeaderCard(),
+                      const SizedBox(height: 16),
+                      _buildAboutCard(),
+                      const SizedBox(height: 16),
+                      _buildSubjectsCard(),
+                      const SizedBox(height: 16),
+                      _buildAvailabilityCard(),
+                      const SizedBox(height: 16),
+                      _buildEditButtons(),
+                      const SizedBox(height: 16),
+                      _buildPreferencesCard(),
+                      const SizedBox(height: 16),
+                      _buildSupportCard(),
+                      const SizedBox(height: 16),
+                      _buildLogOutCard(),
+                    ],
                   ),
-      ),
+                ),
       bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 0,
+      centerTitle: true,
+      leading: Builder(
+        builder: (context) => IconButton(
+          icon: const Icon(Icons.menu_rounded, color: _dark),
+          tooltip: 'Menu',
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
+      ),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _blueLight,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.school_rounded, color: _blue, size: 18),
+          ),
+          const SizedBox(width: 10),
+          const Text('My Profile',
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w700, color: _dark)),
+        ],
+      ),
+      actions: [
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert_rounded, color: _dark),
+          onSelected: (value) => value == 'refresh' ? _load() : _logOut(),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'refresh', child: Text('Refresh')),
+            PopupMenuItem(value: 'logout', child: Text('Log Out')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // The ☰ menu: the tutor pages and Log Out
+  Widget _buildDrawer() {
+    Widget item(IconData icon, String label, int tab) => ListTile(
+          leading: Icon(icon, color: tab == 3 ? _blue : _grey),
+          title: Text(label,
+              style: TextStyle(
+                  color: tab == 3 ? _blue : _dark,
+                  fontWeight: tab == 3 ? FontWeight.w600 : FontWeight.w500)),
+          onTap: () {
+            Navigator.pop(context); // close the menu
+            openTutorTab(context, tab, current: 3);
+          },
+        );
+
+    return Drawer(
+      backgroundColor: Colors.white,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  _avatar(radius: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(_name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _dark)),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            item(Icons.grid_view_rounded, 'Dashboard', 0),
+            item(Icons.calendar_month_rounded, 'Schedule', 1),
+            item(Icons.chat_bubble_outline_rounded, 'Chats', 2),
+            item(Icons.person_rounded, 'Profile', 3),
+            const Spacer(),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: _red),
+              title: const Text('Log Out',
+                  style: TextStyle(color: _red, fontWeight: FontWeight.w600)),
+              onTap: () {
+                Navigator.pop(context);
+                _logOut();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -218,7 +640,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             const SizedBox(height: 12),
             Text(_error!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.black54, fontSize: 13)),
+                style: const TextStyle(color: _grey, fontSize: 13)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _load,
@@ -232,285 +654,412 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     );
   }
 
-  Widget _buildContent() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        // Top bar
-        Row(
-          children: [
-            GestureDetector(
-              onTap: () => openTutorTab(context, 0, current: 3),
-              child: const Icon(Icons.arrow_back, color: Colors.black87),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'Edit Profile',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
+  // ── HEADER: photo, name, rating, badges, session rate ───────────────────────
 
-        // Avatar + name
-        Row(
-          children: [
-            GestureDetector(
-              onTap: _uploading ? null : _changePhoto,
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: const Color(0xFFD0E4FF),
-                    backgroundImage:
-                        _photoUrl != null ? NetworkImage(_photoUrl!) : null,
-                    child: _uploading
-                        ? const CircularProgressIndicator(color: _blue)
-                        : _photoUrl == null
-                            ? Text(initialsOf(_name),
-                                style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                    color: _blue))
-                            : null,
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: _blue,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: const Icon(Icons.camera_alt,
-                          size: 13, color: Colors.white),
+  Widget _avatar({required double radius}) {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: _blueLight,
+      backgroundImage: _photoUrl != null ? NetworkImage(_photoUrl!) : null,
+      child: _uploading
+          ? const CircularProgressIndicator(color: _blue)
+          : _photoUrl == null
+              ? Text(initialsOf(_name),
+                  style: TextStyle(
+                      fontSize: radius * 0.6,
+                      fontWeight: FontWeight.w700,
+                      color: _blue))
+              : null,
+    );
+  }
+
+  Widget _buildHeaderCard() {
+    final approved = _accountStatus == 'Active';
+    final hasRating = _reviewCount > 0;
+
+    return _card(
+      child: Row(
+        children: [
+          // Photo with the camera badge (changes the photo)
+          GestureDetector(
+            onTap: _uploading ? null : _changePhoto,
+            child: Stack(
+              children: [
+                _avatar(radius: 40),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: _blue,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
                     ),
+                    child: const Icon(Icons.camera_alt_rounded,
+                        size: 13, color: Colors.white),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _name,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87),
-                  ),
-                  const SizedBox(height: 4),
-                  RichText(
-                    text: TextSpan(
-                      text: 'Session Rate:  ',
-                      style: const TextStyle(color: Colors.black54, fontSize: 13),
-                      children: [
-                        TextSpan(
-                          text: _rateLabel,
-                          style: const TextStyle(
-                            color: _blue,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text('Set by the administrator',
-                      style: TextStyle(color: Colors.black38, fontSize: 11)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-
-        // About Me
-        _sectionCard(
-          title: 'About Me',
-          child: Text(
-            _about ?? 'You have not written an About Me yet.',
-            style: TextStyle(
-              color: _about == null ? Colors.black38 : Colors.black54,
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Subjects
-        _sectionCard(
-          title: 'Subjects',
-          child: _subjects.isEmpty
-              ? const Text('No subjects added yet.',
-                  style: TextStyle(color: Colors.black38, fontSize: 13))
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _subjects.map((s) => _chip(s, true)).toList(),
-                ),
-        ),
-        const SizedBox(height: 16),
-
-        // Qualifications
-        _sectionCard(
-          title: 'Qualifications',
-          child: _qualifications.isEmpty
-              ? const Text('No qualifications added yet.',
-                  style: TextStyle(color: Colors.black38, fontSize: 13))
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final q in _qualifications)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.school_outlined, color: _blue, size: 20),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(q['degree']?.toString() ?? '',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13,
-                                          color: Colors.black87)),
-                                  Text(q['institution']?.toString() ?? '',
-                                      style: const TextStyle(
-                                          color: Colors.black45, fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 16),
-
-        // Edit toggle
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.grey[50],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
-          ),
-          child: Row(
-            children: [
-              const Text('Edit', style: TextStyle(color: Colors.black54, fontSize: 14)),
-              const SizedBox(width: 12),
-              Switch(
-                value: _editMode,
-                onChanged: (val) => setState(() {
-                  _editMode = val;
-                  if (!val) {
-                    // turning Edit off throws away unsaved changes
-                    _ticked = {for (final e in _saved.entries) e.key: {...e.value}};
-                  }
-                }),
-                activeThumbColor: _blue,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Availability Grid
-        _sectionCard(
-          title: 'Availability Grid',
-          child: Column(
-            children: [
-              // Day headers
-              Row(
-                children: [
-                  const SizedBox(width: 70),
-                  ..._days.map((d) => Expanded(
-                        child: Center(
-                          child: Text(d.substring(0, 3),
-                              style: const TextStyle(
-                                  color: Colors.black45, fontSize: 11, fontWeight: FontWeight.w500)),
-                        ),
-                      )),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // Rows
-              ..._slots.map((slot) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 70,
-                        child: Text(slot,
-                            style: const TextStyle(color: Colors.black54, fontSize: 12)),
-                      ),
-                      ..._days.map((day) {
-                        final isAvailable = _ticked[day]?.contains(slot) ?? false;
-                        final isLocked =
-                            isAvailable && (_locked[day]?.contains(slot) ?? false);
-                        return Expanded(
-                          child: GestureDetector(
-                            onTap: () => _toggle(day, slot),
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 2),
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: isAvailable
-                                    ? _blue
-                                    : const Color(0xFFEEF2FF),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: isLocked
-                                  ? const Icon(Icons.lock,
-                                      size: 12, color: Colors.white)
-                                  : null,
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                );
-              }),
-              if (_locked.values.any((l) => l.isNotEmpty)) ...[
-                const SizedBox(height: 4),
-                const Row(
-                  children: [
-                    Icon(Icons.lock, size: 12, color: Colors.black38),
-                    SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                          'Locked slots have upcoming bookings and cannot be removed.',
-                          style: TextStyle(color: Colors.black38, fontSize: 11)),
-                    ),
-                  ],
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_name,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: _dark)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.star_rounded,
+                        color: Color(0xFFF59E0B), size: 17),
+                    const SizedBox(width: 3),
+                    Text(
+                      hasRating ? _averageRating.toStringAsFixed(1) : 'New',
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _dark),
+                    ),
+                    Text(
+                      hasRating
+                          ? '  ·  $_reviewCount '
+                              '${_reviewCount == 1 ? 'review' : 'reviews'}'
+                          : '  ·  No reviews yet',
+                      style: const TextStyle(fontSize: 12, color: _grey),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _badge('TUTOR', _blue, _blueLight),
+                    approved
+                        ? _badge('VERIFIED', _green, _greenLight)
+                        : _badge('PENDING REVIEW', _amber, _amberLight),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text('Session rate: $_rateLabel',
+                    style: const TextStyle(fontSize: 12, color: _grey)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _badge(String text, Color color, Color background) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              color: color)),
+    );
+  }
+
+  // ── ABOUT ME ────────────────────────────────────────────────────────────────
+
+  Widget _buildAboutCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: _cardTitle('About Me')),
+              IconButton(
+                onPressed: _editAbout,
+                tooltip: 'Edit About Me',
+                icon: const Icon(Icons.edit_outlined, color: _blue, size: 20),
+                visualDensity: VisualDensity.compact,
+              ),
             ],
           ),
-        ),
-        const SizedBox(height: 24),
+          const SizedBox(height: 4),
+          Text(
+            _about ?? 'You have not written an About Me yet.',
+            style: TextStyle(
+              color: _about == null ? _muted : _grey,
+              fontSize: 13,
+              height: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-        // Save button
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _editMode && _gridChanged && !_saving
-                ? _saveAvailability
+  // ── SUBJECTS & QUALIFICATIONS ───────────────────────────────────────────────
+
+  Widget _buildSubjectsCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _cardTitle('Subjects & Qualifications'),
+          const SizedBox(height: 14),
+          _label('SUBJECTS'),
+          const SizedBox(height: 8),
+          if (_subjects.isEmpty)
+            const Text('No subjects added yet.',
+                style: TextStyle(color: _muted, fontSize: 13))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final s in _subjects) _subjectChip(s)],
+            ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _savingSubjects ? null : _addSubject,
+            icon: _savingSubjects
+                ? const SizedBox(
+                    height: 14,
+                    width: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.add, size: 18),
+            label: const Text('Add Subject'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _blue,
+              side: const BorderSide(color: _blue),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          if (_lockedSubjectIds.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Row(
+              children: [
+                Icon(Icons.lock, size: 12, color: _muted),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                      'Locked subjects have upcoming bookings and cannot be '
+                      'removed.',
+                      style: TextStyle(color: _muted, fontSize: 11)),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
+          _label('QUALIFICATIONS'),
+          const SizedBox(height: 8),
+          if (_qualifications.isEmpty)
+            const Text('No qualifications added yet.',
+                style: TextStyle(color: _muted, fontSize: 13))
+          else
+            for (final q in _qualifications)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.school_outlined, color: _blue, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(q['degree']?.toString() ?? '',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: _dark)),
+                          Text(q['institution']?.toString() ?? '',
+                              style: const TextStyle(
+                                  color: _grey, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  // A blue subject pill with × to remove it, or a lock when it is booked
+  Widget _subjectChip(({int id, String name}) subject) {
+    final locked = _lockedSubjectIds.contains(subject.id);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: _blue,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(subject.name,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: _savingSubjects ? null : () => _removeSubject(subject),
+            child: Tooltip(
+              message: locked ? 'Has an upcoming booking' : 'Remove',
+              child: Icon(
+                locked ? Icons.lock : Icons.close_rounded,
+                size: 14,
+                color: Colors.white70,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── AVAILABILITY ────────────────────────────────────────────────────────────
+
+  Widget _buildAvailabilityCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _cardTitle('Availability'),
+          if (_editMode) ...[
+            const SizedBox(height: 4),
+            const Text('Tap a slot to turn it on or off.',
+                style: TextStyle(fontSize: 12, color: _blue)),
+          ],
+          const SizedBox(height: 14),
+          // Day headers
+          Row(
+            children: [
+              const SizedBox(width: 70),
+              for (final d in _days)
+                Expanded(
+                  child: Center(
+                    child: Text(d.substring(0, 3),
+                        style: const TextStyle(
+                            color: _muted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final slot in _slots)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 70,
+                    child: Text(slot,
+                        style: const TextStyle(color: _muted, fontSize: 11)),
+                  ),
+                  for (final day in _days) _gridCell(day, slot),
+                ],
+              ),
+            ),
+          if (_hasLocks)
+            const Row(
+              children: [
+                Icon(Icons.lock, size: 12, color: _muted),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                      'Locked slots have upcoming bookings and cannot be '
+                      'removed.',
+                      style: TextStyle(color: _muted, fontSize: 11)),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _gridCell(String day, String slot) {
+    final isAvailable = _ticked[day]?.contains(slot) ?? false;
+    final isLocked = isAvailable && (_locked[day]?.contains(slot) ?? false);
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _toggle(day, slot),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          height: 30,
+          decoration: BoxDecoration(
+            color: isAvailable ? _blue : _cellEmpty,
+            borderRadius: BorderRadius.circular(6),
+            border: _editMode && !isAvailable
+                ? Border.all(color: const Color(0xFFD6DEEB))
                 : null,
+          ),
+          child: isLocked
+              ? const Icon(Icons.lock, size: 12, color: Colors.white)
+              : null,
+        ),
+      ),
+    );
+  }
+
+  // "Edit Profile" turns on editing; then Cancel / Save Changes
+  Widget _buildEditButtons() {
+    final shape =
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
+    if (!_editMode) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () => setState(() => _editMode = true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _blue,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: shape,
+            elevation: 0,
+          ),
+          child: const Text('Edit Profile',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        ),
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: _saving ? null : _cancelEditing,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _grey,
+              side: const BorderSide(color: Color(0xFFD1D5DB)),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: shape,
+            ),
+            child: const Text('Cancel',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: ElevatedButton(
+            onPressed: _gridChanged && !_saving ? _saveAvailability : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: _blue,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: shape,
               elevation: 0,
             ),
             child: _saving
@@ -520,56 +1069,149 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                     child: CircularProgressIndicator(
                         color: Colors.white, strokeWidth: 2))
                 : const Text('Save Changes',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           ),
         ),
-        const SizedBox(height: 20),
       ],
     );
   }
 
-  Widget _chip(String label, bool selected) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      decoration: BoxDecoration(
-        color: selected ? _blue : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: selected ? _blue : Colors.grey[300]!,
+  // ── PREFERENCES & SUPPORT ───────────────────────────────────────────────────
+
+  Widget _buildPreferencesCard() {
+    return _listCard(
+      title: 'Preferences',
+      rows: [
+        _row(
+          icon: Icons.notifications_none_rounded,
+          title: 'Notification Preferences',
+          onTap: () => _comingSoon('Notification preferences'),
         ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: selected ? Colors.white : Colors.black54,
-          fontSize: 13,
-          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+        _row(
+          icon: Icons.dark_mode_outlined,
+          title: 'Dark Mode',
+          subtitle: 'Coming soon',
+          trailing: const Switch(value: false, onChanged: null),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSupportCard() {
+    return _listCard(
+      title: 'Support',
+      rows: [
+        _row(
+          icon: Icons.help_outline_rounded,
+          title: 'Help Center',
+          onTap: () => _comingSoon('The Help Center'),
+        ),
+        _row(
+          icon: Icons.outlined_flag_rounded,
+          title: 'Report a Problem',
+          onTap: () => _comingSoon('Reporting a problem'),
+        ),
+        _row(
+          icon: Icons.description_outlined,
+          title: 'Terms & Privacy Policy',
+          onTap: () => _comingSoon('Terms & Privacy Policy'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLogOutCard() {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: _logOut,
+        borderRadius: BorderRadius.circular(16),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 18),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.logout_rounded, color: _red, size: 20),
+              SizedBox(width: 8),
+              Text('Log Out',
+                  style: TextStyle(
+                      color: _red, fontSize: 15, fontWeight: FontWeight.w600)),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _sectionCard({required String title, required Widget child}) {
+  // ── SHARED PIECES ───────────────────────────────────────────────────────────
+
+  Widget _card({required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey[200]!),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
-        ],
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _cardTitle(String text) => Text(text,
+      style: const TextStyle(
+          fontSize: 16, fontWeight: FontWeight.w700, color: _dark));
+
+  Widget _label(String text) => Text(text,
+      style: const TextStyle(
+          color: _muted,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1));
+
+  // A card with a title and tappable rows separated by lines
+  Widget _listCard({required String title, required List<Widget> rows}) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
-          const SizedBox(height: 12),
-          child,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+            child: _cardTitle(title),
+          ),
+          for (final row in rows) ...[
+            const Divider(height: 1, color: Color(0xFFEEF0F4)),
+            row,
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _row({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+      leading: Icon(icon, color: _blue, size: 22),
+      title: Text(title, style: const TextStyle(fontSize: 14, color: _dark)),
+      subtitle: subtitle == null
+          ? null
+          : Text(subtitle,
+              style: const TextStyle(fontSize: 11, color: _muted)),
+      trailing: trailing ??
+          const Icon(Icons.chevron_right_rounded, color: _muted),
+      onTap: onTap,
     );
   }
 
@@ -579,7 +1221,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       backgroundColor: Colors.white,
       elevation: 8,
       selectedItemColor: _blue,
-      unselectedItemColor: Colors.black38,
+      unselectedItemColor: _muted,
       type: BottomNavigationBarType.fixed,
       selectedFontSize: 11,
       unselectedFontSize: 11,

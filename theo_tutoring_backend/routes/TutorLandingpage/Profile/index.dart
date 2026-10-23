@@ -9,8 +9,9 @@ import '../../../lib/tutorlanding_session.dart'; // TutorSession
 // GET /TutorLandingpage/Profile   (Profile tab in the bottom navigation bar)
 //
 // Everything the tutor's Profile page shows, in one call:
-//   name + profile photo, the fixed session rate (read-only), About Me,
-//   subjects, qualifications and the Mon-Sat availability grid.
+//   name + profile photo, rating + review count, the fixed session rate
+//   (read-only), About Me, subjects, qualifications and the Mon-Sat
+//   availability grid.
 // Each availability day also lists its "locked" periods: ticked periods that
 // have an upcoming booking and so cannot be removed (business rule 12).
 Future<Response> onRequest(RequestContext context) async {

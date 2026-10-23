@@ -45,6 +45,44 @@ class _StudentDashboardState extends State<StudentDashboard> {
     return widget.studentName?.trim();
   }
 
+  // The photo the student uploaded at registration (User.ProfilePhoto)
+  String? get _studentPhoto {
+    final url = (_dashboard?['studentPhoto'] as String?)?.trim();
+    return url == null || url.isEmpty ? null : url;
+  }
+
+  // The student's photo, or their initials when there is none (or it fails
+  // to load)
+  Widget _studentAvatar({required double radius}) {
+    final name = _studentName;
+    final fallback = name == null || name.isEmpty
+        ? Icon(Icons.person_rounded, color: _primaryBlue, size: radius * 1.2)
+        : Text(
+            _initials(name),
+            style: GoogleFonts.poppins(
+              color: _primaryBlue,
+              fontSize: radius * 0.65,
+              fontWeight: FontWeight.w700,
+            ),
+          );
+    final photo = _studentPhoto;
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFFE4ECFF),
+      child: photo == null
+          ? fallback
+          : ClipOval(
+              child: Image.network(
+                photo,
+                width: radius * 2,
+                height: radius * 2,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Center(child: fallback),
+              ),
+            ),
+    );
+  }
+
   List<Map<String, dynamic>> get _upcomingSessions =>
       (_dashboard?['upcomingSessions'] as List? ?? const [])
           .whereType<Map<String, dynamic>>()
@@ -294,24 +332,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
         ),
         Padding(
           padding: const EdgeInsets.only(right: 18, left: 4),
-          child: CircleAvatar(
-            radius: 20,
-            backgroundColor: const Color(0xFFE4ECFF),
-            child: _studentName == null || _studentName!.isEmpty
-                ? const Icon(
-                    Icons.person_rounded,
-                    color: _primaryBlue,
-                    size: 25,
-                  )
-                : Text(
-                    _initials(_studentName!),
-                    style: GoogleFonts.poppins(
-                      color: _primaryBlue,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-          ),
+          child: _studentAvatar(radius: 20),
         ),
       ],
     );
@@ -488,6 +509,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            _studentAvatar(radius: 36),
+            const SizedBox(height: 12),
             Text(
               name == null || name.isEmpty
                   ? 'Welcome back!'
@@ -1188,139 +1211,139 @@ class _StudentDashboardState extends State<StudentDashboard> {
     return GestureDetector(
       onTap: () => _openTutor(tutor),
       child: Container(
-      margin: const EdgeInsets.only(bottom: 13),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(19),
-        border: Border.all(color: const Color(0xFFEDF0F7)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF23365D).withValues(alpha: 0.025),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                height: 57,
-                width: 57,
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: _avatarColors[tutor.tutorId % _avatarColors.length],
-                  borderRadius: BorderRadius.circular(17),
-                ),
-                child: photo != null && photo.isNotEmpty
-                    ? Image.network(
-                        photo,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => _tutorInitials(tutor),
-                      )
-                    : _tutorInitials(tutor),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tutor.name,
-                      style: GoogleFonts.poppins(
-                        color: _textDark,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subjects.isEmpty ? 'Tutor' : subjects.join(', '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                        color: _textMuted,
-                        fontSize: 11,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.star_rounded,
-                          color: Color(0xFFFFB547),
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          rating == null ? 'New' : rating.toStringAsFixed(1),
-                          style: GoogleFonts.poppins(
-                            color: _textDark,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '(${tutor.reviewCount} '
-                          '${tutor.reviewCount == 1 ? 'review' : 'reviews'})',
-                          style: GoogleFonts.poppins(
-                            color: _textMuted,
-                            fontSize: 9,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: Color(0xFFADB5C5),
-                size: 15,
-              ),
-            ],
-          ),
-          const SizedBox(height: 13),
-          Row(
-            children: [
-              ...tags.map(
-                (tag) => Container(
-                  margin: const EdgeInsets.only(right: 7),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 6,
-                  ),
+        margin: const EdgeInsets.only(bottom: 13),
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(19),
+          border: Border.all(color: const Color(0xFFEDF0F7)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF23365D).withValues(alpha: 0.025),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  height: 57,
+                  width: 57,
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0F4FF),
-                    borderRadius: BorderRadius.circular(8),
+                    color: _avatarColors[tutor.tutorId % _avatarColors.length],
+                    borderRadius: BorderRadius.circular(17),
                   ),
-                  child: Text(
-                    tag,
+                  child: photo != null && photo.isNotEmpty
+                      ? Image.network(
+                          photo,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => _tutorInitials(tutor),
+                        )
+                      : _tutorInitials(tutor),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tutor.name,
+                        style: GoogleFonts.poppins(
+                          color: _textDark,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subjects.isEmpty ? 'Tutor' : subjects.join(', '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          color: _textMuted,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: Color(0xFFFFB547),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            rating == null ? 'New' : rating.toStringAsFixed(1),
+                            style: GoogleFonts.poppins(
+                              color: _textDark,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '(${tutor.reviewCount} '
+                            '${tutor.reviewCount == 1 ? 'review' : 'reviews'})',
+                            style: GoogleFonts.poppins(
+                              color: _textMuted,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Color(0xFFADB5C5),
+                  size: 15,
+                ),
+              ],
+            ),
+            const SizedBox(height: 13),
+            Row(
+              children: [
+                ...tags.map(
+                  (tag) => Container(
+                    margin: const EdgeInsets.only(right: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F4FF),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      tag,
+                      style: GoogleFonts.poppins(
+                        color: _primaryBlue,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                if (tutor.experience != null && tutor.experience!.isNotEmpty)
+                  Text(
+                    tutor.experience!,
                     style: GoogleFonts.poppins(
-                      color: _primaryBlue,
+                      color: _textMuted,
                       fontSize: 9,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                ),
-              ),
-              const Spacer(),
-              if (tutor.experience != null && tutor.experience!.isNotEmpty)
-                Text(
-                  tutor.experience!,
-                  style: GoogleFonts.poppins(
-                    color: _textMuted,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

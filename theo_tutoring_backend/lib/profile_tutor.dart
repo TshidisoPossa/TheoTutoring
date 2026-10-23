@@ -93,6 +93,30 @@ Future<double?> getSessionRate(MySQLConnection conn) async {
   }
 }
 
+// The rating under the tutor's name: TutorProfile.AveRate (kept up to date
+// when a review is added) and how many reviews it is based on.
+Future<({double average, int count})> getTutorRating(
+  MySQLConnection conn,
+  int tutorId,
+) async {
+  final result = await conn.execute(
+    '''
+    SELECT tp.AveRate,
+           (SELECT COUNT(*) FROM Reviews r WHERE r.TutorId = tp.TutorID)
+             AS ReviewCount
+    FROM TutorProfile tp
+    WHERE tp.TutorID = :tutorId
+    ''',
+    {'tutorId': tutorId},
+  );
+  if (result.rows.isEmpty) return (average: 0.0, count: 0);
+  final row = result.rows.first.assoc();
+  return (
+    average: double.tryParse(row['AveRate'] ?? '') ?? 0.0, // "4.50" -> 4.5
+    count: int.tryParse(row['ReviewCount'] ?? '') ?? 0,
+  );
+}
+
 // ONE call for the whole Profile page.
 // Returns null if the tutor doesn't exist.
 Future<Map<String, dynamic>?> getTutorProfilePage(
@@ -107,6 +131,8 @@ Future<Map<String, dynamic>?> getTutorProfilePage(
   final subjects = await getTutorSubjects(conn, tutorId);
   final qualifications = await getTutorQualifications(conn, tutorId);
   final sessionRate = await getSessionRate(conn);
+  final rating = await getTutorRating(conn, tutorId);
+  final lockedSubjects = await getLockedSubjectIds(conn, tutorId);
   final availability = await getTutorAvailability(conn, tutorId);
 
   // Periods with an upcoming booking cannot be unticked (business rule 12),
@@ -123,8 +149,12 @@ Future<Map<String, dynamic>?> getTutorProfilePage(
   return {
     ...header, // tutorId, name, profilePhotoUrl
     'sessionRate': sessionRate, // fixed by the admin, read-only
+    'averageRating': rating.average, // 0 until the first review
+    'reviewCount': rating.count,
     'about': about, // bio text (null if not written yet)
     'subjects': subjects, // [{subjectId, subjectName}]
+    // subjects with an upcoming booking: shown locked, cannot be removed
+    'lockedSubjectIds': lockedSubjects.toList()..sort(),
     'qualifications': qualifications, // [{qualificationId, degree, ...}]
     'availability': availability, // the Mon-Sat grid
   };
@@ -211,6 +241,120 @@ Future<void> updateTutorAbout(
       'tutorId': tutorId,
     },
   );
+}
+
+// ── Subjects box: "+ Add Subject" and removing a subject ─────────────────────
+
+/// Most subjects a tutor can teach (the same limit as registration Step 2).
+const maxTutorSubjects = 10;
+
+/// Thrown when the new subject list would drop a subject that still has an
+/// upcoming booking. The route turns it into a 409.
+class SubjectInUseException implements Exception {
+  /// Creates the exception.
+  const SubjectInUseException(this.message);
+
+  /// Message the app shows the tutor.
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Reads {"subjectIds": [3, 5]}: positive whole numbers, duplicates removed,
+/// at least one and at most [maxTutorSubjects].
+/// Throws a FormatException (turned into a 400) for anything else.
+List<int> parseTutorSubjectIds(Object? value) {
+  if (value is! List || value.isEmpty) {
+    throw const FormatException('Please keep at least one subject.');
+  }
+  final ids = <int>{}; // a set removes duplicates
+  for (final item in value) {
+    if (item is! int || item <= 0) {
+      throw const FormatException(
+        'Subject IDs must be positive whole numbers.',
+      );
+    }
+    ids.add(item);
+  }
+  if (ids.length > maxTutorSubjects) {
+    throw const FormatException(
+      'You can teach up to $maxTutorSubjects subjects.',
+    );
+  }
+  return ids.toList();
+}
+
+/// Subjects that still have a booking holding the tutor's time (requested,
+/// accepted, confirmed or postponed, and not finished). They cannot be
+/// removed, so the app shows them as locked.
+Future<Set<int>> getLockedSubjectIds(MySQLConnection conn, int tutorId) async {
+  final result = await conn.execute(
+    '''
+    SELECT DISTINCT SubjectID
+    FROM Booking
+    WHERE TutorID = :tutorId
+      AND Status IN ('Pending', 'Accepted', 'Confirmed', 'Postponed')
+      AND (`Date` > CURDATE() OR (`Date` = CURDATE() AND EndTime > CURTIME()))
+    ''',
+    {'tutorId': tutorId},
+  );
+  return {
+    for (final row in result.rows) int.parse(row.colByName('SubjectID')!),
+  };
+}
+
+/// Replaces the subjects the tutor teaches with [subjectIds], in one
+/// transaction. Throws a FormatException if a subject does not exist and a
+/// [SubjectInUseException] if a subject with an upcoming booking is removed.
+Future<void> updateTutorSubjects(
+  MySQLConnection conn,
+  int tutorId,
+  List<int> subjectIds,
+) async {
+  final params = <String, dynamic>{
+    for (var i = 0; i < subjectIds.length; i++) 's$i': subjectIds[i],
+  };
+  final placeholders = params.keys.map((k) => ':$k').join(', ');
+
+  // Every subject must be in the Subjects table
+  final found = await conn.execute(
+    'SELECT subjectId FROM Subjects WHERE subjectId IN ($placeholders)',
+    params,
+  );
+  if (found.rows.length != subjectIds.length) {
+    throw const FormatException('One or more subjects do not exist.');
+  }
+
+  // A subject with an upcoming booking must stay
+  final locked = await getLockedSubjectIds(conn, tutorId);
+  final removed = locked.difference(subjectIds.toSet());
+  if (removed.isNotEmpty) {
+    final names = await conn.execute(
+      'SELECT subjectName FROM Subjects WHERE subjectId = :id',
+      {'id': removed.first},
+    );
+    final name = names.rows.isEmpty
+        ? 'That subject'
+        : names.rows.first.colByName('subjectName');
+    throw SubjectInUseException(
+      '$name has an upcoming booking, so you cannot remove it yet.',
+    );
+  }
+
+  await conn.transactional((tx) async {
+    await tx.execute(
+      'DELETE FROM TutorSubjects WHERE TutorID = :tutorId',
+      {'tutorId': tutorId},
+    );
+    for (final id in subjectIds) {
+      await tx.execute(
+        'INSERT INTO TutorSubjects (TutorID, SubjectID) '
+        'VALUES (:tutorId, :subjectId)',
+        {'tutorId': tutorId, 'subjectId': id},
+      );
+    }
+  });
 }
 
 // Thrown when the new grid would remove a period that has an upcoming

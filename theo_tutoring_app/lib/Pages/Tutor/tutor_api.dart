@@ -99,6 +99,39 @@ Future<Map<String, dynamic>> saveTutorAvailability(
   );
 }
 
+/// Saves the About Me text (PUT /TutorLandingpage/Profile/about).
+/// The backend uses the registration bio rule (20 to 300 characters).
+Future<Map<String, dynamic>> saveTutorAbout(String about) {
+  return _send(
+    'PUT',
+    '/TutorLandingpage/Profile/about',
+    body: {'about': about},
+    failMessage: 'Could not save your About Me. Please try again.',
+  );
+}
+
+/// Replaces the subjects the tutor teaches
+/// (PUT /TutorLandingpage/Profile/subjects). [subjectIds] is the full list.
+Future<Map<String, dynamic>> saveTutorSubjects(List<int> subjectIds) {
+  return _send(
+    'PUT',
+    '/TutorLandingpage/Profile/subjects',
+    body: {'subjectIds': subjectIds},
+    failMessage: 'Could not save your subjects. Please try again.',
+  );
+}
+
+/// Every subject on the platform (GET /subjects), for "+ Add Subject".
+Future<List<Map<String, dynamic>>> fetchAllSubjects() async {
+  final body = await _send(
+    'GET',
+    '/subjects',
+    failMessage: 'Could not load the subjects. Please try again.',
+  );
+  return (body['subjects'] as List<dynamic>? ?? [])
+      .cast<Map<String, dynamic>>();
+}
+
 /// Saves a profile photo already uploaded to Cloudinary
 /// (PUT /TutorLandingpage/Profile/photo).
 Future<Map<String, dynamic>> saveTutorPhoto(String profilePhotoUrl) {
