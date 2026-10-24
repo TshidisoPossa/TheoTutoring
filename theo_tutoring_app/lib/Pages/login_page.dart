@@ -13,6 +13,8 @@ import 'Tutor/tutor_dashboard.dart';
 import 'Tutor/tutor_presence.dart';
 import 'role_selection.dart';
 import 'forgot_password.dart';
+import 'privacy_policy.dart';
+import 'terms_and_conditions.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -454,9 +456,12 @@ class _LoginPageState extends State<LoginPage> {
                   alignment: WrapAlignment.center,
                   children: [
                     TextButton(
-                      onPressed: () {
-                        // Privacy Policy will be added later
-                      },
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PrivacyPolicyPage(),
+                        ),
+                      ),
                       child: const Text(
                         'Privacy Policy',
                         style: TextStyle(color: Colors.blue, fontSize: 13),
@@ -466,9 +471,12 @@ class _LoginPageState extends State<LoginPage> {
                     const Text('|', style: TextStyle(color: Colors.grey)),
 
                     TextButton(
-                      onPressed: () {
-                        // Terms of Service will be added later
-                      },
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const TermsAndConditionsPage(),
+                        ),
+                      ),
                       child: const Text(
                         'Terms of Service',
                         style: TextStyle(color: Colors.blue, fontSize: 13),

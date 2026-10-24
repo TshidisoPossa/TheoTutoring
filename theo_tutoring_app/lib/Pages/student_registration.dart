@@ -10,6 +10,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../config/api.dart';
 import 'cloudinary_upload.dart';
+import 'privacy_policy.dart';
+import 'terms_and_conditions.dart';
 
 class _SafeRegistrationFailure implements Exception {
   const _SafeRegistrationFailure(this.message);
@@ -582,19 +584,41 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
                         ),
                         children: [
                           const TextSpan(text: 'I agree to the '),
-                          TextSpan(
-                            text: 'Terms of Service',
-                            style: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w500,
+                                                    WidgetSpan(
+                            child: GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const TermsAndConditionsPage(),
+                                ),
+                              ),
+                              child: const Text(
+                                'Terms of Service',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ),
                           ),
                           const TextSpan(text: ' and '),
-                          TextSpan(
-                            text: 'Privacy Policy',
-                            style: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.w500,
+                          WidgetSpan(
+                            child: GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const PrivacyPolicyPage(),
+                                ),
+                              ),
+                              child: const Text(
+                                'Privacy Policy',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ),
                           ),
                           const TextSpan(text: '.'),
