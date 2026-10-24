@@ -42,52 +42,62 @@ Future<Response> onRequest(RequestContext context) async {
 
     final name = (body['name'] as String).trim();
     final phone = (body['phoneNum'] as String?)?.trim() ?? '';
-    final db = await getConnection();
-    final existing = await db.execute(
-      'SELECT UserId FROM `User` WHERE Email = :email OR FirebaseUid = :uid',
-      {'email': firebaseUser.email, 'uid': firebaseUser.uid},
-    );
-    if (existing.rows.isNotEmpty) {
-      return jsonError(409, 'An account with this email already exists.');
-    }
-
-    await db.execute('START TRANSACTION');
+    // The transaction gets its own connection so a stuck registration can't
+    // leave the shared connection holding locks for every other request.
+    final db = await createIndependentConnection();
     try {
-      final userResult = await db.execute(
-        '''
-        INSERT INTO `User`
-          (Name, Email, FirebaseUid, PhoneNum, Role, AccountStatus)
-        VALUES
-          (:name, :email, :uid, :phone, 'tutor', 'Incomplete')
-        ''',
-        {
-          'name': name,
-          'email': firebaseUser.email,
-          'uid': firebaseUser.uid,
-          'phone': phone,
-        },
+      final existing = await db.execute(
+        'SELECT UserId FROM `User` WHERE Email = :email OR FirebaseUid = :uid',
+        {'email': firebaseUser.email, 'uid': firebaseUser.uid},
       );
-      final userId = userResult.lastInsertID.toInt();
-      final tutorResult = await db.execute(
-        '''
-        INSERT INTO TutorProfile (UserId, VerificationStat)
-        VALUES (:userId, 'Pending')
-        ''',
-        {'userId': userId},
-      );
-      await db.execute('COMMIT');
+      if (existing.rows.isNotEmpty) {
+        return jsonError(409, 'An account with this email already exists.');
+      }
 
-      return Response.json(
-        statusCode: 201,
-        body: {
-          'message': 'Step 1 complete! Proceed to your teaching profile.',
-          'userId': userId,
-          'tutorId': tutorResult.lastInsertID.toInt(),
-        },
-      );
-    } catch (_) {
-      await db.execute('ROLLBACK');
-      rethrow;
+      await db.execute('START TRANSACTION');
+      try {
+        final userResult = await db.execute(
+          '''
+          INSERT INTO `User`
+            (Name, Email, FirebaseUid, PhoneNum, Role, AccountStatus)
+          VALUES
+            (:name, :email, :uid, :phone, 'tutor', 'Incomplete')
+          ''',
+          {
+            'name': name,
+            'email': firebaseUser.email,
+            'uid': firebaseUser.uid,
+            'phone': phone,
+          },
+        );
+        final userId = userResult.lastInsertID.toInt();
+        final tutorResult = await db.execute(
+          '''
+          INSERT INTO TutorProfile (UserId, VerificationStat)
+          VALUES (:userId, 'Pending')
+          ''',
+          {'userId': userId},
+        );
+        await db.execute('COMMIT');
+
+        return Response.json(
+          statusCode: 201,
+          body: {
+            'message': 'Step 1 complete! Proceed to your teaching profile.',
+            'userId': userId,
+            'tutorId': tutorResult.lastInsertID.toInt(),
+          },
+        );
+      } catch (_) {
+        // If the connection is already broken, ROLLBACK can fail too; closing
+        // the connection below makes MySQL roll back and release the locks.
+        try {
+          await db.execute('ROLLBACK');
+        } catch (_) {}
+        rethrow;
+      }
+    } finally {
+      if (db.connected) await db.close();
     }
   } on FormatException catch (error) {
     return jsonError(400, error.message);

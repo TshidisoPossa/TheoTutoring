@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../cloudinary_upload.dart';
 import '../login_page.dart';
+import '../privacy_policy.dart';
+import '../terms_and_conditions.dart';
 import 'tutor_api.dart';
 import 'tutor_format.dart';
 import 'tutor_nav.dart';
@@ -1116,8 +1118,19 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         ),
         _row(
           icon: Icons.description_outlined,
-          title: 'Terms & Privacy Policy',
-          onTap: () => _comingSoon('Terms & Privacy Policy'),
+          title: 'Terms of Service',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const TermsAndConditionsPage()),
+          ),
+        ),
+        _row(
+          icon: Icons.privacy_tip_outlined,
+          title: 'Privacy Policy',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()),
+          ),
         ),
       ],
     );

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; //firebase connection
 
+import 'privacy_policy.dart';
+import 'terms_and_conditions.dart';
+
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key, this.auth});
 
@@ -226,7 +229,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   alignment: WrapAlignment.center,
                   children: [
                     TextButton(
-                      onPressed: () {},
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PrivacyPolicyPage(),
+                        ),
+                      ),
                       child: const Text(
                         'Privacy Policy',
                         style: TextStyle(color: Colors.blue, fontSize: 13),
@@ -234,7 +242,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     ),
                     const Text('|', style: TextStyle(color: Colors.grey)),
                     TextButton(
-                      onPressed: () {},
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const TermsAndConditionsPage(),
+                        ),
+                      ),
                       child: const Text(
                         'Terms of Service',
                         style: TextStyle(color: Colors.blue, fontSize: 13),
