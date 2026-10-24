@@ -1,9 +1,10 @@
-//import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
-//import 'Services/student_chat_models.dart';
-//import 'Services/student_chat_service.dart';
+import '../../services/student_chat_models.dart';
+import '../../services/student_chat_service.dart';
+import 'student_chats.dart' show ChatScreen;
 
-/*class AppColors {
+class AppColors {
   static const ink = Color(0xFF1B2433);
   static const muted = Color(0xFF6B7585);
   static const hint = Color(0xFF9AA3B2);
@@ -32,7 +33,10 @@ class TutorApp extends StatelessWidget {
 }
 
 class ChatsScreen extends StatefulWidget {
-  const ChatsScreen({super.key});
+  const ChatsScreen({super.key, this.service});
+
+  /// Used for the list and passed on to each conversation (tests use a fake).
+  final StudentChatService? service;
 
   @override
   State<ChatsScreen> createState() => _ChatsScreenState();
@@ -40,12 +44,10 @@ class ChatsScreen extends StatefulWidget {
 
 class _ChatsScreenState extends State<ChatsScreen> {
   final _searchController = TextEditingController();
-
-  //final _chatService = StudentChatService();
-  // List<StudentChatContact> _chats = [];
-
+  late final StudentChatService _chatService =
+      widget.service ?? StudentChatService();
+  List<StudentChatContact> _chats = [];
   String _query = '';
-  int _tabIndex = 2;
   bool _isLoading = true;
   bool _hasLoadError = false;
   Object? _loadError;
@@ -69,14 +71,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
       _loadError = null;
     });
 
-    //try {
-      //final chats = await _chatService.getConversations();
+    try {
+      final chats = await _chatService.getConversations();
       if (!mounted) return;
       setState(() {
         _chats = chats;
         _isLoading = false;
       });
-    }// catch (error) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -168,10 +170,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _BottomNav(
-        index: _tabIndex,
-        onChanged: (i) => setState(() => _tabIndex = i),
-      ),
     );
   }
 
@@ -214,15 +212,23 @@ class _ChatsScreenState extends State<ChatsScreen> {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: chats.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, i) => ChatTile(chat: chats[i]),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (_, i) =>
+          ChatTile(chat: chats[i], service: _chatService, onClosed: _loadChats),
     );
   }
 }
 
 class ChatTile extends StatelessWidget {
   final StudentChatContact chat;
-  const ChatTile({super.key, required this.chat});
+
+  /// Passed on to the conversation (tests use a fake).
+  final StudentChatService? service;
+
+  /// Called after the conversation closes (to refresh unread counts).
+  final VoidCallback? onClosed;
+
+  const ChatTile({super.key, required this.chat, this.service, this.onClosed});
 
   @override
   Widget build(BuildContext context) {
@@ -234,7 +240,15 @@ class ChatTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () {},
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(contact: chat, service: service),
+            ),
+          );
+          onClosed?.call();
+        },
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -319,7 +333,7 @@ class _Avatar extends StatelessWidget {
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fallbackAvatar(),
+                errorBuilder: (_, _, _) => _fallbackAvatar(),
               ),
       ),
     );
@@ -360,70 +374,6 @@ class _UnreadBadge extends StatelessWidget {
           color: Colors.white,
           fontSize: 14,
           fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomNav extends StatelessWidget {
-  final int index;
-  final ValueChanged<int> onChanged;
-  const _BottomNav({required this.index, required this.onChanged});
-
-  static const _items = [
-    (Icons.home_outlined, Icons.home, 'Home'),
-    (Icons.calendar_today_outlined, Icons.calendar_today, 'Lessons'),
-    (Icons.chat_bubble_outline, Icons.chat_bubble_outline, 'Chat'),
-    (Icons.person_outline, Icons.person, 'Profile'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 72,
-          child: Row(
-            children: [
-              for (var i = 0; i < _items.length; i++)
-                Expanded(
-                  child: InkWell(
-                    onTap: () => onChanged(i),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          i == index ? _items[i].$2 : _items[i].$1,
-                          size: 30,
-                          color: i == index
-                              ? AppColors.brand
-                              : AppColors.inactive,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _items[i].$3,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: i == index
-                                ? FontWeight.w700
-                                : FontWeight.w400,
-                            color: i == index
-                                ? AppColors.brand
-                                : AppColors.inactive,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
         ),
       ),
     );

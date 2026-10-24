@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:theo_tutoring_backend/firebase_admin.dart';
+import 'package:theo_tutoring_backend/firestore_endpoint.dart';
 
 // In-app notifications live in Firestore, not MySQL (project documentation
 // 11.2 / 11.4): notifications/{firebaseUid}/items, one document per
@@ -264,27 +265,54 @@ class AppNotification {
 
 /// Reads and writes notifications/{firebaseUid}/items through the
 /// Firestore REST API.
+///
+/// In Firestore emulator mode (see [FirestoreEndpoint.resolve]) every
+/// request must go to the emulator: any other target is refused with a
+/// [FirebaseAdminException] before a token is asked for.
 class NotificationStore {
   /// Creates a store. Tests pass their own [client] and [accessToken].
+  /// [baseUri] is the Firestore REST API's scheme, host and port
+  /// (production Firestore when omitted).
   NotificationStore({
     required this.projectId,
     required Future<String> Function() accessToken,
     http.Client? client,
+    Uri? baseUri,
   }) : _accessToken = accessToken,
-       _client = client ?? http.Client();
+       _client = client ?? http.Client(),
+       baseUri = baseUri ?? FirestoreEndpoint.production.baseUri;
 
-  /// A store signed in with the backend's Firebase service account.
-  /// Throws a [FirebaseAdminException] if the service account is not set up.
-  factory NotificationStore.fromFirebaseAdmin() {
+  /// The store the backend uses, chosen by [FirestoreEndpoint.resolve]:
+  ///  - production: signed in with the Firebase service account;
+  ///  - emulator mode: the local emulator's demo project and token. The
+  ///    service account is never loaded.
+  ///
+  /// Throws a [FirebaseAdminException] if the service account is not set
+  /// up, or if the Firestore settings are invalid. Tests may pass a [client].
+  factory NotificationStore.fromFirebaseAdmin({http.Client? client}) {
+    final endpoint = _resolveEndpoint();
+    if (endpoint.isEmulator) {
+      final token = endpoint.accessToken!;
+      return NotificationStore(
+        projectId: endpoint.projectId!,
+        accessToken: () async => token,
+        client: client,
+        baseUri: endpoint.baseUri,
+      );
+    }
     final admin = FirebaseAdmin.instance;
     return NotificationStore(
       projectId: admin.projectId,
       accessToken: admin.accessToken,
+      client: client,
     );
   }
 
   /// Firebase project the notifications belong to.
   final String projectId;
+
+  /// Scheme, host and port every request is sent to.
+  final Uri baseUri;
   final Future<String> Function() _accessToken;
   final http.Client _client;
 
@@ -304,11 +332,11 @@ class NotificationStore {
   String _parent(String uid) =>
       '$_root/notifications/${Uri.encodeComponent(uid)}';
 
-  Uri _url(String path, [Map<String, dynamic>? query]) => Uri.https(
-    'firestore.googleapis.com',
-    '/v1/$path',
-    query,
-  );
+  // Uri.https for production, exactly as before; the emulator is plain http.
+  Uri _url(String path, [Map<String, dynamic>? query]) =>
+      baseUri.scheme == 'http'
+      ? Uri.http(baseUri.authority, '/v1/$path', query)
+      : Uri.https(baseUri.authority, '/v1/$path', query);
 
   static const _unreadFilter = {
     'fieldFilter': {
@@ -508,6 +536,46 @@ class NotificationStore {
     );
   }
 
+  /// Like [create], but under the fixed document [id], so repeating the
+  /// call never makes a second notification. Returns false when [id]
+  /// already exists (nothing is changed).
+  Future<bool> createWithId({
+    required String uid,
+    required String id,
+    required String type,
+    required String title,
+    required String body,
+    int? bookingId,
+  }) async {
+    if (!isValidId(id)) {
+      throw ArgumentError.value(id, 'id', 'Not a notification id');
+    }
+    if (!NotificationType.all.contains(type)) {
+      throw ArgumentError.value(type, 'type', 'Unknown notification type');
+    }
+    if (title.trim().isEmpty || body.trim().isEmpty) {
+      throw ArgumentError('title and body must not be empty');
+    }
+    final draft = AppNotification(
+      id: id,
+      type: type,
+      title: title.trim(),
+      body: body.trim(),
+      bookingId: bookingId,
+      read: false,
+      createdAt: DateTime.now().toUtc(),
+    );
+    try {
+      await _send('POST', _url('${_parent(uid)}/items', {'documentId': id}), {
+        'fields': draft.toFirestoreFields(),
+      });
+      return true;
+    } on NotificationServiceException catch (e) {
+      if (e.statusCode == 409) return false; // ALREADY_EXISTS
+      rethrow;
+    }
+  }
+
   // runQuery returns one row per document; an empty result is a single row
   // without a "document" key.
   static Iterable<Map<String, dynamic>> _documents(dynamic rows) =>
@@ -517,6 +585,18 @@ class NotificationStore {
           .whereType<Map<String, dynamic>>();
 
   Future<dynamic> _send(String method, Uri url, Object body) async {
+    // In emulator mode nothing may leave for another host, whatever this
+    // store was built with. Checked before the token is asked for.
+    final endpoint = _resolveEndpoint();
+    if (endpoint.isEmulator &&
+        (url.scheme != endpoint.baseUri.scheme ||
+            url.authority != endpoint.baseUri.authority)) {
+      throw const FirebaseAdminException(
+        'Firestore emulator mode is on, so requests outside the emulator '
+        'are refused',
+      );
+    }
+
     // A service-account problem is a FirebaseAdminException (server error);
     // being unable to reach Google is treated like Firestore being down.
     final String token;
@@ -546,5 +626,15 @@ class NotificationStore {
       );
     }
     return jsonDecode(response.body);
+  }
+}
+
+/// The real Firestore settings; invalid ones are a server configuration
+/// problem, reported like a missing service account.
+FirestoreEndpoint _resolveEndpoint() {
+  try {
+    return FirestoreEndpoint.resolve();
+  } on FirestoreEndpointException catch (e) {
+    throw FirebaseAdminException('Invalid Firestore settings: ${e.message}');
   }
 }

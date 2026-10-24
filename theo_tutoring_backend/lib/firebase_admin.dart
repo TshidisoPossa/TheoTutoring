@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:http/http.dart' as http;
 import 'package:theo_tutoring_backend/env.dart';
+import 'package:theo_tutoring_backend/firestore_endpoint.dart';
 
 /// Thrown when the Firebase service account is missing, unreadable or
 /// rejected by Google (a server configuration problem).
@@ -18,6 +19,9 @@ class FirebaseAdminException implements Exception {
   String toString() => 'FirebaseAdminException: $message';
 }
 
+/// A Google OAuth access token and how long Google says it lasts.
+typedef GoogleAccessToken = ({String token, Duration expiresIn});
+
 /// Signs the backend in to Google APIs (Firestore, Cloud Messaging) with the
 /// Firebase service-account key. Dart has no official Firebase Admin SDK, so
 /// this does the OAuth "JWT bearer" exchange itself.
@@ -25,13 +29,36 @@ class FirebaseAdminException implements Exception {
 /// The key file is downloaded from Firebase console > Project settings >
 /// Service accounts, kept OUT of git, and its path set in
 /// FIREBASE_SERVICE_ACCOUNT_FILE (or GOOGLE_APPLICATION_CREDENTIALS).
+///
+/// In Firestore emulator mode (see [FirestoreEndpoint.resolve]) the real
+/// service account is never loaded or used: creating one and asking for a
+/// token both throw a [FirebaseAdminException].
 class FirebaseAdmin {
-  FirebaseAdmin._(this.projectId, this._clientEmail, this._privateKey);
+  FirebaseAdmin._(
+    this.projectId,
+    this._clientEmail,
+    this._privateKey,
+    this._endpoint,
+    this._fetchToken,
+  );
 
   /// Loads the service account named in the environment.
-  /// Throws a [FirebaseAdminException] if it is missing or cannot be read.
-  factory FirebaseAdmin.fromEnvironment() {
+  /// Throws a [FirebaseAdminException] if it is missing or cannot be read,
+  /// or if Firestore emulator mode is on (or its settings are invalid).
+  ///
+  /// Tests pass their own [serviceAccountFile] and [fetchToken] (instead of
+  /// asking Google), and may pass an [endpoint]. The real settings are
+  /// always checked as well, so an [endpoint] can only add a refusal, never
+  /// lift one.
+  factory FirebaseAdmin.fromEnvironment({
+    FirestoreEndpoint Function()? endpoint,
+    String? serviceAccountFile,
+    Future<GoogleAccessToken> Function()? fetchToken,
+  }) {
+    _refuseEmulator(endpoint);
+
     final path =
+        serviceAccountFile ??
         env['FIREBASE_SERVICE_ACCOUNT_FILE'] ??
         env['GOOGLE_APPLICATION_CREDENTIALS'];
     if (path == null || path.isEmpty) {
@@ -59,7 +86,35 @@ class FirebaseAdmin {
         'The Firebase service account file is incomplete',
       );
     }
-    return FirebaseAdmin._(projectId, clientEmail, privateKey);
+    return FirebaseAdmin._(
+      projectId,
+      clientEmail,
+      privateKey,
+      endpoint,
+      fetchToken,
+    );
+  }
+
+  /// Fails closed unless Firestore is in production mode, judged by the
+  /// real settings and then by [injected] (if given).
+  static void _refuseEmulator(FirestoreEndpoint Function()? injected) {
+    _refuseEmulatorEndpoint(FirestoreEndpoint.resolve);
+    if (injected != null) _refuseEmulatorEndpoint(injected);
+  }
+
+  static void _refuseEmulatorEndpoint(FirestoreEndpoint Function() resolve) {
+    final FirestoreEndpoint endpoint;
+    try {
+      endpoint = resolve();
+    } on FirestoreEndpointException catch (e) {
+      throw FirebaseAdminException('Invalid Firestore settings: ${e.message}');
+    }
+    if (endpoint.isEmulator) {
+      throw const FirebaseAdminException(
+        'Firestore emulator mode is on, so the real service account is '
+        'disabled',
+      );
+    }
   }
 
   static FirebaseAdmin? _instance;
@@ -73,6 +128,8 @@ class FirebaseAdmin {
   final String projectId;
   final String _clientEmail;
   final String _privateKey;
+  final FirestoreEndpoint Function()? _endpoint;
+  final Future<GoogleAccessToken> Function()? _fetchToken;
 
   static const _tokenUrl = 'https://oauth2.googleapis.com/token';
   static const _scopes = [
@@ -85,12 +142,24 @@ class FirebaseAdmin {
   DateTime _accessTokenExpiry = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// Returns a Google OAuth access token, reusing the cached one until a
-  /// minute before it expires.
+  /// minute before it expires. Throws a [FirebaseAdminException] in
+  /// Firestore emulator mode, even if a real token is cached.
   Future<String> accessToken() async {
+    _refuseEmulator(_endpoint);
     if (_accessToken != null && DateTime.now().isBefore(_accessTokenExpiry)) {
       return _accessToken!;
     }
 
+    final fetched = await (_fetchToken ?? _requestToken)();
+    _accessToken = fetched.token;
+    _accessTokenExpiry = DateTime.now().add(
+      fetched.expiresIn - const Duration(seconds: 60),
+    );
+    return _accessToken!;
+  }
+
+  /// Swaps a signed JWT for an access token at Google's token endpoint.
+  Future<GoogleAccessToken> _requestToken() async {
     final String assertion;
     try {
       assertion =
@@ -126,10 +195,9 @@ class FirebaseAdmin {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final expiresIn = (body['expires_in'] as num?)?.toInt() ?? 3600;
-    _accessToken = body['access_token'] as String;
-    _accessTokenExpiry = DateTime.now().add(
-      Duration(seconds: expiresIn - 60),
+    return (
+      token: body['access_token'] as String,
+      expiresIn: Duration(seconds: expiresIn),
     );
-    return _accessToken!;
   }
 }

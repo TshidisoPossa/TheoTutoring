@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../models/tutor.dart';
 import '../login_page.dart';
 import 'search_tutor.dart';
+import 'student_chatlist.dart' show ChatsScreen;
 import 'student_dashboard_api.dart';
 import 'student_lesson.dart';
 import 'student_notifications.dart';
@@ -269,8 +270,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
     return Scaffold(
       backgroundColor: _background,
       drawer: _buildSideDrawer(),
-      // The Lessons tab has its own "My Schedule" header
-      appBar: _currentIndex == 1
+      // The Lessons and Chat tabs have their own headers
+      appBar: _currentIndex == 1 || _currentIndex == 2
           ? null
           : PreferredSize(
               preferredSize: const Size.fromHeight(76),
@@ -278,6 +279,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
             ),
       body: _currentIndex == 1
           ? const StudentLessonsPage()
+          : _currentIndex == 2
+          ? const ChatsScreen()
           : SafeArea(
               top: false,
               child: _loadingDashboard && _dashboard == null
@@ -1475,7 +1478,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       if (index <= 1) _selectedDrawerIndex = index * 2;
                     });
 
-                    if (index > 1) {
+                    if (index > 2) {
                       _showMessage('${item.label} will be connected soon.');
                     }
                   },
