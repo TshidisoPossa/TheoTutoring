@@ -199,6 +199,10 @@ void main() {
   });
 
   group('POST /admin/refunds/:id/:action', () {
+    // Refund decisions the student was told about: (refundId, reason)
+    final notified = <(int, String?)>[];
+    setUp(notified.clear);
+
     Future<Response> sendAction(
       String action,
       Object? body, {
@@ -213,8 +217,25 @@ void main() {
         refundId: id,
         adminResolver: resolveAdmin ?? adminResolver,
         repositoryFactory: () => repository,
+        notifyStudent: (refundId, {reason}) async =>
+            notified.add((refundId, reason)),
       );
     }
+
+    test('tells the student when a refund is approved or denied', () async {
+      await sendAction('approve', const <String, dynamic>{});
+      await sendAction('deny', {'reason': 'Cancelled after the lesson'});
+      expect(notified, [(42, null), (42, 'Cancelled after the lesson')]);
+    });
+
+    test('an override does not notify: the refund is still pending', () async {
+      final response = await sendAction('override', {
+        'refundPercentage': 50,
+        'reason': 'Approved as exception',
+      });
+      expect(response.statusCode, HttpStatus.ok);
+      expect(notified, isEmpty);
+    });
 
     test('records an approval for the parsed refund ID', () async {
       final response = await sendAction(

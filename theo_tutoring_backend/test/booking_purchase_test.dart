@@ -242,4 +242,51 @@ void main() {
     );
     expect(first.fingerprint, same.fingerprint);
   });
+
+  test('accepts an optional trimmed note for the tutor', () {
+    final withoutNote = CreateBookingPurchaseCommand.parse(
+      manual(),
+      nowUtc: now,
+    );
+    final withNote = CreateBookingPurchaseCommand.parse(
+      {...manual(), 'note': '  Focus on integration by parts.  '},
+      nowUtc: now,
+    );
+    final blankNote = CreateBookingPurchaseCommand.parse(
+      {...manual(), 'note': '   '},
+      nowUtc: now,
+    );
+
+    expect(withoutNote.note, isNull);
+    expect(withNote.note, 'Focus on integration by parts.');
+    expect(blankNote.note, isNull);
+    // A note is part of the request, so reusing a key with a different note
+    // is a different request; a blank note is the same as none.
+    expect(withNote.fingerprint, isNot(withoutNote.fingerprint));
+    expect(blankNote.fingerprint, withoutNote.fingerprint);
+  });
+
+  test('rejects a note that is not text or is too long', () {
+    expect(
+      () => CreateBookingPurchaseCommand.parse(
+        {...manual(), 'note': 42},
+        nowUtc: now,
+      ),
+      throwsA(isA<BookingPurchaseRequestException>()),
+    );
+    expect(
+      () => CreateBookingPurchaseCommand.parse(
+        {...manual(), 'note': 'a' * (maximumBookingNoteLength + 1)},
+        nowUtc: now,
+      ),
+      throwsA(isA<BookingPurchaseRequestException>()),
+    );
+    expect(
+      () => CreateBookingPurchaseCommand.parse(
+        {...manual(), 'comment': 'not a documented field'},
+        nowUtc: now,
+      ),
+      throwsA(isA<BookingPurchaseRequestException>()),
+    );
+  });
 }

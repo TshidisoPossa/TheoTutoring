@@ -165,6 +165,10 @@ void main() {
     when(() => request.json()).thenAnswer((_) async => body());
   });
 
+  // Purchases announced to the student and tutor.
+  final notified = <int>[];
+  setUp(notified.clear);
+
   Future<Response> submit(
     _FakePaymentRepository repository, {
     required DemoPaymentConfig config,
@@ -173,6 +177,7 @@ void main() {
     repositoryFactory: () async => repository,
     studentIdResolver: (_) async => 19,
     paymentConfig: config,
+    notifyPaid: (purchaseId) async => notified.add(purchaseId),
   );
 
   test(
@@ -195,6 +200,7 @@ void main() {
       repositoryFactory: () async => repository,
       studentIdResolver: (_) async => 19,
       paymentConfig: enabled,
+      notifyPaid: (_) async {},
     );
     expect(ok.statusCode, HttpStatus.created);
 
@@ -208,6 +214,7 @@ void main() {
       repositoryFactory: () async => _FakePaymentRepository(),
       studentIdResolver: (_) async => 19,
       paymentConfig: enabled,
+      notifyPaid: (_) async {},
     );
     expect(precedence.statusCode, HttpStatus.created);
 
@@ -235,6 +242,22 @@ void main() {
     expect(replay.statusCode, HttpStatus.ok);
     expect(replayBody['replayed'], isTrue);
     expect(repository.attempts, hasLength(1));
+  });
+
+  test('announces the payment once, only when it succeeds', () async {
+    final repository = _FakePaymentRepository();
+    when(() => request.json()).thenAnswer(
+      (_) async => body(key: 'failed-key', outcome: 'failure'),
+    );
+    await submit(repository, config: enabled);
+    expect(notified, isEmpty); // nothing is booked yet
+
+    when(() => request.json()).thenAnswer(
+      (_) async => body(key: 'paid-key'),
+    );
+    await submit(repository, config: enabled);
+    await submit(repository, config: enabled); // replay of the same payment
+    expect(notified, [27]);
   });
 
   test(

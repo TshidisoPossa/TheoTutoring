@@ -12,7 +12,7 @@ class AppColors {
   static const starOff = Color(0xFFE3E6F0);
 }
 
-class ReviewApp extends StatelessWidget {
+/*class ReviewApp extends StatelessWidget {
   const ReviewApp({super.key});
 
   @override
@@ -107,7 +107,7 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                   ),
                   const SizedBox(height: 16),
                   _HighlightsCard(
-                    badges: _badges,
+                   // badges: _badges,
                     selected: _selected,
                     onToggle: (name) => setState(() {
                       _selected.contains(name)
@@ -738,3 +738,4 @@ class _ReviewCard extends StatelessWidget {
     );
   }
 }
+/*

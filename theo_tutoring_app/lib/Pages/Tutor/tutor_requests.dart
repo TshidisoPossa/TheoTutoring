@@ -10,56 +10,8 @@ class TutorRequestsScreen extends StatefulWidget {
 class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   int _selectedTab = 0; // 0=Pending, 1=Accepted, 2=Declined, 3=Paid
 
-  final List<Map<String, dynamic>> _requests = [
-    {
-      'name': 'Emma Roberts',
-      'university': 'Stanford University',
-      'subject': 'Calculus',
-      'status': 'Pending',
-      'time': '35 mins ago',
-      'date': 'Tue, Oct 24',
-      'slot': '4:00 PM – 5:30 PM (1.5hrs)',
-      'platform': 'Zoom',
-      'note': 'Looking for help with derivatives and chain rule before my midterm next Tuesday. Prefer practice problems and step-by-step breakdown.',
-      'avatar': 'ER',
-    },
-    {
-      'name': 'Marcus Chen',
-      'university': 'MIT',
-      'subject': 'Physics',
-      'status': 'Pending',
-      'time': '1hr ago',
-      'date': 'Wed, Oct 25',
-      'slot': '2:00 PM – 3:00 PM (1hr)',
-      'platform': 'Zoom',
-      'note': 'Need to review kinematics equations. I\'m struggling with projectile motion concepts and...',
-      'avatar': 'MC',
-    },
-    {
-      'name': 'Sophia Patel',
-      'university': 'UCLA',
-      'subject': 'Chemistry',
-      'status': 'Pending',
-      'time': '3hrs ago',
-      'date': 'Thu, Oct 26',
-      'slot': '5:00 PM – 6:00 PM (1hr)',
-      'platform': 'Zoom',
-      'note': 'Struggling with stoichiometry and redox reactions ahead of chapter test on Thursday.',
-      'avatar': 'SP',
-    },
-    {
-      'name': 'Liam Walker',
-      'university': 'Harvard',
-      'subject': 'Statistics',
-      'status': 'Accepted',
-      'time': 'Confirmed yesterday',
-      'date': 'Fri, Oct 27',
-      'slot': '3:30 PM – 4:30 PM (1hr)',
-      'platform': 'Zoom',
-      'note': 'Confirmed session on hypothesis testing and p-values for intro data science.',
-      'avatar': 'LW',
-    },
-  ];
+  // No sample data: this page only shows real requests from the backend.
+  final List<Map<String, dynamic>> _requests = [];
 
   List<Map<String, dynamic>> get _filteredRequests {
     switch (_selectedTab) {
@@ -585,70 +537,9 @@ class _RequestDetailsSheet extends StatelessWidget {
                       request['university'],
                       style: const TextStyle(color: Color(0xFF9295A3), fontSize: 12),
                     ),
-                    Row(
-                      children: [
-                        const Icon(Icons.star, color: Color(0xFFFFA500), size: 14),
-                        const Text(' 4.9', style: TextStyle(color: Colors.white, fontSize: 12)),
-                      ],
-                    ),
                   ],
                 ),
               ],
-            ),
-            const SizedBox(height: 20),
-
-            // Schedule conflict section
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF141928),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF1E2235)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.calendar_today, size: 14, color: Color(0xFF9295A3)),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Your Schedule On This Day  ${request['date']}',
-                        style: const TextStyle(color: Color(0xFF9295A3), fontSize: 12),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _scheduleBlock('1:30 PM – 2:30 PM', 'Intro to Python • David Kim', const Color(0xFF2A2D3E), false),
-                  const SizedBox(height: 6),
-                  _scheduleBlock('4:30 PM – 5:30 PM', 'Advanced Essay Writing • Sarah Jenkins', const Color(0xFFEA5455), true),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF28C76F).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF28C76F).withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Text('6:00 PM – 7:30 PM  Suggested Open Window',
-                            style: TextStyle(color: Colors.white, fontSize: 12)),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () {},
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: const Text('Propose', style: TextStyle(color: Color(0xFF1457D9), fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             ),
             const SizedBox(height: 24),
 
@@ -702,39 +593,6 @@ class _RequestDetailsSheet extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-
-  Widget _scheduleBlock(String time, String title, Color color, bool isConflict) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: color, width: 3)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(time, style: const TextStyle(color: Color(0xFF9295A3), fontSize: 11)),
-                Text(title, style: const TextStyle(color: Colors.white, fontSize: 12)),
-              ],
-            ),
-          ),
-          if (isConflict)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEA5455).withOpacity(0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text('CONFLICT', style: TextStyle(color: Color(0xFFEA5455), fontSize: 10)),
-            ),
-        ],
-      ),
     );
   }
 }

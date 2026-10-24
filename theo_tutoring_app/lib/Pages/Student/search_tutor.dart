@@ -120,7 +120,11 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
   void _openProfile(Tutor tutor) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => StudentTutorProfilePage(tutor: tutor),
+        builder: (_) => StudentTutorProfilePage(
+          tutor: tutor,
+          studentName: widget.studentName,
+          studentPhoto: widget.studentPhoto,
+        ),
       ),
     );
   }
@@ -156,7 +160,12 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => BookingSelectLessonPage(
-            flow: BookingFlowContext(tutor: tutor, subject: subject),
+            flow: BookingFlowContext(
+              tutor: tutor,
+              subject: subject,
+              studentName: widget.studentName,
+              studentPhoto: widget.studentPhoto,
+            ),
           ),
         ),
       );

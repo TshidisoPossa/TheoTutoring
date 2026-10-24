@@ -7,9 +7,21 @@ import 'package:theo_tutoring_backend/booking_purchase_repository.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/demo_payment_config.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
+import 'package:theo_tutoring_backend/student_notifications.dart';
+import 'package:theo_tutoring_backend/tutor_notifications.dart';
 
 typedef PaymentStudentIdResolver = Future<int> Function(String? authorization);
 typedef PaymentRepositoryFactory = Future<BookingPurchaseRepository> Function();
+
+/// Announces a purchase that was just paid.
+typedef PaidPurchaseNotifier = Future<void> Function(int purchaseId);
+
+// The student gets "Payment successful", the tutor "New lesson booked".
+// Neither can fail the payment: both only log their problems.
+Future<void> _notifyPaid(int purchaseId) => Future.wait([
+  notifyStudentOfPaidPurchase(purchaseId),
+  notifyTutorOfPaidPurchase(purchaseId),
+]);
 
 Future<Response> onRequest(RequestContext context, String purchaseId) =>
     handleCreatePaymentAttempt(context, routePurchaseId: purchaseId);
@@ -20,6 +32,7 @@ Future<Response> handleCreatePaymentAttempt(
   PaymentRepositoryFactory? repositoryFactory,
   PaymentStudentIdResolver? studentIdResolver,
   DemoPaymentConfig? paymentConfig,
+  PaidPurchaseNotifier? notifyPaid,
 }) async {
   if (context.request.method != HttpMethod.post) {
     return Response.json(
@@ -75,6 +88,10 @@ Future<Response> handleCreatePaymentAttempt(
       purchaseId,
       command,
     );
+    // The lessons are now Confirmed. A replay was already announced.
+    if (receipt.settled && !receipt.replayed) {
+      await (notifyPaid ?? _notifyPaid)(purchaseId);
+    }
     return Response.json(
       statusCode: receipt.replayed ? HttpStatus.ok : HttpStatus.created,
       body: receipt.toJson(),

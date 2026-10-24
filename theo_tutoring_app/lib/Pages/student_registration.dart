@@ -49,6 +49,7 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
   final confirmPasswordController = TextEditingController();
   final phoneController = TextEditingController();
   final addressController = TextEditingController();
+  final institutionController = TextEditingController();
   final courseController = TextEditingController();
   final tutoringModuleController = TextEditingController();
 
@@ -160,6 +161,7 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
           'email': emailController.text.trim(),
           'phone': phoneController.text.trim(),
           'address': addressController.text.trim(),
+          'institution': institutionController.text.trim(),
           'institutionYear': selectedYear!.replaceAll('Year ', ''),
           'course': courseController.text.trim(),
           'tutoringModule': tutoringModuleController.text.trim(),
@@ -443,6 +445,29 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
 
             const SizedBox(height: 20),
 
+            // University (shown to tutors on the booking details page)
+            const Text(
+              'University',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+
+            const SizedBox(height: 8),
+
+            TextField(
+              controller: institutionController,
+              textCapitalization: TextCapitalization.words,
+              maxLength: 150,
+              decoration: InputDecoration(
+                hintText: 'e.g. University of Johannesburg',
+                counterText: '',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
             // Institution Year
             const Text(
               'Institution Year',
@@ -623,6 +648,7 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
                             confirmPasswordController.text.isEmpty ||
                             phoneController.text.isEmpty ||
                             addressController.text.isEmpty ||
+                            institutionController.text.trim().isEmpty ||
                             selectedYear == null ||
                             courseController.text.isEmpty ||
                             tutoringModuleController.text.isEmpty) {

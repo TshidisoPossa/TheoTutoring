@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../config/api.dart';
 
 abstract interface class BookingFlowApi {
-  Future<List<AvailableBookingSlot>> availability({
+  Future<BookingAvailability> availability({
     required int tutorId,
     required int subjectId,
     required String from,
@@ -58,6 +58,16 @@ class AvailableBookingSlot {
   }
 }
 
+/// The tutor's free 60-minute slots (from their weekly availability, minus
+/// lessons already booked or held) and the platform rate for one lesson.
+class BookingAvailability {
+  const BookingAvailability({required this.slots, this.hourlyRate});
+  final List<AvailableBookingSlot> slots;
+
+  /// e.g. "180.00"; null if the response did not include it.
+  final String? hourlyRate;
+}
+
 class BookingPurchaseResult {
   const BookingPurchaseResult({
     required this.purchaseId,
@@ -65,12 +75,21 @@ class BookingPurchaseResult {
     required this.totalAmount,
     required this.holdExpiresAt,
     required this.lessons,
-  });
+    String? subtotal,
+    this.discountPercent = 0,
+    this.discountAmount = '0.00',
+  }) : subtotal = subtotal ?? totalAmount;
   final int purchaseId;
   final String purchaseStatus;
   final String totalAmount;
   final String holdExpiresAt;
   final List<Map<String, dynamic>> lessons;
+
+  /// Rate × lesson count before any package discount; the total is
+  /// subtotal − discountAmount.
+  final String subtotal;
+  final int discountPercent;
+  final String discountAmount;
 
   factory BookingPurchaseResult.fromJson(
     Object? value, {
@@ -81,6 +100,9 @@ class BookingPurchaseResult {
         value['purchaseId'] is! int ||
         value['purchaseStatus'] is! String ||
         value['totalAmount'] is! String ||
+        value['subtotal'] is! String ||
+        value['discountPercent'] is! int ||
+        value['discountAmount'] is! String ||
         value['holdExpiresAt'] is! String ||
         value['lessons'] is! List ||
         value['tutorId'] != tutorId ||
@@ -117,6 +139,9 @@ class BookingPurchaseResult {
       totalAmount: value['totalAmount'] as String,
       holdExpiresAt: value['holdExpiresAt'] as String,
       lessons: lessons.cast<Map<String, dynamic>>(),
+      subtotal: value['subtotal'] as String,
+      discountPercent: value['discountPercent'] as int,
+      discountAmount: value['discountAmount'] as String,
     );
   }
 }
@@ -139,9 +164,7 @@ class PaymentAttemptResult {
   final bool settled;
 
   bool get isSuccessful =>
-      paymentStatus == 'Successful' &&
-      purchaseStatus == 'Paid' &&
-      settled;
+      paymentStatus == 'Successful' && purchaseStatus == 'Paid' && settled;
 
   factory PaymentAttemptResult.fromJson(Object? value) {
     if (value is! Map<String, dynamic> ||
@@ -156,8 +179,7 @@ class PaymentAttemptResult {
     final status = value['paymentStatus'] as String;
     final purchaseStatus = value['purchaseStatus'] as String;
     final settled = value['settled'] as bool;
-    if ((status == 'Successful' &&
-            (purchaseStatus != 'Paid' || !settled)) ||
+    if ((status == 'Successful' && (purchaseStatus != 'Paid' || !settled)) ||
         (status == 'Failed' && (purchaseStatus != 'Held' || settled)) ||
         (status != 'Successful' && status != 'Failed')) {
       throw const FormatException('Payment response has an invalid status.');
@@ -198,20 +220,21 @@ class HttpBookingFlowApi implements BookingFlowApi {
   }
 
   @override
-  Future<List<AvailableBookingSlot>> availability({
+  Future<BookingAvailability> availability({
     required int tutorId,
     required int subjectId,
     required String from,
     required String through,
   }) async {
-    final uri = Uri.parse('$apiBaseUrl/StudentlandingPage/availability').replace(
-      queryParameters: {
-        'tutorId': '$tutorId',
-        'subjectId': '$subjectId',
-        'from': from,
-        'through': through,
-      },
-    );
+    final uri = Uri.parse('$apiBaseUrl/StudentlandingPage/availability')
+        .replace(
+          queryParameters: {
+            'tutorId': '$tutorId',
+            'subjectId': '$subjectId',
+            'from': from,
+            'through': through,
+          },
+        );
     try {
       final response = await _client
           .get(uri, headers: await _headers())
@@ -223,10 +246,14 @@ class HttpBookingFlowApi implements BookingFlowApi {
       final body = jsonDecode(response.body);
       if (body is! Map<String, dynamic> || body['slots'] is! List)
         throw const FormatException('Availability response is invalid.');
-      return [
-        for (final slot in body['slots'] as List)
-          AvailableBookingSlot.fromJson(slot),
-      ];
+      final rate = body['hourlyRate'];
+      return BookingAvailability(
+        hourlyRate: rate is String ? rate : null,
+        slots: [
+          for (final slot in body['slots'] as List)
+            AvailableBookingSlot.fromJson(slot),
+        ],
+      );
     } on BookingApiException {
       rethrow;
     } on FormatException {

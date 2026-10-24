@@ -7,6 +7,8 @@ import '../login_page.dart';
 import 'search_tutor.dart';
 import 'student_dashboard_api.dart';
 import 'student_lesson.dart';
+import 'student_notifications.dart';
+import 'student_notifications_api.dart';
 import 'student_tutor_profile.dart';
 
 class StudentDashboard extends StatefulWidget {
@@ -31,6 +33,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
   Map<String, dynamic>? _dashboard;
   bool _loadingDashboard = true;
   String? _dashboardError;
+  int _unread = 0; // the number on the bell
 
   // Background colours for tutor initials, picked by tutor ID.
   static const _avatarColors = [
@@ -126,6 +129,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
       _loadingDashboard = true;
       _dashboardError = null;
     });
+    _loadUnread();
     try {
       final data = await _dashboardApi.fetch();
       if (mounted) setState(() => _dashboard = data);
@@ -178,6 +182,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
       ),
     );
     if (tab == null || !mounted) return;
+    _goToTab(tab);
+  }
+
+  // A page opened on top (search, notifications) popped with a bottom-nav tab
+  void _goToTab(int tab) {
     if (tab <= 1) {
       setState(() {
         _currentIndex = tab;
@@ -188,11 +197,35 @@ class _StudentDashboardState extends State<StudentDashboard> {
     }
   }
 
+  // The bell badge is extra: if it cannot load, the bell just shows no number.
+  Future<void> _loadUnread() async {
+    try {
+      final unread = await fetchStudentUnreadCount();
+      if (mounted) setState(() => _unread = unread);
+    } catch (_) {}
+  }
+
+  Future<void> _openNotifications() async {
+    final tab = await Navigator.push<int>(
+      context,
+      MaterialPageRoute<int>(
+        builder: (_) => const StudentNotificationsScreen(),
+      ),
+    );
+    if (!mounted) return;
+    _loadUnread();
+    if (tab != null) _goToTab(tab);
+  }
+
   void _openTutor(Tutor tutor) {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => StudentTutorProfilePage(tutor: tutor),
+        builder: (_) => StudentTutorProfilePage(
+          tutor: tutor,
+          studentName: _studentName,
+          studentPhoto: _studentPhoto,
+        ),
       ),
     );
   }
@@ -345,11 +378,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
         ],
       ),
       actions: [
+        // Opens Notifications; red badge = unread count
         IconButton(
-          onPressed: () {
-            _showMessage('Notifications will be available soon.');
-          },
-          icon: const Icon(Icons.notifications_none_rounded),
+          onPressed: _openNotifications,
+          icon: Badge(
+            isLabelVisible: _unread > 0,
+            backgroundColor: const Color(0xFFE05252),
+            label: Text(_unread > 99 ? '99+' : '$_unread'),
+            child: const Icon(Icons.notifications_none_rounded),
+          ),
           color: _textDark,
           tooltip: 'Notifications',
         ),

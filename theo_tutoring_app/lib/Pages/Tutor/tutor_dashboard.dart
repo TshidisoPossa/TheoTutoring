@@ -7,6 +7,7 @@ import 'tutor_api.dart';
 import 'tutor_booking_detail.dart';
 import 'tutor_format.dart';
 import 'tutor_nav.dart';
+import 'tutor_notifications.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
@@ -34,16 +35,13 @@ class DashboardSession {
   // One row of todaysSchedule from GET /TutorLandingpage/LandingPageScreen.
   // MySQL sends every value back as text, so numbers are parsed here.
   factory DashboardSession.fromJson(Map<String, dynamic> j) {
-    String clock(Object? v) {
-      final s = v?.toString() ?? '';
-      return s.length >= 5 ? s.substring(0, 5) : s; // "15:00:00" -> "15:00"
-    }
-
     final minutes = int.tryParse(j['MinutesUntilStart']?.toString() ?? '');
     return DashboardSession(
       bookingId: int.tryParse(j['Booking_id']?.toString() ?? '') ?? 0,
       subjectId: int.tryParse(j['SubjectID']?.toString() ?? '') ?? 0,
-      timeRange: '${clock(j['StartTime'])} – ${clock(j['EndTime'])}',
+      // "15:00:00" -> "3:00 PM – 4:00 PM", like the dashboard design
+      timeRange: '${clock12(j['StartTime']?.toString())} – '
+          '${clock12(j['EndTime']?.toString())}',
       subject: j['Subject']?.toString() ?? '',
       studentName: j['StudentName']?.toString() ?? 'Student',
       note: j['Note']?.toString(),
@@ -159,6 +157,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
   DashboardData? _data;
   bool _loading = true;
   String? _error;
+  int _unread = 0; // the number on the bell
 
   static const _blue  = Color(0xFF246BFE);
   static const _bg    = Color(0xFFF2F4F8);
@@ -177,6 +176,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
       _data = DashboardData.fromJson(initial);
       tutorAccountIsActive = !_data!.isPending;
       _loading = false;
+      _loadUnread();
     } else {
       _load();
     }
@@ -184,6 +184,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
+    _loadUnread();
     try {
       final data = DashboardData.fromJson(await fetchTutorDashboard());
       tutorAccountIsActive = !data.isPending;
@@ -191,6 +192,24 @@ class _TutorDashboardState extends State<TutorDashboard> {
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
+  }
+
+  // The bell badge is extra: if it cannot load, the bell just shows no number.
+  Future<void> _loadUnread() async {
+    try {
+      final unread = await fetchTutorUnreadCount();
+      if (mounted) setState(() => _unread = unread);
+    } catch (_) {}
+  }
+
+  Future<void> _openNotifications() async {
+    final tab = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(builder: (_) => const TutorNotificationsScreen()),
+    );
+    if (!mounted) return;
+    _loadUnread();
+    if (tab != null) _openTab(tab); // a bottom-bar tab was tapped there
   }
 
   Future<void> _openBooking(DashboardSession session) async {
@@ -333,11 +352,17 @@ class _TutorDashboardState extends State<TutorDashboard> {
             ),
           ),
 
-          // Bell icon
+          // Bell icon: opens Notifications, red badge = unread count
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications_outlined,
-                color: _dark, size: 24),
+            onPressed: _openNotifications,
+            tooltip: 'Notifications',
+            icon: Badge(
+              isLabelVisible: _unread > 0,
+              backgroundColor: _red,
+              label: Text(_unread > 99 ? '99+' : '$_unread'),
+              child: const Icon(Icons.notifications_outlined,
+                  color: _dark, size: 24),
+            ),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
@@ -874,26 +899,39 @@ class _TutorDashboardState extends State<TutorDashboard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header row
+        // Header row: "Today's Schedule  4 sessions  (+)"
         Row(
           children: [
             _sectionTitle("Today's Schedule"),
             const SizedBox(width: 8),
-            if (sessions.isNotEmpty)
-              Text(
-                '${sessions.length} session${sessions.length > 1 ? 's' : ''}',
-                style: GoogleFonts.inter(fontSize: 13, color: _muted),
+            Expanded(
+              child: Text(
+                '${sessions.length} session${sessions.length == 1 ? '' : 's'}',
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                    fontSize: 13, color: _muted, fontWeight: FontWeight.w500),
               ),
-            const Spacer(),
-            TextButton(
-              onPressed: () => _openTab(1),
-              child: Text('View all',
-                  style: GoogleFonts.inter(
-                      color: _blue, fontWeight: FontWeight.w600, fontSize: 13)),
+            ),
+            // Opens the full Schedule page
+            Material(
+              color: _blue,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => _openTab(1),
+                child: const Tooltip(
+                  message: 'Open schedule',
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
 
         if (sessions.isEmpty)
           _emptyCard(
@@ -910,35 +948,40 @@ class _TutorDashboardState extends State<TutorDashboard> {
     );
   }
 
+  // One session, as in the dashboard design: coloured strip, time pill and
+  // "In 45 min" badge in the subject's colour, subject and student, the
+  // meeting type, then a footer with the student's note or the meeting.
   Widget _scheduleCard(DashboardSession session) {
-    // Determine platform icon
-    IconData platformIcon;
-    switch (session.platform) {
-      case 'zoom':
-      case 'video':
-      case 'meet':
-        platformIcon = Icons.videocam_outlined;
-        break;
-      case 'code':
-        platformIcon = Icons.code;
-        break;
-      case 'document':
-      case 'doc':
-        platformIcon = Icons.description_outlined;
-        break;
-      default:
-        platformIcon = Icons.videocam_outlined;
-    }
-
-    // Parse "In X hrs/min" badge colour: orange for < 1 hr, green for >= 1 hr
+    final color = session.color;
     final startsIn = session.startsIn ?? '';
-    Color badgeColor = _amber; // amber default
-    if (startsIn.contains('hr') || startsIn.contains('hrs')) {
-      badgeColor = _green; // green
-    }
+    final note = session.note?.trim() ?? '';
+    final hasLink = session.platform != 'none';
+    final platformIcon = switch (session.platform) {
+      'zoom' || 'meet' || 'teams' => Icons.videocam_outlined,
+      'online' => Icons.link_rounded,
+      _ => Icons.link_off_rounded, // no meeting link yet
+    };
+
+    Widget pill(String text) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        );
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -949,64 +992,38 @@ class _TutorDashboardState extends State<TutorDashboard> {
               offset: const Offset(0, 2)),
         ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Coloured left border strip
-            Container(
-              width: 4,
-              decoration: BoxDecoration(
-                color: session.color,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(14),
-                  bottomLeft: Radius.circular(14),
-                ),
-              ),
-            ),
+            // Coloured left strip
+            Container(width: 4, color: color),
 
-            // Content
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Row 1: time (blue bold) + "In X hrs" badge
+                    // Row 1: time pill + "In 45 min" badge
                     Row(
                       children: [
-                        Text(
-                          session.timeRange,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _blue,
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: pill(session.timeRange),
                           ),
                         ),
-                        const Spacer(),
-                        if (startsIn.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: badgeColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              startsIn,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: badgeColor,
-                              ),
-                            ),
-                          ),
+                        if (startsIn.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          pill(startsIn),
+                        ],
                       ],
                     ),
+                    const SizedBox(height: 8),
 
-                    const SizedBox(height: 4),
-
-                    // Row 2: subject + platform icon button
+                    // Row 2: subject, "with Name", meeting icon
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1022,52 +1039,80 @@ class _TutorDashboardState extends State<TutorDashboard> {
                                   color: _dark,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'with ${session.studentName}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: _muted,
+                              const SizedBox(height: 3),
+                              Text.rich(
+                                TextSpan(
+                                  text: 'with ',
+                                  style: GoogleFonts.inter(
+                                      fontSize: 12.5, color: _muted),
+                                  children: [
+                                    TextSpan(
+                                      text: session.studentName,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12.5,
+                                        color: _grey,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-
-                        // Platform icon in a light grey rounded square
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF3F4F6),
-                            borderRadius: BorderRadius.circular(8),
+                        Tooltip(
+                          message: meetingLabel(session.platform),
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(
+                                  color: const Color(0xFFE5E7EB)),
+                            ),
+                            child: Icon(platformIcon,
+                                size: 18, color: hasLink ? color : _muted),
                           ),
-                          child: Icon(platformIcon, size: 18, color: _grey),
                         ),
                       ],
                     ),
 
-                    // Row 3: note / topic (if present)
-                    if (session.note != null && session.note!.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.circle, size: 6, color: _green),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              session.note!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: _grey,
-                              ),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, color: Color(0xFFF0F1F4)),
+                    const SizedBox(height: 10),
+
+                    // Row 3: the student's note, or where the session is
+                    Row(
+                      children: [
+                        if (note.isEmpty && hasLink) ...[
+                          const Icon(Icons.circle, size: 7, color: _green),
+                          const SizedBox(width: 6),
+                        ],
+                        Expanded(
+                          child: Text(
+                            note.isEmpty
+                                ? meetingLabel(session.platform)
+                                : note,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                                fontSize: 12, color: _muted),
+                          ),
+                        ),
+                        if (note.isNotEmpty && hasLink) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            meetingLabel(session.platform),
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _dark,
                             ),
                           ),
                         ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ],
                 ),
               ),

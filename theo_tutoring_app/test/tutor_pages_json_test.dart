@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:theo_tutoring_app/Pages/Tutor/tutor_booking_detail.dart';
 import 'package:theo_tutoring_app/Pages/Tutor/tutor_dashboard.dart';
 import 'package:theo_tutoring_app/Pages/Tutor/tutor_format.dart';
+import 'package:theo_tutoring_app/Pages/Tutor/tutor_notifications.dart';
+import 'package:theo_tutoring_app/Pages/notifications_screen.dart';
 import 'package:theo_tutoring_app/Pages/Tutor/tutor_schedule.dart';
 
 void main() {
@@ -39,7 +41,7 @@ void main() {
       expect(d.activeStudents, 3);
       final s = d.todaySchedule.single;
       expect(s.bookingId, 12);
-      expect(s.timeRange, '15:00 – 16:00');
+      expect(s.timeRange, '3:00 PM – 4:00 PM');
       expect(s.subject, 'Calculus');
       expect(s.studentName, 'Lerato Dube');
       expect(s.platform, 'zoom');
@@ -159,5 +161,52 @@ void main() {
     expect(timeAgo(3000), '2d ago');
     expect(dayHeading('2026-10-25', 1), 'Tomorrow, 25 Oct');
     expect(platformOf('https://meet.google.com/abc'), 'meet');
+    expect(clock12('15:00:00'), '3:00 PM');
+    expect(clock12('00:30'), '12:30 AM');
+    expect(clock12('12:05'), '12:05 PM');
+    expect(meetingLabel('zoom'), 'Zoom Meeting');
+    expect(meetingLabel('none'), 'No meeting link yet');
+  });
+
+  // Shape from AppNotification.toJson (backend lib/notifications.dart)
+  test('notification cards', () {
+    final upcoming = NotificationItem.fromJson({
+      'id': 'upcoming-41-hour',
+      'type': 'UpcomingSession',
+      'title': 'Upcoming lesson',
+      'body': "You're tutoring Lesego in Maths in an hour.",
+      'bookingId': 41,
+      'read': false,
+      'createdAt': '2026-10-24T09:00:00.000Z',
+      'minutesAgo': 10,
+      'section': 'today',
+    });
+    expect(upcoming.bookingId, 41);
+    expect(upcoming.read, isFalse);
+    expect(tutorLessonLink(upcoming), 'View scheduled lesson');
+    expect(upcoming.copyWith(read: true).read, isTrue);
+
+    final review = NotificationItem.fromJson({
+      'id': 'review-12',
+      'type': 'NewReview',
+      'title': 'New review',
+      'body': 'Lerato Dube gave your Maths lesson 5 stars.',
+      'bookingId': 47,
+      'read': true,
+      'minutesAgo': 0,
+      'section': 'earlier',
+    });
+    expect(tutorLessonLink(review), isNull); // reviews have no lesson link
+  });
+
+  test('notification times', () {
+    expect(notificationTime('today', 0, null), 'Just now');
+    expect(notificationTime('today', 2, null), '2 min ago');
+    expect(notificationTime('today', 61, null), '1 hr ago');
+    expect(notificationTime('today', 180, null), '3 hrs ago');
+    final yesterday = DateTime(2026, 10, 23, 16, 20).toUtc().toIso8601String();
+    expect(notificationTime('yesterday', 0, yesterday), 'Yesterday · 4:20 PM');
+    final earlier = DateTime(2026, 10, 20, 0, 5).toUtc().toIso8601String();
+    expect(notificationTime('earlier', 0, earlier), 'Tue 20 Oct · 12:05 AM');
   });
 }

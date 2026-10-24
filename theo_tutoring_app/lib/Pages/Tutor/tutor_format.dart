@@ -38,6 +38,45 @@ String timeAgo(int minutes) {
   return '${minutes ~/ (60 * 24)}d ago';
 }
 
+/// "15:00" or "15:00:00" -> "3:00 PM", "00:30" -> "12:30 AM"
+String clock12(String? time) {
+  final parts = (time ?? '').split(':');
+  final h = parts.isEmpty ? null : int.tryParse(parts[0]);
+  final m = parts.length < 2 ? null : int.tryParse(parts[1]);
+  if (h == null || m == null) return time ?? '';
+  final hour = h % 12 == 0 ? 12 : h % 12;
+  return '$hour:${m.toString().padLeft(2, '0')} ${h < 12 ? 'AM' : 'PM'}';
+}
+
+/// Where a session happens, from [platformOf]: "Zoom Meeting", "Google
+/// Meet", "Microsoft Teams", "Online meeting" or "No meeting link yet".
+String meetingLabel(String platform) => switch (platform) {
+      'zoom' => 'Zoom Meeting',
+      'meet' => 'Google Meet',
+      'teams' => 'Microsoft Teams',
+      'online' => 'Online meeting',
+      _ => 'No meeting link yet',
+    };
+
+/// When a notification arrived: "Just now", "2 min ago", "3 hrs ago",
+/// "Yesterday · 4:20 PM" or "Mon 20 Oct · 4:20 PM". [section] and
+/// [minutesAgo] come from the backend; [createdAt] is its ISO time.
+String notificationTime(String section, int minutesAgo, String? createdAt) {
+  if (section == 'today') {
+    if (minutesAgo < 1) return 'Just now';
+    if (minutesAgo < 60) return '$minutesAgo min ago';
+    final hours = minutesAgo ~/ 60;
+    return '$hours ${hours == 1 ? 'hr' : 'hrs'} ago';
+  }
+  final d = _parse(createdAt)?.toLocal();
+  if (d == null) return section == 'yesterday' ? 'Yesterday' : '';
+  final hour = d.hour % 12 == 0 ? 12 : d.hour % 12;
+  final clock =
+      '$hour:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'AM' : 'PM'}';
+  if (section == 'yesterday') return 'Yesterday · $clock';
+  return '${_weekdays[d.weekday - 1]} ${d.day} ${_months[d.month - 1]} · $clock';
+}
+
 /// 45 -> "45 min", 60 -> "1 hr", 90 -> "1.5 hrs"
 String durationLabel(int? minutes) {
   if (minutes == null || minutes <= 0) return '';

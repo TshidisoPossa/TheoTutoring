@@ -101,7 +101,17 @@ class ScheduleDay {
 // ── Screen ────────────────────────────────────────────────────────────────
 
 class TutorScheduleScreen extends StatefulWidget {
-  const TutorScheduleScreen({super.key});
+  const TutorScheduleScreen({
+    super.key,
+    this.loadSchedule = fetchTutorSchedule,
+  });
+
+  /// Loads the page; tests pass their own.
+  final Future<Map<String, dynamic>> Function({
+    String tab,
+    String date,
+    List<int> subjectIds,
+  }) loadSchedule;
 
   @override
   State<TutorScheduleScreen> createState() => _TutorScheduleScreenState();
@@ -139,6 +149,8 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
   static const _border = Color(0xFFE5E7EB);
   static const _muted  = Color(0xFF6B7280);
   static const _text1  = Color(0xFF111827);
+  static const _text2  = Color(0xFF374151); // the student's note
+  static const _faint  = Color(0xFF9CA3AF); // "No note from the student."
 
   @override
   void initState() {
@@ -159,7 +171,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final data = await fetchTutorSchedule(
+      final data = await widget.loadSchedule(
         tab: _tabParams[_tabController.index],
         date: _dateParams[_dateFilter]!,
         subjectIds: _subjectFilter.toList(),
@@ -587,9 +599,11 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Day heading, centred: "Today, 24 Oct  [2 sessions]"
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(label,
                   style: const TextStyle(
@@ -709,15 +723,22 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                   fontWeight: FontWeight.w700,
                   color: _text1)),
 
-          if (s.note != null && s.note!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text('"${s.note}"',
+          // The note the student wrote when booking (Booking.Note)
+          const SizedBox(height: 6),
+          if (s.note != null && s.note!.trim().isNotEmpty)
+            Text('"${s.note!.trim()}"',
                 style: const TextStyle(
+                    fontSize: 12.5,
+                    color: _text2,
+                    fontStyle: FontStyle.italic,
+                    height: 1.5))
+          else
+            const Text('No note from the student.',
+                style: TextStyle(
                     fontSize: 12,
-                    color: _muted,
+                    color: _faint,
                     fontStyle: FontStyle.italic,
                     height: 1.5)),
-          ],
 
           const SizedBox(height: 10),
 

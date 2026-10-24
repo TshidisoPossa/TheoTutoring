@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS PlatformSettings (
 
 CREATE TABLE IF NOT EXISTS StudentProfile (
     StudentID INT AUTO_INCREMENT PRIMARY KEY,
+    Institution VARCHAR(150) NULL, -- university; NULL for older accounts
     Address VARCHAR(255) NOT NULL,
     ProofOfReg VARCHAR(500) NOT NULL,
     InstitutionYear VARCHAR(20) NOT NULL,

@@ -47,6 +47,16 @@ abstract final class NotificationType {
   /// Tutor application rejected.
   static const applicationRejected = 'ApplicationRejected';
 
+  /// A student reviewed a lesson (to the tutor; "new reviews" in the tutor's
+  /// notification preferences, documentation 9.3).
+  static const newReview = 'NewReview';
+
+  /// An administrator approved a refund (to the student).
+  static const refundApproved = 'RefundApproved';
+
+  /// An administrator declined a refund (to the student).
+  static const refundDenied = 'RefundDenied';
+
   /// Every valid type.
   static const all = {
     bookingRequested,
@@ -61,8 +71,71 @@ abstract final class NotificationType {
     upcomingSession,
     applicationApproved,
     applicationRejected,
+    newReview,
+    refundApproved,
+    refundDenied,
   };
 }
+
+/// One notification about to be written for a user, under a fixed id so the
+/// same event is never announced twice (see [NotificationStore.createOnce]).
+class Notice {
+  /// Creates a notice.
+  const Notice({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.body,
+    this.bookingId,
+    this.createdAt,
+  });
+
+  /// Fixed Firestore document id, e.g. "upcoming-41-hour".
+  final String id;
+
+  /// One of [NotificationType.all].
+  final String type;
+
+  /// Label above the message, e.g. "Upcoming lesson".
+  final String title;
+
+  /// The message shown on the card.
+  final String body;
+
+  /// Booking the card is about, if any.
+  final int? bookingId;
+
+  /// When it happened; null means now.
+  final DateTime? createdAt;
+
+  /// Saves it for the user with Firebase UID [uid]. False if they already
+  /// had it.
+  Future<bool> sendTo(String uid, NotificationStore store) => store.createOnce(
+    id: id,
+    uid: uid,
+    type: type,
+    title: title,
+    body: body,
+    bookingId: bookingId,
+    createdAt: createdAt,
+  );
+}
+
+/// How soon a lesson starts, for reminders: "in an hour", "in 20 minutes",
+/// "in a minute" (within the hour), or "today at 14:00" / "tomorrow at
+/// 14:00". [daysAway] is 0 for today.
+String lessonStartsIn(int minutesUntil, int daysAway, String startTime) {
+  if (minutesUntil > 60) {
+    return '${daysAway == 0 ? 'today' : 'tomorrow'} at $startTime';
+  }
+  if (minutesUntil >= 45) return 'in an hour';
+  if (minutesUntil <= 1) return 'in a minute';
+  return 'in $minutesUntil minutes';
+}
+
+/// Which reminder a lesson is due: 'hour' within 60 minutes, else 'day'.
+/// Part of the reminder's fixed id, so each lesson gets at most one of each.
+String reminderKind(int minutesUntil) => minutesUntil <= 60 ? 'hour' : 'day';
 
 /// Thrown when Firestore cannot be reached or rejects a request.
 class NotificationServiceException implements Exception {
@@ -374,26 +447,65 @@ class NotificationStore {
     required String body,
     int? bookingId,
   }) async {
+    final draft = _draft(type, title, body, bookingId, null);
+    final doc = await _send('POST', _url('${_parent(uid)}/items'), {
+      'fields': draft.toFirestoreFields(),
+    });
+    return AppNotification.fromFirestore(doc as Map<String, dynamic>);
+  }
+
+  /// Like [create], but saved under the fixed document [id] (e.g.
+  /// "review-12"), so the same event is never announced twice. Returns
+  /// false if a notification with that id was already there. [createdAt]
+  /// defaults to now; a review passes the time it was written.
+  Future<bool> createOnce({
+    required String id,
+    required String uid,
+    required String type,
+    required String title,
+    required String body,
+    int? bookingId,
+    DateTime? createdAt,
+  }) async {
+    if (!isValidId(id)) {
+      throw ArgumentError.value(id, 'id', 'Not a Firestore document ID');
+    }
+    final draft = _draft(type, title, body, bookingId, createdAt);
+    try {
+      await _send(
+        'POST',
+        _url('${_parent(uid)}/items', {'documentId': id}),
+        {'fields': draft.toFirestoreFields()},
+      );
+      return true;
+    } on NotificationServiceException catch (e) {
+      if (e.statusCode == 409) return false; // ALREADY_EXISTS
+      rethrow;
+    }
+  }
+
+  static AppNotification _draft(
+    String type,
+    String title,
+    String body,
+    int? bookingId,
+    DateTime? createdAt,
+  ) {
     if (!NotificationType.all.contains(type)) {
       throw ArgumentError.value(type, 'type', 'Unknown notification type');
     }
     if (title.trim().isEmpty || body.trim().isEmpty) {
       throw ArgumentError('title and body must not be empty');
     }
-
-    final draft = AppNotification(
+    return AppNotification(
       id: '',
       type: type,
       title: title.trim(),
       body: body.trim(),
       bookingId: bookingId,
       read: false,
-      createdAt: DateTime.now().toUtc(),
+      createdAt: (createdAt ?? DateTime.now()).toUtc(),
     );
-    final doc = await _send('POST', _url('${_parent(uid)}/items'), {
-      'fields': draft.toFirestoreFields(),
-    });
-    return AppNotification.fromFirestore(doc as Map<String, dynamic>);
   }
 
   // runQuery returns one row per document; an empty result is a single row

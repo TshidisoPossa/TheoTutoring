@@ -648,10 +648,10 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
         '''
         INSERT INTO Booking (
           StudentID, TutorID, SubjectID, PurchaseID, LessonNumber,
-          LessonPriceAtPurchase, `Date`, StartTime, EndTime, Status
+          LessonPriceAtPurchase, `Date`, StartTime, EndTime, Note, Status
         ) VALUES (
           :studentId, :tutorId, :subjectId, :purchaseId, :lessonNumber,
-          :lessonPrice, :lessonDate, :startTime, :endTime, 'Pending'
+          :lessonPrice, :lessonDate, :startTime, :endTime, :note, 'Pending'
         )
         ''',
         {
@@ -664,6 +664,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
           'lessonDate': lesson.date.iso,
           'startTime': lesson.startTime,
           'endTime': lesson.endTime,
+          'note': command.note,
         },
       );
       bookingIds.add(bookingInsert.lastInsertID.toInt());

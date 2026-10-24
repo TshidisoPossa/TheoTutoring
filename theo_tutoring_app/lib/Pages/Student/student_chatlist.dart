@@ -3,7 +3,7 @@
 //import 'Services/student_chat_models.dart';
 //import 'Services/student_chat_service.dart';
 
-class AppColors {
+/*class AppColors {
   static const ink = Color(0xFF1B2433);
   static const muted = Color(0xFF6B7585);
   static const hint = Color(0xFF9AA3B2);

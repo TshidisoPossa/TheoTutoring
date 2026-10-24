@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../Student/student_bottom_nav.dart';
 import 'booking_flow_context.dart';
 import 'booking_api.dart';
+import 'booking_top_bar.dart';
 
 class BookingConfirmationPage extends StatelessWidget {
   const BookingConfirmationPage({
@@ -24,10 +25,9 @@ class BookingConfirmationPage extends StatelessWidget {
   static const Color _textMuted = Color(0xFF7B8498);
   static const Color _tileBackground = Color(0xFFF2F4FB);
 
-  bool get _paymentConfirmed =>
-      result != null && payment?.isSuccessful == true;
+  bool get _paymentConfirmed => result != null && payment?.isSuccessful == true;
 
-  String get _initials => flow.tutor.name
+  static String _initials(String? name) => (name ?? '')
       .trim()
       .split(RegExp(r'\s+'))
       .where((part) => part.isNotEmpty)
@@ -75,24 +75,7 @@ class BookingConfirmationPage extends StatelessWidget {
       },
       child: Scaffold(
         backgroundColor: _background,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
-          elevation: 0,
-          title: Text(
-            'Booking Status',
-            style: GoogleFonts.poppins(
-              color: _textDark,
-              fontSize: 19,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          leading: IconButton(
-            tooltip: 'Back to home',
-            onPressed: () => _goHome(context),
-            icon: const Icon(Icons.arrow_back_rounded, color: _textDark),
-          ),
-        ),
+        appBar: bookingTopBar(title: 'Home', flow: flow),
         body: SafeArea(
           top: false,
           bottom: false,
@@ -194,7 +177,7 @@ class BookingConfirmationPage extends StatelessWidget {
         ),
         const SizedBox(height: 22),
         Text(
-          confirmed ? 'Booking Confirmed!' : 'Payment Not Confirmed',
+          confirmed ? 'Booking Request Sent!' : 'Payment Not Confirmed',
           textAlign: TextAlign.center,
           style: GoogleFonts.poppins(
             color: _textDark,
@@ -206,7 +189,8 @@ class BookingConfirmationPage extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           confirmed
-              ? 'Your lessons are confirmed.'
+              ? 'Your request has been sent to the tutor and the payment is '
+                    'being processed.'
               : 'Payment has not been confirmed. Lessons are not confirmed.',
           textAlign: TextAlign.center,
           style: GoogleFonts.poppins(
@@ -215,18 +199,6 @@ class BookingConfirmationPage extends StatelessWidget {
             height: 1.5,
           ),
         ),
-        if (confirmed) ...[
-          const SizedBox(height: 4),
-          Text(
-            'Your payment was received and your tutor has been notified.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
-              color: _textMuted,
-              fontSize: 14,
-              height: 1.5,
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -305,33 +277,18 @@ class BookingConfirmationPage extends StatelessWidget {
               child: _tileText('No booking has been submitted.'),
             )
           else ...[
-            _tile(
-              icon: Icons.confirmation_number_outlined,
-              child: _tileText(
-                _paymentConfirmed
-                    ? 'Booking #${result.purchaseId} · Paid'
-                    : 'Request #${result.purchaseId} · '
-                          '${result.purchaseStatus}',
-              ),
-            ),
             for (final lesson in result.lessons) ...[
-              const SizedBox(height: 10),
               _tile(
                 icon: Icons.calendar_today_outlined,
                 child: _tileText(_formatLesson(lesson)),
               ),
+              const SizedBox(height: 10),
             ],
-            const SizedBox(height: 10),
             _tile(
               icon: Icons.payments_outlined,
               child: Row(
                 children: [
-                  Expanded(
-                    child: _tileText(
-                      _paymentConfirmed ? 'Total Paid' : 'Total Due',
-                      muted: true,
-                    ),
-                  ),
+                  Expanded(child: _tileText('Total Due', muted: true)),
                   Text(
                     'R${result.totalAmount}',
                     style: GoogleFonts.poppins(
@@ -352,7 +309,7 @@ class BookingConfirmationPage extends StatelessWidget {
   Widget _buildTutorAvatar() {
     final photo = flow.tutor.profilePhoto;
     final fallback = Text(
-      _initials,
+      _initials(flow.tutor.name),
       style: GoogleFonts.poppins(
         color: _primaryBlue,
         fontWeight: FontWeight.w600,

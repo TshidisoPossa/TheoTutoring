@@ -269,7 +269,22 @@ void main() {
 
     final student = body['student'] as Map<String, dynamic>;
     expect(student['name'], studentName);
-    expect(student.keys, containsAll(['year', 'course', 'verified']));
+    expect(
+      student.keys,
+      containsAll([
+        'year', 'course', 'verified', 'university', 'rating', 'reviewCount', //
+      ]),
+    );
+    // The stars this student gave this tutor, straight from Reviews
+    final given = await conn.execute(
+      'SELECT ROUND(AVG(r.Rating), 1) AS avg, COUNT(*) AS n FROM Reviews r '
+      'JOIN Booking b ON b.StudentID = r.StudentID AND b.TutorID = r.TutorID '
+      'WHERE b.Booking_id = :id',
+      {'id': ids['week1']},
+    );
+    final row = given.rows.first.assoc();
+    expect(student['rating'], double.tryParse(row['avg'] ?? ''));
+    expect(student['reviewCount'], int.parse(row['n']!));
 
     final recurring = body['recurring'] as Map<String, dynamic>;
     expect(

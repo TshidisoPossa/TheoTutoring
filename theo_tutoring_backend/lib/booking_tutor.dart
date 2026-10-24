@@ -185,7 +185,15 @@ Future<Map<String, dynamic>?> getBookingDetail(
     'TIMESTAMP(b.`Date`, b.StartTime) <= NOW() AS HasStarted, '
     'u.Name AS StudentName, u.ProfilePhoto AS StudentPhoto, '
     'u.AccountStatus AS StudentAccountStatus, '
-    's.InstitutionYear, s.Course ' // "Sophomore", "Major & Focus"
+    's.InstitutionYear, s.Course, ' // "Sophomore", "Major & Focus"
+    's.Institution, ' // the student's university (NULL for older accounts)
+    // The stars this student has given this tutor in their reviews
+    '(SELECT ROUND(AVG(r.Rating), 1) FROM Reviews r '
+    ' WHERE r.StudentID = b.StudentID AND r.TutorID = b.TutorID) '
+    'AS RatingGiven, '
+    '(SELECT COUNT(*) FROM Reviews r '
+    ' WHERE r.StudentID = b.StudentID AND r.TutorID = b.TutorID) '
+    'AS ReviewsGiven '
     'FROM Booking b '
     'JOIN Subjects sj ON sj.subjectId = b.SubjectID ' // booking -> subject name
     'JOIN StudentProfile s ON s.StudentID = b.StudentID ' // -> student profile
@@ -224,6 +232,10 @@ Future<Map<String, dynamic>?> getBookingDetail(
       'profilePhotoUrl': r['StudentPhoto'], // null if none uploaded
       'year': r['InstitutionYear'], // "Sophomore"
       'course': r['Course'], // "Major & Focus"
+      'university': r['Institution'], // null if they never gave one
+      // Their average rating of this tutor ("4.5 from 2 reviews"), or null
+      'rating': double.tryParse(r['RatingGiven'] ?? ''),
+      'reviewCount': number(r['ReviewsGiven']) ?? 0,
       // the blue tick: the student's account is active
       'verified': (r['StudentAccountStatus'] ?? '').toLowerCase() == 'active',
     },

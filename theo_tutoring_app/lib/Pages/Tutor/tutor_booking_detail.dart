@@ -28,6 +28,9 @@ class BookingDetail {
   final String? studentYear;
   final String? studentMajor;
   final bool studentVerified;
+  final String? studentUniversity; // null if they never gave one
+  final double? studentRating; // their average rating of this tutor
+  final int studentReviewCount; // how many reviews that average is from
 
   final bool isRecurring;
   final String? recurringPattern;
@@ -59,6 +62,9 @@ class BookingDetail {
     this.studentYear,
     this.studentMajor,
     required this.studentVerified,
+    this.studentUniversity,
+    this.studentRating,
+    this.studentReviewCount = 0,
     required this.isRecurring,
     this.recurringPattern,
     this.nextSessions = const [],
@@ -101,6 +107,11 @@ class BookingDetail {
       studentYear: _yearLabel(s['year']?.toString()),
       studentMajor: s['course']?.toString(),
       studentVerified: s['verified'] == true,
+      studentUniversity: (s['university']?.toString().trim().isEmpty ?? true)
+          ? null
+          : s['university'].toString().trim(),
+      studentRating: (s['rating'] as num?)?.toDouble(),
+      studentReviewCount: (s['reviewCount'] as num?)?.toInt() ?? 0,
       isRecurring: r != null,
       recurringPattern: r == null
           ? null
@@ -148,7 +159,15 @@ String? _yearLabel(String? year) {
 
 class TutorBookingDetailScreen extends StatefulWidget {
   final int bookingId;
-  const TutorBookingDetailScreen({super.key, required this.bookingId});
+
+  /// Loads the booking; tests pass their own.
+  final Future<Map<String, dynamic>> Function(int bookingId) loadBooking;
+
+  const TutorBookingDetailScreen({
+    super.key,
+    required this.bookingId,
+    this.loadBooking = fetchTutorBooking,
+  });
 
   @override
   State<TutorBookingDetailScreen> createState() =>
@@ -184,7 +203,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     setState(() { _loading = true; _error = null; });
     try {
       final b = BookingDetail.fromJson(
-          await fetchTutorBooking(widget.bookingId));
+          await widget.loadBooking(widget.bookingId));
       if (mounted) setState(() { _booking = b; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
@@ -347,10 +366,8 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
         _buildSessionCard(b),
         const SizedBox(height: 14),
         _buildStudentCard(b),
-        if (b.isRecurring) ...[
-          const SizedBox(height: 14),
-          _buildRecurringCard(b),
-        ],
+        const SizedBox(height: 14),
+        b.isRecurring ? _buildRecurringCard(b) : _buildNoRecurringCard(),
       ],
     );
   }
@@ -440,10 +457,14 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           ),
         ),
         const SizedBox(width: 10),
-        if (b.receivedAgo.isNotEmpty)
-          Text('Received ${b.receivedAgo}',
-              style: const TextStyle(color: _text3, fontSize: 12)),
-        const Spacer(),
+        Expanded(
+          child: b.receivedAgo.isEmpty
+              ? const SizedBox.shrink()
+              : Text('Received ${b.receivedAgo}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text3, fontSize: 12)),
+        ),
+        const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
@@ -523,7 +544,8 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                     style: const TextStyle(color: _text3, fontSize: 14)),
             ],
           ),
-          if (b.studentNote != null && b.studentNote!.isNotEmpty) ...[
+          // The note the student wrote when booking, as on the Schedule page
+          ...[
             const SizedBox(height: 16),
             Container(
               width: double.infinity,
@@ -550,12 +572,20 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text('"${b.studentNote!}"',
-                      style: const TextStyle(
-                          color: _text2,
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                          height: 1.55)),
+                  if (b.studentNote != null && b.studentNote!.trim().isNotEmpty)
+                    Text('"${b.studentNote!.trim()}"',
+                        style: const TextStyle(
+                            color: _text2,
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                            height: 1.55))
+                  else
+                    const Text('No note from the student.',
+                        style: TextStyle(
+                            color: _text4,
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                            height: 1.55)),
                 ],
               ),
             ),
@@ -624,49 +654,134 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                           style:
                               const TextStyle(color: _text3, fontSize: 13)),
                     ],
+                    const SizedBox(height: 6),
+                    _buildStudentRating(b),
                   ],
                 ),
               ),
             ],
           ),
+          // The student's university
+          const SizedBox(height: 14),
+          const Divider(color: _border, height: 1),
+          const SizedBox(height: 14),
+          _infoRow(
+            icon: Icons.account_balance_outlined,
+            label: 'UNIVERSITY',
+            value: b.studentUniversity ?? 'Not provided',
+            muted: b.studentUniversity == null,
+          ),
           if (b.studentMajor != null) ...[
-            const SizedBox(height: 14),
-            const Divider(color: _border, height: 1),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F3F6),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.school_outlined,
-                      size: 16, color: _text3),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('MAJOR & FOCUS',
-                          style: TextStyle(
-                              color: _text4,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1)),
-                      const SizedBox(height: 2),
-                      Text(b.studentMajor!,
-                          style: const TextStyle(
-                              color: _text1,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            _infoRow(
+              icon: Icons.school_outlined,
+              label: 'MAJOR & FOCUS',
+              value: b.studentMajor!,
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // "★ 4.5  from 2 reviews of you", or "No rating from this student yet"
+  Widget _buildStudentRating(BookingDetail b) {
+    final rating = b.studentRating;
+    if (rating == null || b.studentReviewCount == 0) {
+      return const Text('No rating from this student yet',
+          style: TextStyle(color: _text4, fontSize: 12));
+    }
+    final count = b.studentReviewCount;
+    return Row(
+      children: [
+        const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF59E0B)),
+        const SizedBox(width: 3),
+        Text(rating.toStringAsFixed(1),
+            style: const TextStyle(
+                color: _text1, fontSize: 13, fontWeight: FontWeight.w700)),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text('from $count review${count == 1 ? '' : 's'} of you',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _text3, fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
+  // One labelled line in the student card, e.g. UNIVERSITY / Wits
+  Widget _infoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool muted = false,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F3F6),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 16, color: _text3),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      color: _text4,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1)),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: TextStyle(
+                      color: muted ? _text4 : _text1,
+                      fontSize: 13,
+                      fontWeight: muted ? FontWeight.w500 : FontWeight.w700,
+                      fontStyle: muted ? FontStyle.italic : FontStyle.normal)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── No recurring booking: says so in the same small section ─────────────
+
+  Widget _buildNoRecurringCard() {
+    return _card(
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F3F6),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.sync_disabled_rounded,
+                color: _text3, size: 18),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Recurring Booking',
+                    style: TextStyle(
+                        color: _text1,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
+                SizedBox(height: 2),
+                Text('There are no recurring bookings currently.',
+                    style: TextStyle(color: _text3, fontSize: 13)),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -731,12 +846,15 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                     children: [
                       const Text('Pattern:',
                           style: TextStyle(color: _text3, fontSize: 13)),
-                      const Spacer(),
-                      Text(b.recurringPattern!,
-                          style: const TextStyle(
-                              color: _text1,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(b.recurringPattern!,
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                                color: _text1,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700)),
+                      ),
                     ],
                   ),
                 if (next.isNotEmpty) ...[
@@ -755,15 +873,18 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                   children: [
                     const Text('Total Scheduled:',
                         style: TextStyle(color: _text3, fontSize: 13)),
-                    const Spacer(),
-                    Text(
-                      b.totalHours != null
-                          ? '${b.totalSessions} Sessions • ${b.totalHours}'
-                          : '${b.totalSessions} Sessions',
-                      style: const TextStyle(
-                          color: _text1,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        b.totalHours != null
+                            ? '${b.totalSessions} Sessions • ${b.totalHours}'
+                            : '${b.totalSessions} Sessions',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                            color: _text1,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ],
                 ),

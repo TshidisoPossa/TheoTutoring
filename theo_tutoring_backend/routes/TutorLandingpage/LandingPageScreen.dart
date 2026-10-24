@@ -69,12 +69,12 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
-  // Card 1: distinct students with a Confirmed session that has not ended yet
+  // Card 1: every student registered on the platform whose account is
+  // Active (not suspended or deactivated). The same for every tutor.
   final active = await conn.execute(
-    'SELECT COUNT(DISTINCT StudentID) AS n FROM Booking '
-    "WHERE TutorID = :tid AND Status = 'Confirmed' "
-    'AND (`Date` > CURDATE() OR (`Date` = CURDATE() AND EndTime > CURTIME()))',
-    p,
+    'SELECT COUNT(*) AS n FROM StudentProfile s '
+    'JOIN `User` u ON u.UserId = s.UserID '
+    "WHERE u.Role = 'student' AND u.AccountStatus = 'Active'",
   );
 
   // Card 2 and Today's Schedule: Confirmed sessions today that have not ended

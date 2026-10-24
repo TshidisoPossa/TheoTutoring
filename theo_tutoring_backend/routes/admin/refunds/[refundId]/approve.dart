@@ -3,6 +3,12 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:theo_tutoring_backend/admin_refunds.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
+import 'package:theo_tutoring_backend/student_notifications.dart';
+
+/// Tells the student their refund was approved or declined ([reason] is the
+/// admin's reason for declining).
+typedef RefundDecisionNotifier =
+    Future<void> Function(int refundId, {String? reason});
 
 Future<Response> onRequest(RequestContext context, String refundId) =>
     handleRefundAction(context, action: 'approve', refundId: refundId);
@@ -13,6 +19,7 @@ Future<Response> handleRefundAction(
   String? refundId,
   AdminResolver? adminResolver,
   AdminRefundRepositoryFactory? repositoryFactory,
+  RefundDecisionNotifier? notifyStudent,
 }) async {
   if (context.request.method != HttpMethod.post) {
     return Response.json(
@@ -105,6 +112,11 @@ Future<Response> handleRefundAction(
       case 'override':
         await repository.overrideDecision(id, admin, percentage!, reason!);
     }
+    // Approve and deny close the refund, so the student hears the outcome.
+    // An override only changes the amount; the refund stays Pending.
+    if (action == 'approve' || action == 'deny') {
+      await (notifyStudent ?? _notifyStudent)(id, reason: reason);
+    }
     return Response.json(
       body: {'ok': true, 'message': 'Refund decision recorded.'},
     );
@@ -130,3 +142,7 @@ String? _refundIdFromPath(List<String> pathSegments) {
   if (refundsIndex < 0 || refundsIndex + 1 >= pathSegments.length) return null;
   return pathSegments[refundsIndex + 1];
 }
+
+// Never fails the decision, which is already saved: problems are only logged.
+Future<void> _notifyStudent(int refundId, {String? reason}) =>
+    notifyStudentOfRefund(refundId, reason: reason);

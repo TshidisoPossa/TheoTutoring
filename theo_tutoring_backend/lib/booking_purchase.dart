@@ -58,6 +58,7 @@ class CreateBookingPurchaseCommand {
     required this.schedulingMode,
     required this.idempotencyKey,
     required this.lessons,
+    this.note,
   });
 
   final int tutorId;
@@ -66,6 +67,10 @@ class CreateBookingPurchaseCommand {
   final String schedulingMode;
   final String idempotencyKey;
   final List<PurchaseLesson> lessons;
+
+  /// The student's optional message to the tutor, saved on every lesson
+  /// (Booking.Note).
+  final String? note;
 
   String get fingerprint {
     final canonical = jsonEncode({
@@ -81,6 +86,9 @@ class CreateBookingPurchaseCommand {
             'endTime': lesson.endTime,
           },
       ],
+      // Only added when present, so requests without a note keep the
+      // fingerprint they had before notes existed.
+      if (note != null) 'note': note,
     });
     return sha256.convert(utf8.encode(canonical)).toString();
   }
@@ -112,6 +120,8 @@ class CreateBookingPurchaseCommand {
         'and idempotencyKey fields.',
       );
     }
+    final hasNote = input.containsKey('note');
+    final note = _parseNote(input['note']);
 
     late final List<PurchaseLesson> lessons;
     if (schedulingMode == 'manual') {
@@ -122,6 +132,7 @@ class CreateBookingPurchaseCommand {
         'schedulingMode',
         'idempotencyKey',
         'lessons',
+        if (hasNote) 'note',
       })) {
         throw const BookingPurchaseRequestException(
           'Manual requests must contain only the documented fields.',
@@ -145,6 +156,7 @@ class CreateBookingPurchaseCommand {
             'schedulingMode',
             'idempotencyKey',
             'recurrence',
+            if (hasNote) 'note',
           })) {
         throw const BookingPurchaseRequestException(
           'Weekly scheduling is available only for a package and requires '
@@ -218,8 +230,26 @@ class CreateBookingPurchaseCommand {
       schedulingMode: schedulingMode,
       idempotencyKey: idempotencyKey,
       lessons: List.unmodifiable(lessons),
+      note: note,
     );
   }
+}
+
+const maximumBookingNoteLength = 500;
+
+/// A blank note is treated as no note.
+String? _parseNote(Object? value) {
+  if (value == null) return null;
+  if (value is! String) {
+    throw const BookingPurchaseRequestException('note must be text.');
+  }
+  final note = value.trim();
+  if (note.length > maximumBookingNoteLength) {
+    throw const BookingPurchaseRequestException(
+      'note must be $maximumBookingNoteLength characters or fewer.',
+    );
+  }
+  return note.isEmpty ? null : note;
 }
 
 class CreatePaymentAttemptCommand {

@@ -3,7 +3,9 @@
 There is no migration runner. Apply `001_booking_foundation.sql`, then
 `002_booking_purchase_idempotency.sql`, then
 `003_booking_cancellation_reason.sql`, then `004_report.sql`, then
-`005_tutor_presence.sql`, after the base `schema.sql`, from one
+`005_tutor_presence.sql`, then `006_student_institution.sql` (adds the
+nullable `StudentProfile.Institution`, the student's university), after the
+base `schema.sql`, from one
 deployment process with booking writes stopped. Each ledger version is written
 last by its migration.
 

@@ -97,6 +97,52 @@ Future<void> clearTutorPresence() {
   );
 }
 
+/// The bell's page (GET /TutorLandingpage/notifications): `unreadCount` and
+/// `notifications`, newest first. Each has id, type, title, body,
+/// bookingId, read, createdAt, minutesAgo and section (today | yesterday |
+/// earlier).
+Future<Map<String, dynamic>> fetchTutorNotifications() {
+  return _send(
+    'GET',
+    '/TutorLandingpage/notifications',
+    failMessage: 'Could not load your notifications. Please try again.',
+  );
+}
+
+/// The number on the bell (GET /TutorLandingpage/notifications/unread-count).
+Future<int> fetchTutorUnreadCount() async {
+  final body = await _send(
+    'GET',
+    '/TutorLandingpage/notifications/unread-count',
+    failMessage: 'Could not load your notifications.',
+  );
+  return (body['unreadCount'] as num?)?.toInt() ?? 0;
+}
+
+/// Marks one notification read (POST /TutorLandingpage/notifications/{id}/read).
+/// Returns the new unread count.
+Future<int> markTutorNotificationRead(String id) async {
+  final body = await _send(
+    'POST',
+    '/TutorLandingpage/notifications/$id/read',
+    body: const {},
+    failMessage: 'Could not update this notification.',
+  );
+  return (body['unreadCount'] as num?)?.toInt() ?? 0;
+}
+
+/// "Mark all as read" (POST /TutorLandingpage/notifications/read-all).
+/// Returns the new unread count.
+Future<int> markAllTutorNotificationsRead() async {
+  final body = await _send(
+    'POST',
+    '/TutorLandingpage/notifications/read-all',
+    body: const {},
+    failMessage: 'Could not mark your notifications as read.',
+  );
+  return (body['unreadCount'] as num?)?.toInt() ?? 0;
+}
+
 /// Loads the Profile page (GET /TutorLandingpage/Profile).
 Future<Map<String, dynamic>> fetchTutorProfile() {
   return _send(

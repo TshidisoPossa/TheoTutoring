@@ -22,12 +22,18 @@ const String tutorSearchRouteName = 'student/tutor-search';
 class StudentTutorProfilePage extends StatefulWidget {
   const StudentTutorProfilePage({
     required this.tutor,
+    this.studentName,
+    this.studentPhoto,
     this.api,
     this.reportsApi,
     super.key,
   });
 
   final Tutor tutor;
+
+  /// The signed-in student, carried into the booking flow.
+  final String? studentName;
+  final String? studentPhoto;
 
   /// Injected by tests; the page creates (and closes) its own otherwise.
   final TutorSearchApi? api;
@@ -169,7 +175,12 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => BookingSelectLessonPage(
-          flow: BookingFlowContext(tutor: tutor, subject: subject!),
+          flow: BookingFlowContext(
+            tutor: tutor,
+            subject: subject!,
+            studentName: widget.studentName,
+            studentPhoto: widget.studentPhoto,
+          ),
         ),
       ),
     );

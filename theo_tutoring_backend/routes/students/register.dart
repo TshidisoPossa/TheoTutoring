@@ -13,6 +13,7 @@ const _requiredFields = <String>[
   'email',
   'phone',
   'address',
+  'institution',
   'institutionYear',
   'course',
   'tutoringModule',
@@ -107,6 +108,7 @@ Future<Response> onRequest(RequestContext context) async {
   final address = (body['address'] as String).trim();
   final course = (body['course'] as String).trim();
   final tutoringModule = (body['tutoringModule'] as String).trim();
+  final institution = (body['institution'] as String).trim();
   final institutionYear = (body['institutionYear'] as String).trim();
   final profilePhotoUrl = _optionalUrl(body['profilePhotoUrl']);
   final proofOfRegistrationUrl = _optionalUrl(
@@ -124,6 +126,7 @@ Future<Response> onRequest(RequestContext context) async {
       address: address,
       course: course,
       tutoringModule: tutoringModule,
+      institution: institution,
       institutionYear: institutionYear,
       profilePhotoUrl: profilePhotoUrl,
       proofOfRegistrationUrl: proofOfRegistrationUrl!,
@@ -160,6 +163,7 @@ Future<Response> createStudentRecords(
   required String address,
   required String course,
   required String tutoringModule,
+  required String institution,
   required String institutionYear,
   required String? profilePhotoUrl,
   required String proofOfRegistrationUrl,
@@ -200,13 +204,16 @@ Future<Response> createStudentRecords(
     final studentResult = await connection.execute(
       '''
       INSERT INTO StudentProfile (
-        Address, ProofOfReg, InstitutionYear, Course, Subject_of_interest, UserID
+        Institution, Address, ProofOfReg, InstitutionYear, Course,
+        Subject_of_interest, UserID
       )
       VALUES (
-        :address, :proofOfRegistration, :institutionYear, :course, :tutoringModule, :userId
+        :institution, :address, :proofOfRegistration, :institutionYear,
+        :course, :tutoringModule, :userId
       )
       ''',
       {
+        'institution': institution,
         'address': address,
         'proofOfRegistration': proofOfRegistrationUrl,
         'institutionYear': institutionYear,
@@ -264,6 +271,11 @@ Map<String, String> validateStudentRegistration(
   final address = data['address'];
   if (address is String && address.trim().length > 255) {
     errors['address'] = 'Address must be 255 characters or fewer.';
+  }
+
+  final institution = data['institution'];
+  if (institution is String && institution.trim().length > 150) {
+    errors['institution'] = 'University must be 150 characters or fewer.';
   }
 
   final course = data['course'];
