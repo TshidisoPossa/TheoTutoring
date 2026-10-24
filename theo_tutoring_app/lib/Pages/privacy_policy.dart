@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 
-
-       MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()));
 class PrivacyPolicyPage extends StatelessWidget {
   const PrivacyPolicyPage({super.key});
 
-  static const String lastUpdated = '24 October 2026';
   static const String contactEmail = 'support@theotutoring.co.za';
 
   static const List<_PolicySection> _sections = [
@@ -103,8 +100,8 @@ class PrivacyPolicyPage extends StatelessWidget {
     _PolicySection(
       title: '9. Changes to This Policy',
       paragraphs: [
-        'We may update this policy from time to time. When we do, we will '
-            'change the "Last updated" date above.',
+        'We may update this policy from time to time. Continuing to use the '
+            'app after a change means you accept the updated policy.',
       ],
     ),
     _PolicySection(
@@ -135,12 +132,6 @@ class PrivacyPolicyPage extends StatelessWidget {
                   'TheoTutoring Privacy Policy',
                   style: theme.textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Last updated: $lastUpdated',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 20),
                 for (final section in _sections) ...[

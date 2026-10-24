@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 class TermsAndConditionsPage extends StatelessWidget {
   const TermsAndConditionsPage({super.key});
 
@@ -125,9 +124,8 @@ class TermsAndConditionsPage extends StatelessWidget {
     _TermsSection(
       title: '11. Changes to These Terms',
       paragraphs: [
-        'We may update these terms from time to time. When we do, we will '
-            'change the "Last updated" date above. Continuing to use the app '
-            'after a change means you accept the updated terms.',
+        'We may update these terms from time to time. Continuing to use the '
+            'app after a change means you accept the updated terms.',
       ],
     ),
     _TermsSection(
@@ -159,12 +157,6 @@ class TermsAndConditionsPage extends StatelessWidget {
                   'TheoTutoring Terms and Conditions',
                   style: theme.textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Last updated: $lastUpdated',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 20),
                 for (final section in _sections) ...[
