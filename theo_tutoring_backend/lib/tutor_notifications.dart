@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:mysql_client/mysql_client.dart';
-import 'package:theo_tutoring_backend/booking_tutor.dart'; // sessionLabel
+import 'package:theo_tutoring_backend/booking_tutor.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/notifications.dart';
 

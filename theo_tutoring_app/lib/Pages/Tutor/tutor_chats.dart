@@ -158,7 +158,6 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
             ),
             const SizedBox(height: 8),
 
-            // Contact list
             Expanded(child: _buildContactList()),
           ],
         ),
@@ -217,7 +216,6 @@ class _ContactTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           children: [
-            // Avatar
             CircleAvatar(
               radius: 24,
               backgroundColor: const Color(0xFFD0E4FF),

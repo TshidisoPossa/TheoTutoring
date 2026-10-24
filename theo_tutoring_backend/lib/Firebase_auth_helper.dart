@@ -1,21 +1,21 @@
-import 'dart:convert'; // for jsonEncode / jsonDecode
-import 'package:theo_tutoring_backend/env.dart'; // for env
-import 'package:http/http.dart' as http; // for the HTTP call to Firebase
+import 'dart:convert';
+import 'package:theo_tutoring_backend/env.dart';
+import 'package:http/http.dart' as http;
 
 // Verifies a Firebase ID token and returns the user's UID, or null if invalid
 Future<String?> verifyFirebaseToken(String idToken) async {
-  final apiKey = env['FIREBASE_API_KEY']; // read the key from .env
-  if (apiKey == null) return null; // no key configured, cannot verify
+  final apiKey = env['FIREBASE_API_KEY'];
+  if (apiKey == null) return null;
   final res = await http.post(
     Uri.parse(
-      'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=$apiKey', // Firebase lookup endpoint
+      'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=$apiKey',
     ),
-    headers: {'Content-Type': 'application/json'}, // body is JSON
-    body: jsonEncode({'idToken': idToken}), // send the token to Firebase
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({'idToken': idToken}),
   );
-  if (res.statusCode != 200) return null; // Firebase rejected the token
+  if (res.statusCode != 200) return null;
   final users =
-      jsonDecode(res.body)['users'] as List?; // list of matching users
-  if (users == null || users.isEmpty) return null; // nobody found
+      jsonDecode(res.body)['users'] as List?;
+  if (users == null || users.isEmpty) return null;
   return users.first['localId'] as String; // localId is the Firebase UID
 }

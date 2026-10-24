@@ -6,7 +6,7 @@ import 'package:theo_tutoring_backend/student_notifications.dart';
 // The student's Notifications page: their notifications, newest first.
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
-    return Response(statusCode: 405); // only GET is allowed
+    return Response(statusCode: 405);
   }
 
   final rawLimit = context.request.uri.queryParameters['limit'];

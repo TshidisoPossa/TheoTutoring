@@ -1,6 +1,5 @@
 //This page holds the frame around every admin page.
 // It draws the parts of the design that never change, so each page only supplies the middle content.
-///Remember this page is shared with every page in the admin
 
 import 'package:flutter/material.dart';
 

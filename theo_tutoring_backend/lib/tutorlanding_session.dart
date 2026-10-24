@@ -4,7 +4,7 @@ class TutorSession {
     this.userId,
     this.tutorId, {
     this.accountStatus = 'Active',
-  }); // constructor
+  });
   final String userId; // Firebase UID (User.FirebaseUid)
   final int tutorId; // TutorProfile.TutorID
   final String accountStatus; // User.AccountStatus ('Active' or 'Pending')

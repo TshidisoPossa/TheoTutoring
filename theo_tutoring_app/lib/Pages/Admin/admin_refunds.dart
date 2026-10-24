@@ -1145,7 +1145,6 @@ class _Card extends StatelessWidget {
   }
 }
 
-/// Lets a wide table scroll sideways instead of overflowing on narrow screens.
 /// Centred icon, title, message and optional action, used for the empty and
 /// error states.
 class _StateMessage extends StatelessWidget {

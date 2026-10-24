@@ -1,12 +1,12 @@
-import 'dart:io'; // HttpStatus codes + stderr
+import 'dart:io';
 
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:theo_tutoring_backend/booking_tutor.dart'; // getBookingDetail
-import 'package:theo_tutoring_backend/database.dart'; // getConnection()
-import 'package:theo_tutoring_backend/header_tutor.dart'; // name + photo
-import 'package:theo_tutoring_backend/request_utils.dart'; // jsonError
+import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/booking_tutor.dart';
+import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/header_tutor.dart';
+import 'package:theo_tutoring_backend/request_utils.dart';
 // Relative import: must be the same TutorSession type the middleware provides.
-import '../../../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../../../lib/tutorlanding_session.dart';
 
 // Author Tshidiso Possa
 // GET /TutorLandingpage/bookings/<Booking_id>
@@ -24,14 +24,14 @@ Future<Response> onRequest(RequestContext context, String id) async {
   if (context.request.method != HttpMethod.get) {
     return Response(
       statusCode: HttpStatus.methodNotAllowed,
-    ); // only GET is allowed
+    );
   }
-  final bookingId = int.tryParse(id); // the id in the url must be a number
+  final bookingId = int.tryParse(id);
   if (bookingId == null || bookingId <= 0) {
     return jsonError(HttpStatus.badRequest, 'Invalid booking id.');
   }
 
-  final tutor = context.read<TutorSession>(); // who is calling
+  final tutor = context.read<TutorSession>();
 
   try {
     final conn = await getConnection(); // shared DB connection (don't close)

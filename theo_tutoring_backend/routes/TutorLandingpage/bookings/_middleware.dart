@@ -1,5 +1,5 @@
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:theo_tutoring_backend/notifications.dart'; // NotificationStore
+import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/notifications.dart';
 
 NotificationStore? _store; // shared, so the Google access token is reused
 

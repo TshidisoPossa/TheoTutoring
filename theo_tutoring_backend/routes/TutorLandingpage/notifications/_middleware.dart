@@ -1,13 +1,13 @@
 import 'dart:io';
 
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:theo_tutoring_backend/database.dart'; // getConnection()
+import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/firebase_admin.dart';
-import 'package:theo_tutoring_backend/notifications.dart'; // NotificationStore
+import 'package:theo_tutoring_backend/notifications.dart';
 import 'package:theo_tutoring_backend/tutor_notifications.dart';
 // Relative, like the TutorLandingpage middleware that provides it: a
 // package: import would be a different TutorSession type to Dart.
-import '../../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../../lib/tutorlanding_session.dart';
 
 NotificationStore? _store; // shared, so the Google access token is reused
 

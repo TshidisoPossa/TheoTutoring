@@ -6,7 +6,7 @@ import 'package:theo_tutoring_backend/student_notifications.dart';
 // "Mark all as read".
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: 405); // only POST is allowed
+    return Response(statusCode: 405);
   }
   final student = context.read<StudentSession>();
   final store = context.read<NotificationStore>();

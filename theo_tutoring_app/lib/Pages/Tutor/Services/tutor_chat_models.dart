@@ -1,5 +1,3 @@
-// lib/Pages/Tutor/Services/tutor_chat_models.dart
-
 class TutorChatContact {
   final int userId;
   final String name;

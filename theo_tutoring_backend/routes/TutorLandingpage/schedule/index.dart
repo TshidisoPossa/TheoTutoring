@@ -1,13 +1,13 @@
-import 'dart:io'; // HttpStatus codes + stderr
+import 'dart:io';
 
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:theo_tutoring_backend/database.dart'; // getConnection()
-import 'package:theo_tutoring_backend/header_tutor.dart'; // name + photo
-import 'package:theo_tutoring_backend/profile_tutor.dart'; // getTutorSubjects
-import 'package:theo_tutoring_backend/request_utils.dart'; // jsonError
-import 'package:theo_tutoring_backend/schedule_tutor.dart'; // the schedule SQL
+import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/header_tutor.dart';
+import 'package:theo_tutoring_backend/profile_tutor.dart';
+import 'package:theo_tutoring_backend/request_utils.dart';
+import 'package:theo_tutoring_backend/schedule_tutor.dart';
 // Relative import: must be the same TutorSession type the middleware provides.
-import '../../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../../lib/tutorlanding_session.dart';
 
 // Author Tshidiso Possa
 // GET /TutorLandingpage/schedule   (Schedule tab in the bottom navigation bar)
@@ -25,7 +25,7 @@ Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
     return Response(
       statusCode: HttpStatus.methodNotAllowed,
-    ); // only GET is allowed
+    );
   }
 
   final ScheduleQuery query;
@@ -35,7 +35,7 @@ Future<Response> onRequest(RequestContext context) async {
     return jsonError(HttpStatus.badRequest, e.message); // bad tab/date/subject
   }
 
-  final tutor = context.read<TutorSession>(); // who is calling
+  final tutor = context.read<TutorSession>();
 
   try {
     final conn = await getConnection(); // shared DB connection (do not close it)

@@ -341,7 +341,6 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
 
             const SizedBox(height: 20),
             // Password
-            // Password
             const Text(
               'Password',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),

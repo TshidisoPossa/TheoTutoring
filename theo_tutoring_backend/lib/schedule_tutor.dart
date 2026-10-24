@@ -1,4 +1,4 @@
-import 'package:mysql_client/mysql_client.dart'; // gives us the MySQLConnection type
+import 'package:mysql_client/mysql_client.dart';
 
 // ---------------------------------------------------------------------------
 // TUTOR SCHEDULE PAGE: BACKEND
@@ -66,7 +66,7 @@ ScheduleQuery parseScheduleQuery(Map<String, String> params) {
     throw const FormatException('date must be all, today, tomorrow or week.');
   }
 
-  final ids = <int>{}; // a set removes duplicates
+  final ids = <int>{};
   final rawIds = params['subjectId']?.trim() ?? '';
   if (rawIds.isNotEmpty) {
     for (final part in rawIds.split(',')) {

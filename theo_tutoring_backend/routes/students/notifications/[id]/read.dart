@@ -6,7 +6,7 @@ import 'package:theo_tutoring_backend/student_notifications.dart';
 // Called when the student taps a notification card.
 Future<Response> onRequest(RequestContext context, String id) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: 405); // only POST is allowed
+    return Response(statusCode: 405);
   }
   if (!NotificationStore.isValidId(id)) {
     return Response.json(statusCode: 400, body: {'error': 'Invalid id'});

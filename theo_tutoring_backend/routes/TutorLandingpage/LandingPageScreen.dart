@@ -1,9 +1,9 @@
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:mysql_client/mysql_client.dart'; // IResultSet
-import 'package:theo_tutoring_backend/database.dart'; // getConnection()
-import 'package:theo_tutoring_backend/header_tutor.dart'; // shared tutor name + photo
+import 'package:dart_frog/dart_frog.dart';
+import 'package:mysql_client/mysql_client.dart';
+import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/header_tutor.dart';
 import 'package:theo_tutoring_backend/tutor_application_status.dart';
-import '../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../lib/tutorlanding_session.dart';
 
 //Tutor dashboard (landing page after registration)
 //
@@ -16,10 +16,10 @@ import '../../lib/tutorlanding_session.dart'; // TutorSession
 // Pending tutors only see their application status, not bookings.
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
-    return Response(statusCode: 405); // only GET is allowed
+    return Response(statusCode: 405);
   }
-  final tutor = context.read<TutorSession>(); // who is calling
-  final p = {'tid': tutor.tutorId}; // shared query parameter
+  final tutor = context.read<TutorSession>();
+  final p = {'tid': tutor.tutorId};
   final conn = await getConnection(); // shared DB connection (do not close it)
 
   // Top bar: tutor name and profile photo, same helper as every tutor page

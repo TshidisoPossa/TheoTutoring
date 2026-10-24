@@ -1,4 +1,4 @@
-/* import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class AppColors {
   static const background = Color(0xFFF7F8FE);
@@ -12,7 +12,7 @@ class AppColors {
   static const starOff = Color(0xFFE3E6F0);
 }
 
-/*class ReviewApp extends StatelessWidget {
+class ReviewApp extends StatelessWidget {
   const ReviewApp({super.key});
 
   @override
@@ -24,8 +24,6 @@ class AppColors {
         useMaterial3: true,
         scaffoldBackgroundColor: AppColors.background,
         colorSchemeSeed: AppColors.primary,
-        // To match the mockup more closely, add `google_fonts` and use
-        // GoogleFonts.plusJakartaSansTextTheme() here.
       ),
       home: const LeaveReviewScreen(),
     );
@@ -107,7 +105,6 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
                   ),
                   const SizedBox(height: 16),
                   _HighlightsCard(
-                   // badges: _badges,
                     selected: _selected,
                     onToggle: (name) => setState(() {
                       _selected.contains(name)
@@ -321,7 +318,7 @@ class _SessionCard extends StatelessWidget {
                       
                       child: Icon(Icons.person,
                           size: 36, color: Colors.white),
-                    ),// backgroundImage: AsserImage(...)
+                    ),
                     Positioned(
                       right: -4,
                       bottom: -4,
@@ -738,4 +735,3 @@ class _ReviewCard extends StatelessWidget {
     );
   }
 }
-/*

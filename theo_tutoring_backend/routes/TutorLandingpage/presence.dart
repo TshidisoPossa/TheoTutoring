@@ -1,18 +1,18 @@
-import 'dart:io'; // HttpStatus codes + stderr
+import 'dart:io';
 
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:theo_tutoring_backend/database.dart'; // getConnection()
-import 'package:theo_tutoring_backend/request_utils.dart'; // jsonError
-import 'package:theo_tutoring_backend/tutor_presence.dart'; // presence SQL
+import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/request_utils.dart';
+import 'package:theo_tutoring_backend/tutor_presence.dart';
 // Relative import: must be the same TutorSession type the middleware provides.
-import '../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../lib/tutorlanding_session.dart';
 
 // POST   /TutorLandingpage/presence -> "I'm still here" (every minute)
 // DELETE /TutorLandingpage/presence -> signed out, offline straight away
 // Students see "Available Now" on the Tutor Profile while the last ping is
 // recent (lib/tutor_presence.dart).
 Future<Response> onRequest(RequestContext context) async {
-  final tutor = context.read<TutorSession>(); // who is calling
+  final tutor = context.read<TutorSession>();
   try {
     final conn = await getConnection(); // shared DB connection (don't close)
     final method = context.request.method;

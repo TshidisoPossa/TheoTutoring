@@ -54,7 +54,6 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
               child: Row(
@@ -93,7 +92,6 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Tabs
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -110,7 +108,6 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Request list
             Expanded(
               child: _filteredRequests.isEmpty
                   ? _buildEmptyState()
@@ -397,7 +394,6 @@ class _RequestDetailsSheet extends StatelessWidget {
           controller: controller,
           padding: const EdgeInsets.all(20),
           children: [
-            // Handle
             Center(
               child: Container(
                 width: 40,
@@ -410,7 +406,6 @@ class _RequestDetailsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // Top row
             Row(
               children: [
                 GestureDetector(
@@ -481,7 +476,6 @@ class _RequestDetailsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // Format
             _detailRow('FORMAT', request['platform'] == 'Zoom' ? 'Online (Theo Meet)' : request['platform'],
                 Icons.videocam_outlined),
             const SizedBox(height: 16),
@@ -543,7 +537,6 @@ class _RequestDetailsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // Action buttons
             Row(
               children: [
                 Expanded(

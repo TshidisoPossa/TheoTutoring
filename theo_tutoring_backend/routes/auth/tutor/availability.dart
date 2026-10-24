@@ -9,8 +9,6 @@ import '../../../lib/tutor_application_status.dart';
 
 // POST /auth/tutor/availability  (Tutor registration, Step 3 of 3)
 //
-//
-//
 // Submitting this step completes registration: the account moves from
 // 'incomplete' to 'pending' and a TutorApplication is created for the
 // administrator to review. The tutor stays hidden from students until

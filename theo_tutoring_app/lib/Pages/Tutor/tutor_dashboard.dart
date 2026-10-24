@@ -340,7 +340,6 @@ class _TutorDashboardState extends State<TutorDashboard> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
-          // Brand name
           Expanded(
             child: Text(
               'Theo Tutoring',

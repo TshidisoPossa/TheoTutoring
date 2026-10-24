@@ -1,14 +1,14 @@
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:theo_tutoring_backend/notifications.dart'; // NotificationStore
+import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/notifications.dart';
 // Relative, like the TutorLandingpage middleware that provides it: a
 // package: import would be a different TutorSession type to Dart.
-import '../../../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../../../lib/tutorlanding_session.dart';
 
 // POST /TutorLandingpage/notifications/{id}/read
 // Called when the tutor taps a notification card.
 Future<Response> onRequest(RequestContext context, String id) async {
   if (context.request.method != HttpMethod.post) {
-    return Response(statusCode: 405); // only POST is allowed
+    return Response(statusCode: 405);
   }
   if (!NotificationStore.isValidId(id)) {
     return Response.json(
@@ -16,7 +16,7 @@ Future<Response> onRequest(RequestContext context, String id) async {
       body: {'error': 'Invalid id'},
     ); // not a Firestore document ID
   }
-  final tutor = context.read<TutorSession>(); // who is calling
+  final tutor = context.read<TutorSession>();
   final store = context.read<NotificationStore>();
 
   // Only looks in this tutor's own notifications, so nobody can mark

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; //firebase connection
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'privacy_policy.dart';
 import 'terms_and_conditions.dart';
@@ -37,7 +37,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     });
 
     final email = _emailController.text.trim();
-    //Firebase code
     try {
       await (widget.auth ?? FirebaseAuth.instance)
           .sendPasswordResetEmail(email: email);
@@ -123,7 +122,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
                 const SizedBox(height: 8),
 
-                // Email field
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,

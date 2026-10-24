@@ -1,7 +1,6 @@
 import 'package:mysql_client/mysql_client.dart';
 import 'package:theo_tutoring_backend/env.dart';
 
-//Database connection
 MySQLConnection? _connection;
 
 /// Opens an isolated connection for work that owns a transaction.
@@ -31,7 +30,7 @@ Future<MySQLConnection> getConnection() async {
     userName: env['DB_USER'] ?? 'root',
     password: env['DB_PASSWORD'] ?? '',
     databaseName: env['DB_NAME'] ?? 'theotutoring',
-    secure: true, // Use SSL/TLS for secure connection
+    secure: true,
   );
 
   await _connection!.connect();

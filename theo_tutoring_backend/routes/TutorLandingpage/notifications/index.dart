@@ -1,14 +1,14 @@
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:theo_tutoring_backend/notifications.dart'; // NotificationStore
+import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/notifications.dart';
 // Relative, like the TutorLandingpage middleware that provides it: a
 // package: import would be a different TutorSession type to Dart.
-import '../../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../../lib/tutorlanding_session.dart';
 
 // GET /TutorLandingpage/notifications?limit=50
 // The Notifications page: the tutor's notifications, newest first.
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
-    return Response(statusCode: 405); // only GET is allowed
+    return Response(statusCode: 405);
   }
 
   final rawLimit = context.request.uri.queryParameters['limit'];
@@ -20,7 +20,7 @@ Future<Response> onRequest(RequestContext context) async {
     );
   }
 
-  final tutor = context.read<TutorSession>(); // who is calling
+  final tutor = context.read<TutorSession>();
   final store = context.read<NotificationStore>();
 
   // Both reads at once: the list and the total unread (for "3 unread")

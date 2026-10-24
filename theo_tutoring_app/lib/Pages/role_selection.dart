@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'login_page.dart';
 import 'student_registration.dart';
-import 'tutor_registrationPage1.dart'; //Tutor reg page
+import 'tutor_registrationPage1.dart';
 
 class RoleSelectionPage extends StatefulWidget {
   const RoleSelectionPage({super.key});
@@ -150,7 +150,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                           builder: (context) => const StudentRegistrationPage(),
                         ),
                       );
-                    } else if (selectedRole == 'tutor') //If the user selects tutor it will redirect them to the Tutor Reg.
+                    } else if (selectedRole == 'tutor')
                     {
                       Navigator.push(
                         context,

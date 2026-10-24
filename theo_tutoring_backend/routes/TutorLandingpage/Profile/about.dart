@@ -1,12 +1,12 @@
-import 'dart:io'; // HttpStatus codes + stderr
+import 'dart:io';
 
-import 'package:dart_frog/dart_frog.dart'; // Dart Frog types
-import 'package:theo_tutoring_backend/database.dart'; // getConnection()
-import 'package:theo_tutoring_backend/profile_tutor.dart'; // updateTutorAbout
-import 'package:theo_tutoring_backend/request_utils.dart'; // JSON helpers
-import 'package:theo_tutoring_backend/validator.dart'; // bio rule
+import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/profile_tutor.dart';
+import 'package:theo_tutoring_backend/request_utils.dart';
+import 'package:theo_tutoring_backend/validator.dart';
 // Relative import: must be the same TutorSession type the middleware provides.
-import '../../../lib/tutorlanding_session.dart'; // TutorSession
+import '../../../lib/tutorlanding_session.dart';
 
 // PUT /TutorLandingpage/Profile/about   (pencil on the About Me box)
 //
@@ -17,9 +17,9 @@ Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.put) {
     return Response(
       statusCode: HttpStatus.methodNotAllowed,
-    ); // only PUT is allowed
+    );
   }
-  final tutor = context.read<TutorSession>(); // who is calling
+  final tutor = context.read<TutorSession>();
 
   try {
     final body = await readJsonObject(context);

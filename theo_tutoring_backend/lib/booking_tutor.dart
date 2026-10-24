@@ -1,4 +1,4 @@
-import 'package:mysql_client/mysql_client.dart'; // gives us the MySQLConnection type
+import 'package:mysql_client/mysql_client.dart';
 
 // ---------------------------------------------------------------------------
 // TUTOR BOOKING DETAILS PAGE: BACKEND

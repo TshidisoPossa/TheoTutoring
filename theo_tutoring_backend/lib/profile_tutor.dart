@@ -1,9 +1,9 @@
-import 'dart:io'; // stderr
+import 'dart:io';
 
-import 'package:mysql_client/exception.dart'; // MySQLServerException
-import 'package:mysql_client/mysql_client.dart'; // gives us the MySQLConnection type
+import 'package:mysql_client/exception.dart';
+import 'package:mysql_client/mysql_client.dart';
 import 'package:theo_tutoring_backend/header_tutor.dart';
-import 'package:theo_tutoring_backend/session_rate.dart'; // current rate
+import 'package:theo_tutoring_backend/session_rate.dart';
 
 // ---------------------------------------------------------------------------
 // TUTOR PROFILE PAGE: BACKEND
@@ -22,12 +22,12 @@ Future<String?> getTutorAbout(
     FROM TutorProfile
     WHERE TutorID = :tutorId
     ''',
-    {'tutorId': tutorId}, // value for :tutorId (prevents SQL injection)
+    {'tutorId': tutorId},
   );
 
   if (result.rows.isEmpty) return null; // no such tutor
 
-  final data = result.rows.first.assoc(); // first row as a column -> value map
+  final data = result.rows.first.assoc();
 
   return data['Bio']; // null if the tutor hasn't written a bio yet
 }
@@ -268,7 +268,7 @@ List<int> parseTutorSubjectIds(Object? value) {
   if (value is! List || value.isEmpty) {
     throw const FormatException('Please keep at least one subject.');
   }
-  final ids = <int>{}; // a set removes duplicates
+  final ids = <int>{};
   for (final item in value) {
     if (item is! int || item <= 0) {
       throw const FormatException(
@@ -395,16 +395,16 @@ Future<void> updateTutorAvailability(
     );
   }
 
-  await conn.execute('START TRANSACTION'); // all or nothing
+  await conn.execute('START TRANSACTION');
   try {
     await conn.execute(
-      'DELETE FROM TutAvailability WHERE TutorID = :tutorId', // remove the old grid
+      'DELETE FROM TutAvailability WHERE TutorID = :tutorId',
       {'tutorId': tutorId},
     );
-    final params = <String, dynamic>{}; // values for the placeholders
-    final values = <String>[]; // one "(...)" group per row
+    final params = <String, dynamic>{};
+    final values = <String>[];
     for (var i = 0; i < rows.length; i++) {
-      values.add('(:t$i, :d$i, :s$i, :e$i)'); // placeholders for row i
+      values.add('(:t$i, :d$i, :s$i, :e$i)');
       params['t$i'] = tutorId;
       params['d$i'] = rows[i].day;
       params['s$i'] = _toTime(rows[i].start);
@@ -412,12 +412,12 @@ Future<void> updateTutorAvailability(
     }
     await conn.execute(
       'INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time) '
-      'VALUES ${values.join(', ')}', // insert the new grid in one go
+      'VALUES ${values.join(', ')}',
       params,
     );
-    await conn.execute('COMMIT'); // keep the changes
+    await conn.execute('COMMIT');
   } catch (e) {
-    await conn.execute('ROLLBACK'); // undo everything if anything failed
+    await conn.execute('ROLLBACK');
     rethrow;
   }
 }
@@ -452,7 +452,7 @@ typedef UpcomingBooking = ({String date, String day, int start, int end});
 
 int _toMinutes(String time) {
   final p = time.split(':'); // ["16", "30", "00"]
-  return int.parse(p[0]) * 60 + int.parse(p[1]); // hours * 60 + minutes
+  return int.parse(p[0]) * 60 + int.parse(p[1]);
 }
 
 // 990 -> "16:30:00"
@@ -467,11 +467,11 @@ String _toClock(int minutes) {
 
 // "Fri" or "friday" -> "Friday" (null if it is not a day)
 String? _fullDayName(String raw) {
-  final v = raw.trim().toLowerCase(); // ignore spaces and letter case
+  final v = raw.trim().toLowerCase();
   for (final d in _allDays) {
     if (d.toLowerCase() == v || d.substring(0, 3).toLowerCase() == v) return d;
   }
-  return null; // not a weekday
+  return null;
 }
 
 /// Turns the ticked grid into the rows saved in TutAvailability: one row per
@@ -500,7 +500,7 @@ List<DayRange> availabilityRanges(Map<String, List<String>> selected) {
     final chosen = (selected[day] ?? []).toSet(); // periods ticked for this day
     final merged = <List<int>>[];
     for (final p in _availabilityPeriods.entries) {
-      if (!chosen.contains(p.key)) continue; // not ticked
+      if (!chosen.contains(p.key)) continue;
       final start = p.value[0];
       final end = p.value[1];
       if (merged.isNotEmpty && merged.last[1] == start) {
@@ -563,13 +563,13 @@ Future<List<DayRange>> _loadRanges(MySQLConnection conn, int tutorId) async {
     FROM TutAvailability
     WHERE TutorID = :tutorId
     ''',
-    {'tutorId': tutorId}, // value for :tutorId (prevents SQL injection)
+    {'tutorId': tutorId},
   );
   final ranges = <DayRange>[];
   for (final row in result.rows) {
-    final r = row.assoc(); // row as a column -> value map
+    final r = row.assoc();
     final day = _fullDayName(r['Day'] ?? ''); // normalise "Mon" -> "Monday"
-    if (day == null) continue; // skip rows with an unknown day
+    if (day == null) continue;
     ranges.add((
       day: day,
       start: _toMinutes(r['StartTime'] ?? '00:00:00'),
