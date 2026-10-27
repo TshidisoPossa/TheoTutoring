@@ -4,8 +4,8 @@ There is no migration runner. Apply `001_booking_foundation.sql`, then
 `002_booking_purchase_idempotency.sql`, then
 `003_booking_cancellation_reason.sql`, then `004_report.sql`, then
 `005_tutor_presence.sql`, then `006_student_institution.sql` (adds the
-nullable `StudentProfile.Institution`, the student's university), after the
-base `schema.sql`, from one
+nullable `StudentProfile.Institution`, the student's university), then
+`007_tutor_availability_override.sql`, after the base `schema.sql`, from one
 deployment process with booking writes stopped. Each ledger version is written
 last by its migration.
 
@@ -382,3 +382,15 @@ Adds nullable `TutorProfile.LastActiveAtUtc`. The tutor app pings
 `POST /TutorLandingpage/presence` every minute while open (any tutor request
 also refreshes it) and `DELETE`s it on sign-out. `GET /tutors/<id>` reports
 `availableNow` while it is under 3 minutes old.
+
+## `007_tutor_availability_override.sql`
+
+Adds `TutAvailabilityOverride`: one-off changes to a tutor's weekly hours on
+a single date, set from the calendar on the tutor's Profile page
+(`PUT /TutorLandingpage/Profile/availability-dates`). A date with rows uses
+only those rows instead of that weekday's `TutAvailability`: one row with
+NULL times is a day off, rows with times are the only hours open that day.
+Student slots (`GET /StudentlandingPage/availability`), booking purchases and
+tutor postponements all apply them. Until this migration runs, the backend
+treats every date as having its usual weekly hours and the tutor cannot save
+date changes.

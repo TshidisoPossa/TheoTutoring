@@ -14,12 +14,14 @@ import 'Pages/Admin/admin_users.dart';
 import 'Pages/Admin/application_screen.dart';
 import 'Pages/Admin/application_review_screen.dart';
 import 'Pages/Admin/models/Tutapplication.dart';
+import 'Pages/Tutor/tutor_theme.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await TutorTheme.load();
 
   runApp(const MyApp());
 }
@@ -29,16 +31,24 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'TheoTutoring',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF246BFE)),
-        useMaterial3: true,
+    // Dark only while a tutor who chose dark mode is signed in
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: TutorTheme.mode,
+      builder: (context, themeMode, _) => MaterialApp(
+        title: 'TheoTutoring',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF246BFE),
+          ),
+          useMaterial3: true,
+        ),
+        darkTheme: TutorTheme.darkTheme,
+        themeMode: themeMode,
+        home: const LoginPage(),
+        routes: appRoutes,
+        onUnknownRoute: onUnknownAppRoute,
       ),
-      home: const LoginPage(),
-      routes: appRoutes,
-      onUnknownRoute: onUnknownAppRoute,
     );
   }
 }

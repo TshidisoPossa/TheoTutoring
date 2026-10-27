@@ -204,6 +204,26 @@ CREATE TABLE IF NOT EXISTS TutAvailability (
         FOREIGN KEY (TutorID) REFERENCES TutorProfile(TutorID)
 );
 
+-- One-off changes to the weekly hours on a single date (migration 007).
+-- A date with rows here uses only these rows: NULL times = day off,
+-- otherwise the only hours open that day.
+CREATE TABLE IF NOT EXISTS TutAvailabilityOverride (
+    OverrideID INT AUTO_INCREMENT PRIMARY KEY,
+    TutorID INT NOT NULL,
+    `Date` DATE NOT NULL,
+    StartTime TIME NULL,
+    EndTime TIME NULL,
+
+    CONSTRAINT chk_override_times CHECK (
+        (StartTime IS NULL AND EndTime IS NULL) OR StartTime < EndTime
+    ),
+
+    CONSTRAINT fk_override_tutor
+        FOREIGN KEY (TutorID) REFERENCES TutorProfile(TutorID),
+
+    INDEX idx_override_tutor_date (TutorID, `Date`)
+);
+
 -- =========================================================
 -- 10. BOOKING
 -- Booking Date/StartTime/EndTime are Africa/Johannesburg local

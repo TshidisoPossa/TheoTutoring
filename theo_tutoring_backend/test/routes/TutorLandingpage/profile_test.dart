@@ -3,11 +3,14 @@ import 'dart:convert';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
+import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/cloudinary_url.dart';
 import 'package:theo_tutoring_backend/profile_tutor.dart';
 // Same import as the routes, so it is the same TutorSession type.
 import '../../../lib/tutorlanding_session.dart';
 
+import '../../../routes/TutorLandingpage/Profile/availability-dates.dart'
+    as dates_route;
 import '../../../routes/TutorLandingpage/Profile/availability.dart'
     as availability_route;
 import '../../../routes/TutorLandingpage/Profile/index.dart' as profile_route;
@@ -123,6 +126,92 @@ void main() {
     });
   });
 
+  group('parseDateAvailability', () {
+    final today = BookingDate(2026, 10, 26);
+    DateAvailabilityChange parse(Map<String, dynamic> body) =>
+        parseDateAvailability(body, today: today);
+
+    test('reads a day off and a return to the usual hours', () {
+      final off = parse({'date': '2026-11-13', 'mode': 'off'});
+      expect(off.date, BookingDate(2026, 11, 13));
+      expect(off.mode, DateAvailabilityMode.off);
+      expect(off.times, isEmpty);
+      expect(
+        parse({'date': '2026-11-13', 'mode': 'usual'}).mode,
+        DateAvailabilityMode.usual,
+      );
+    });
+
+    test('merges touching custom hours into ranges', () {
+      final change = parse({
+        'date': '2026-11-14',
+        'mode': 'custom',
+        'times': [
+          {'startTime': '10:00', 'endTime': '11:00'},
+          {'startTime': '09:00', 'endTime': '10:00'},
+          {'startTime': '14:00', 'endTime': '16:00'},
+        ],
+      });
+      expect(change.times, [
+        (start: 540, end: 660), // 09:00-11:00
+        (start: 840, end: 960), // 14:00-16:00
+      ]);
+    });
+
+    test('accepts today and the date 90 days ahead, nothing outside', () {
+      expect(parse({'date': '2026-10-26', 'mode': 'off'}).date, today);
+      expect(
+        parse({'date': '2027-01-24', 'mode': 'off'}).date,
+        today.addDays(90),
+      );
+      for (final date in ['2026-10-25', '2027-01-25']) {
+        expect(
+          () => parse({'date': date, 'mode': 'off'}),
+          throwsFormatException,
+          reason: date,
+        );
+      }
+    });
+
+    test('rejects bad dates, modes and custom hours', () {
+      for (final body in <Map<String, dynamic>>[
+        {'mode': 'off'},
+        {'date': '2026-02-30', 'mode': 'off'},
+        {'date': '2026-11-13', 'mode': 'holiday'},
+        {'date': '2026-11-13', 'mode': 'custom'},
+        {'date': '2026-11-13', 'mode': 'custom', 'times': <Object>[]},
+        {
+          'date': '2026-11-13',
+          'mode': 'custom',
+          'times': [
+            {'startTime': '09:30', 'endTime': '10:30'}, // not on the hour
+          ],
+        },
+        {
+          'date': '2026-11-13',
+          'mode': 'custom',
+          'times': [
+            {'startTime': '05:00', 'endTime': '07:00'}, // before 06:00
+          ],
+        },
+        {
+          'date': '2026-11-13',
+          'mode': 'custom',
+          'times': [
+            {'startTime': '12:00', 'endTime': '11:00'}, // backwards
+          ],
+        },
+        {
+          'date': '2026-11-13',
+          'mode': 'custom',
+          'times': ['09:00'],
+        },
+      ]) {
+        expect(() => parse(body), throwsFormatException, reason: '$body');
+      }
+    });
+  });
+
   group('routes', () {
     late _MockRequestContext context;
 
@@ -174,6 +263,25 @@ void main() {
         },
       );
       expect((await availability_route.onRequest(context)).statusCode, 400);
+    });
+
+    test('PUT /Profile/availability-dates: only PUT is allowed', () async {
+      request('POST', '/TutorLandingpage/Profile/availability-dates');
+      expect((await dates_route.onRequest(context)).statusCode, 405);
+    });
+
+    test('PUT /Profile/availability-dates: a past date is a 400', () async {
+      request(
+        'PUT',
+        '/TutorLandingpage/Profile/availability-dates',
+        body: {'date': '2020-01-01', 'mode': 'off'},
+      );
+      final response = await dates_route.onRequest(context);
+      expect(response.statusCode, 400);
+      expect(
+        ((await response.json()) as Map)['error'],
+        startsWith('Pick a date from'),
+      );
     });
   });
 }

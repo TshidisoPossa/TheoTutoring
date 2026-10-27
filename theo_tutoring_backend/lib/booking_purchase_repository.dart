@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:mysql_client/mysql_client.dart';
 import 'package:mysql_client/exception.dart';
 
+import 'availability_overrides.dart';
 import 'booking_domain.dart';
 import 'booking_purchase.dart';
 import 'database.dart';
@@ -596,11 +597,20 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final databaseNow = _utcDateTime(
       databaseNowResult.rows.first.colByName('NowUtc'),
     );
+    final lessonDates = [for (final l in command.lessons) l.interval.date]
+      ..sort((a, b) => b.daysUntil(a)); // earliest first
+    final overrides = await loadAvailabilityOverrides(
+      connection,
+      command.tutorId,
+      from: lessonDates.first,
+      through: lessonDates.last,
+    );
     for (final lesson in command.lessons) {
       validateLessonSlot(
         slot: lesson.interval,
         nowUtc: databaseNow,
         availability: availability,
+        overrides: overrides,
       );
     }
     await _ensureNoConflicts(

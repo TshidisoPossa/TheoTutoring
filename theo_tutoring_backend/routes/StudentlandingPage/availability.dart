@@ -73,6 +73,7 @@ Future<Response> handleAvailability(
       nowUtc: nowUtc,
       availability: snapshot.weeklyAvailability,
       busyIntervals: snapshot.busyIntervals,
+      overrides: snapshot.availabilityOverrides,
     );
     return Response.json(
       body: {

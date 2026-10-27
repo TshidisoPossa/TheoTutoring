@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:mysql_client/exception.dart';
 import 'package:mysql_client/mysql_client.dart';
+import 'package:theo_tutoring_backend/availability_overrides.dart';
+import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/header_tutor.dart';
 import 'package:theo_tutoring_backend/session_rate.dart';
 
@@ -138,13 +140,23 @@ Future<Map<String, dynamic>?> getTutorProfilePage(
   // Periods with an upcoming booking cannot be unticked (business rule 12),
   // so the app shows them as locked.
   final bookings = await getUpcomingBookings(conn, tutorId);
+  final weeklyBookings = await _bookingsOnWeeklyHours(conn, tutorId, bookings);
   for (final day in availability) {
     final ticked = [
       for (final slot in day['slots'] as List<Map<String, String>>)
         slot['period']!,
     ];
-    day['locked'] = lockedPeriods(day['day'] as String, ticked, bookings);
+    day['locked'] = lockedPeriods(
+      day['day'] as String,
+      ticked,
+      weeklyBookings,
+    );
   }
+  final calendar = await getAvailabilityCalendar(
+    conn,
+    tutorId,
+    bookings: bookings,
+  );
 
   return {
     ...header, // tutorId, name, profilePhotoUrl
@@ -157,6 +169,8 @@ Future<Map<String, dynamic>?> getTutorProfilePage(
     'lockedSubjectIds': lockedSubjects.toList()..sort(),
     'qualifications': qualifications, // [{qualificationId, degree, ...}]
     'availability': availability, // the Mon-Sat grid
+    // the month calendar: date changes and booked lessons, 90 days ahead
+    'availabilityCalendar': calendar,
   };
 }
 
@@ -381,7 +395,11 @@ Future<void> updateTutorAvailability(
 
   // A tutor cannot remove a slot that has an upcoming booking.
   final before = await _loadRanges(conn, tutorId);
-  final bookings = await getUpcomingBookings(conn, tutorId);
+  final bookings = await _bookingsOnWeeklyHours(
+    conn,
+    tutorId,
+    await getUpcomingBookings(conn, tutorId),
+  );
   final clash = findRemovedBooking(
     before: before,
     after: rows,
@@ -643,4 +661,267 @@ Future<List<Map<String, dynamic>>> getTutorAvailability(
     });
   }
   return days;
+}
+
+// ---------------------------------------------------------------------------
+// AVAILABILITY CALENDAR (one-off date changes, under the weekly grid)
+// A date can take the day off or have its own hours instead of the weekly
+// ones. Saved in TutAvailabilityOverride (migration 007); students see the
+// change straight away when they book.
+// ---------------------------------------------------------------------------
+
+/// Custom hours on a date must sit inside 06:00-22:00.
+const dateHoursEarliest = 6 * 60;
+
+/// See [dateHoursEarliest].
+const dateHoursLatest = 22 * 60;
+
+/// What the tutor chose for one date: the usual weekly hours, a day off or
+/// their own hours.
+enum DateAvailabilityMode { usual, off, custom }
+
+/// A change to one date, read from the request.
+typedef DateAvailabilityChange = ({
+  BookingDate date,
+  DateAvailabilityMode mode,
+  List<({int start, int end})> times,
+});
+
+/// Reads {"date": "2026-11-13", "mode": "off"}, or "usual", or
+/// {"mode": "custom", "times": [{"startTime": "09:00", "endTime": "12:00"}]}.
+/// The date must be from [today] up to 90 days ahead; custom times are whole
+/// hours inside 06:00-22:00 and are merged when they touch.
+/// Throws a FormatException (turned into a 400) for anything else.
+DateAvailabilityChange parseDateAvailability(
+  Map<String, dynamic> body, {
+  required BookingDate today,
+}) {
+  final rawDate = body['date'];
+  final BookingDate date;
+  try {
+    if (rawDate is! String) throw const FormatException();
+    date = BookingDate.parse(rawDate.trim());
+  } on FormatException {
+    throw const FormatException('date must look like 2026-11-13.');
+  }
+  final last = today.addDays(maximumBookingDays);
+  if (today.daysUntil(date) < 0 || date.daysUntil(last) < 0) {
+    throw FormatException('Pick a date from ${today.iso} to ${last.iso}.');
+  }
+
+  final mode = DateAvailabilityMode.values
+      .where((m) => m.name == body['mode'])
+      .firstOrNull;
+  if (mode == null) {
+    throw const FormatException('mode must be usual, off or custom.');
+  }
+  if (mode != DateAvailabilityMode.custom) {
+    return (date: date, mode: mode, times: const []);
+  }
+
+  final rawTimes = body['times'];
+  if (rawTimes is! List || rawTimes.isEmpty || rawTimes.length > 24) {
+    throw const FormatException('Pick at least one hour, or take the day off.');
+  }
+  final times = <({int start, int end})>[];
+  for (final item in rawTimes) {
+    final int start;
+    final int end;
+    try {
+      start = parseClockTime((item as Map)['startTime'] as String);
+      end = parseClockTime(item['endTime'] as String);
+    } on Object {
+      throw const FormatException(
+        'Each time must look like {"startTime": "09:00", "endTime": "12:00"}.',
+      );
+    }
+    if (start % 60 != 0 || end % 60 != 0) {
+      throw const FormatException('Times must be on the hour, like 09:00.');
+    }
+    if (start < dateHoursEarliest || end > dateHoursLatest || start >= end) {
+      throw const FormatException(
+        'Hours must be between 06:00 and 22:00, each ending after it starts.',
+      );
+    }
+    times.add((start: start, end: end));
+  }
+
+  // Overlapping or touching times become one range (09-10 + 10-11 -> 09-11)
+  times.sort((a, b) => a.start.compareTo(b.start));
+  final merged = <({int start, int end})>[];
+  for (final t in times) {
+    if (merged.isNotEmpty && t.start <= merged.last.end) {
+      final previous = merged.removeLast();
+      merged.add((
+        start: previous.start,
+        end: t.end > previous.end ? t.end : previous.end,
+      ));
+    } else {
+      merged.add(t);
+    }
+  }
+  return (date: date, mode: mode, times: merged);
+}
+
+/// Saves [change] for one date in a transaction that locks the tutor row.
+/// Throws an [AvailabilityInUseException] if a lesson booked that day would
+/// lose its time.
+Future<void> saveDateAvailability(
+  MySQLConnection conn,
+  int tutorId,
+  DateAvailabilityChange change,
+) async {
+  final date = change.date;
+  await conn.transactional((tx) async {
+    await tx.execute(
+      'SELECT TutorID FROM TutorProfile WHERE TutorID = :tutorId FOR UPDATE',
+      {'tutorId': tutorId},
+    );
+
+    final weekly = [
+      for (final r in await _loadRanges(tx, tutorId))
+        WeeklyAvailability(
+          weekday: _allDays.indexOf(r.day) + 1,
+          startMinutes: r.start,
+          endMinutes: r.end,
+        ),
+    ];
+    final before = availabilityWindowsOn(
+      date,
+      weekly: weekly,
+      overrides: await loadAvailabilityOverrides(
+        tx,
+        tutorId,
+        from: date,
+        through: date,
+      ),
+    );
+    final after = switch (change.mode) {
+      DateAvailabilityMode.usual => availabilityWindowsOn(date, weekly: weekly),
+      DateAvailabilityMode.off => const <AvailabilityWindow>[],
+      DateAvailabilityMode.custom => [
+        for (final t in change.times)
+          (startMinutes: t.start, endMinutes: t.end),
+      ],
+    };
+
+    bool covers(List<AvailabilityWindow> windows, UpcomingBooking b) =>
+        windows.any((w) => w.startMinutes <= b.start && w.endMinutes >= b.end);
+    for (final b in await getUpcomingBookings(tx, tutorId)) {
+      if (b.date != date.iso) continue;
+      if (covers(before, b) && !covers(after, b)) {
+        throw AvailabilityInUseException(
+          'You have a lesson booked on ${b.day} ${b.date} '
+          '(${_toClock(b.start)} - ${_toClock(b.end)}), '
+          'so that time must stay open.',
+        );
+      }
+    }
+
+    await tx.execute(
+      'DELETE FROM TutAvailabilityOverride '
+      'WHERE TutorID = :tutorId AND `Date` = :date',
+      {'tutorId': tutorId, 'date': date.iso},
+    );
+    switch (change.mode) {
+      case DateAvailabilityMode.usual:
+        break; // no rows: the weekly hours apply again
+      case DateAvailabilityMode.off:
+        await tx.execute(
+          'INSERT INTO TutAvailabilityOverride (TutorID, `Date`) '
+          'VALUES (:tutorId, :date)',
+          {'tutorId': tutorId, 'date': date.iso},
+        );
+      case DateAvailabilityMode.custom:
+        for (final t in change.times) {
+          await tx.execute(
+            'INSERT INTO TutAvailabilityOverride '
+            '(TutorID, `Date`, StartTime, EndTime) '
+            'VALUES (:tutorId, :date, :start, :end)',
+            {
+              'tutorId': tutorId,
+              'date': date.iso,
+              'start': _toTime(t.start),
+              'end': _toTime(t.end),
+            },
+          );
+        }
+    }
+  });
+}
+
+/// The calendar under the weekly grid, from today to the last bookable date:
+/// the dates with their own hours and the lessons booked in that time.
+/// [bookings] are the tutor's upcoming bookings when already loaded.
+Future<Map<String, dynamic>> getAvailabilityCalendar(
+  MySQLConnection conn,
+  int tutorId, {
+  List<UpcomingBooking>? bookings,
+  DateTime? nowUtc,
+}) async {
+  final today = johannesburgDate(nowUtc ?? DateTime.now().toUtc());
+  final last = today.addDays(maximumBookingDays);
+  final changes = <String, List<AvailabilityOverride>>{};
+  final overrides = await loadAvailabilityOverrides(
+    conn,
+    tutorId,
+    from: today,
+    through: last,
+  );
+  for (final o in overrides) {
+    (changes[o.date.iso] ??= []).add(o);
+  }
+  final booked = bookings ?? await getUpcomingBookings(conn, tutorId);
+
+  return {
+    'today': today.iso, // "2026-10-26", Johannesburg time
+    'lastDate': last.iso, // students can book up to this date
+    'dateChanges': [
+      for (final entry in changes.entries)
+        {
+          'date': entry.key,
+          'dayOff': entry.value.every((o) => o.isDayOff),
+          'times': [
+            for (final o in entry.value)
+              if (!o.isDayOff)
+                {
+                  'startTime': _toClock(o.startMinutes!),
+                  'endTime': _toClock(o.endMinutes!),
+                },
+          ],
+        },
+    ],
+    'bookings': [
+      for (final b in booked)
+        if (b.date.compareTo(today.iso) >= 0 &&
+            b.date.compareTo(last.iso) <= 0)
+          {
+            'date': b.date,
+            'startTime': _toClock(b.start),
+            'endTime': _toClock(b.end),
+          },
+    ],
+  };
+}
+
+// Bookings on a date with its own hours do not depend on the weekly grid,
+// so the grid can change around them.
+Future<List<UpcomingBooking>> _bookingsOnWeeklyHours(
+  MySQLConnection conn,
+  int tutorId,
+  List<UpcomingBooking> bookings,
+) async {
+  if (bookings.isEmpty) return bookings;
+  final dates = [for (final b in bookings) b.date]..sort();
+  final overrides = await loadAvailabilityOverrides(
+    conn,
+    tutorId,
+    from: BookingDate.parse(dates.first),
+    through: BookingDate.parse(dates.last),
+  );
+  final changed = {for (final o in overrides) o.date.iso};
+  return [
+    for (final b in bookings)
+      if (!changed.contains(b.date)) b,
+  ];
 }

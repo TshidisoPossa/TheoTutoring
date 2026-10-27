@@ -102,6 +102,47 @@ class WeeklyAvailability {
       endMinutes >= slot.endMinutes;
 }
 
+/// A one-off change to the tutor's weekly hours on one date
+/// (TutAvailabilityOverride). A date with any override uses only its
+/// overrides; one without times is a day off.
+class AvailabilityOverride {
+  const AvailabilityOverride({
+    required this.date,
+    this.startMinutes,
+    this.endMinutes,
+  });
+
+  final BookingDate date;
+  final int? startMinutes;
+  final int? endMinutes;
+
+  bool get isDayOff => startMinutes == null || endMinutes == null;
+}
+
+typedef AvailabilityWindow = ({int startMinutes, int endMinutes});
+
+/// The hours the tutor is open on [date]: that date's overrides when it has
+/// any, otherwise the weekly hours for its weekday.
+List<AvailabilityWindow> availabilityWindowsOn(
+  BookingDate date, {
+  required List<WeeklyAvailability> weekly,
+  List<AvailabilityOverride> overrides = const [],
+}) {
+  final changes = overrides.where((o) => o.date == date).toList();
+  if (changes.isNotEmpty) {
+    return [
+      for (final o in changes)
+        if (!o.isDayOff)
+          (startMinutes: o.startMinutes!, endMinutes: o.endMinutes!),
+    ];
+  }
+  return [
+    for (final w in weekly)
+      if (w.weekday == date.weekday)
+        (startMinutes: w.startMinutes, endMinutes: w.endMinutes),
+  ];
+}
+
 class AvailableLesson {
   const AvailableLesson(this.interval);
 
@@ -156,11 +197,20 @@ void validateLessonSlot({
   required LessonInterval slot,
   required DateTime nowUtc,
   required List<WeeklyAvailability> availability,
+  List<AvailabilityOverride> overrides = const [],
 }) {
   validateLessonTiming(slot: slot, nowUtc: nowUtc);
-  if (!availability.any((window) => window.contains(slot))) {
+  final windows = availabilityWindowsOn(
+    slot.date,
+    weekly: availability,
+    overrides: overrides,
+  );
+  if (!windows.any(
+    (w) =>
+        w.startMinutes <= slot.startMinutes && w.endMinutes >= slot.endMinutes,
+  )) {
     throw const FormatException(
-      "The lesson is outside the tutor's weekly availability.",
+      "The lesson is outside the tutor's availability.",
     );
   }
 }
@@ -206,6 +256,7 @@ List<AvailableLesson> findAvailableLessons({
   required DateTime nowUtc,
   required List<WeeklyAvailability> availability,
   required List<LessonInterval> busyIntervals,
+  List<AvailabilityOverride> overrides = const [],
 }) {
   final today = johannesburgDate(nowUtc);
   if (from.daysUntil(through) < 0 ||
@@ -220,8 +271,10 @@ List<AvailableLesson> findAvailableLessons({
   final emitted = <String>{};
   for (var offset = 0; offset <= from.daysUntil(through); offset++) {
     final date = from.addDays(offset);
-    for (final window in availability.where(
-      (item) => item.weekday == date.weekday,
+    for (final window in availabilityWindowsOn(
+      date,
+      weekly: availability,
+      overrides: overrides,
     )) {
       for (
         var start = window.startMinutes;
@@ -234,11 +287,8 @@ List<AvailableLesson> findAvailableLessons({
           endMinutes: start + lessonDurationMinutes,
         );
         try {
-          validateLessonSlot(
-            slot: interval,
-            nowUtc: nowUtc,
-            availability: [window],
-          );
+          // The window is the tutor's own hours, so only timing can fail.
+          validateLessonTiming(slot: interval, nowUtc: nowUtc);
         } on FormatException {
           continue;
         }

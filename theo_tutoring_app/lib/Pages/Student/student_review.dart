@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+///import 'package:flutter/material.dart';
 
+/*
 class AppColors {
   static const background = Color(0xFFF7F8FE);
   static const card = Colors.white;
@@ -29,6 +30,8 @@ class ReviewApp extends StatelessWidget {
     );
   }
 }
+
+
 
 class LeaveReviewScreen extends StatefulWidget {
   const LeaveReviewScreen({super.key});

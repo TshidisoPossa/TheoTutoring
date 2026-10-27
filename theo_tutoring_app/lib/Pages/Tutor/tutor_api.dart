@@ -166,6 +166,28 @@ Future<Map<String, dynamic>> saveTutorAvailability(
   );
 }
 
+/// Changes one date in the availability calendar
+/// (PUT /TutorLandingpage/Profile/availability-dates). [mode] is 'usual'
+/// (back to the weekly hours), 'off' (day off) or 'custom' with [times]
+/// such as [{"startTime": "09:00", "endTime": "12:00"}]. The response holds
+/// the updated `availabilityCalendar`.
+Future<Map<String, dynamic>> saveTutorDateAvailability({
+  required String date,
+  required String mode,
+  List<Map<String, String>> times = const [],
+}) {
+  return _send(
+    'PUT',
+    '/TutorLandingpage/Profile/availability-dates',
+    body: {
+      'date': date,
+      'mode': mode,
+      if (mode == 'custom') 'times': times,
+    },
+    failMessage: 'Could not save this date. Please try again.',
+  );
+}
+
 /// Saves the About Me text (PUT /TutorLandingpage/Profile/about).
 /// The backend uses the registration bio rule (20 to 300 characters).
 Future<Map<String, dynamic>> saveTutorAbout(String about) {

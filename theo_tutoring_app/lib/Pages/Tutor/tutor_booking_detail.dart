@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'tutor_api.dart';
 import 'tutor_format.dart';
+import 'tutor_theme.dart';
 import 'tutor_format.dart' as fmt; // the durationLabel field hides the function
 
 // ── Model ──────────────────────────────────────────────────────────────────
@@ -181,17 +182,23 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   bool _declining = false;
 
   // Light palette matching screenshot
-  static const _bg     = Color(0xFFF5F7FA);
-  static const _white  = Colors.white;
+  static const _white  = Colors.white; // text and icons on blue
   static const _blue   = Color(0xFF246BFE);
-  static const _blueBg = Color(0xFFEEF2FF);
-  static const _text1  = Color(0xFF111827);
-  static const _text2  = Color(0xFF374151);
-  static const _text3  = Color(0xFF6B7280);
-  static const _text4  = Color(0xFF9CA3AF);
-  static const _border = Color(0xFFE5E7EB);
   static const _red    = Color(0xFFDC2626);
-  static const _redBg  = Color(0xFFFEF2F2);
+
+  // Light colours, or the dark ones when the tutor turned on Dark Mode
+  bool get _dk => context.tutorDark;
+  Color get _bg => _dk ? TutorDark.background : const Color(0xFFF5F7FA);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _fill => _dk ? TutorDark.cardAlt : const Color(0xFFF1F3F6);
+  Color get _blueBg => _dk ? TutorDark.blueTint : const Color(0xFFEEF2FF);
+  Color get _text1 => _dk ? TutorDark.text : const Color(0xFF111827);
+  Color get _text2 => _dk ? TutorDark.textSecondary : const Color(0xFF374151);
+  Color get _text3 => _dk ? TutorDark.textMuted : const Color(0xFF6B7280);
+  Color get _text4 => _dk ? TutorDark.textFaint : const Color(0xFF9CA3AF);
+  Color get _border => _dk ? TutorDark.border : const Color(0xFFE5E7EB);
+  Color get _redText => _dk ? TutorDark.redText : _red;
+  Color get _redBg => _dk ? TutorDark.redTint : const Color(0xFFFEF2F2);
 
   @override
   void initState() {
@@ -219,16 +226,16 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cancel this session time?',
+        title: Text('Cancel this session time?',
             style: TextStyle(color: _text1)),
-        content: const Text(
+        content: Text(
             'The session will be moved to a new time that you choose. The '
             'student will be asked to confirm it.',
             style: TextStyle(color: _text3)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Keep session', style: TextStyle(color: _text3)),
+            child: Text('Keep session', style: TextStyle(color: _text3)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -339,11 +346,11 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded, color: _text4, size: 40),
+            Icon(Icons.wifi_off_rounded, color: _text4, size: 40),
             const SizedBox(height: 12),
             Text(_error!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: _text3, fontSize: 13)),
+                style: TextStyle(color: _text3, fontSize: 13)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _load,
@@ -377,13 +384,13 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   Widget _buildHeader() {
     final b = _booking;
     return Container(
-      color: _white,
+      color: _surface,
       padding: const EdgeInsets.fromLTRB(8, 10, 16, 10),
       child: Row(
         children: [
           IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back_rounded, color: _text1),
+            icon: Icon(Icons.arrow_back_rounded, color: _text1),
             tooltip: 'Back',
           ),
           const SizedBox(width: 4),
@@ -435,7 +442,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: const Color(0xFFE8EBF0),
+            color: _fill,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
@@ -444,12 +451,12 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
               Container(
                 width: 6,
                 height: 6,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                     color: _text3, shape: BoxShape.circle),
               ),
               const SizedBox(width: 6),
               Text('ID #${b.requestId}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: _text2,
                       fontSize: 12,
                       fontWeight: FontWeight.w600)),
@@ -462,7 +469,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
               ? const SizedBox.shrink()
               : Text('Received ${b.receivedAgo}',
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _text3, fontSize: 12)),
+                  style: TextStyle(color: _text3, fontSize: 12)),
         ),
         const SizedBox(width: 8),
         Container(
@@ -484,11 +491,13 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   Color _statusColor(String s) {
     switch (s.toLowerCase()) {
       case 'confirmed':
-      case 'accepted':  return const Color(0xFF16A34A);
+      case 'accepted':
+        return _dk ? TutorDark.greenText : const Color(0xFF16A34A);
       case 'pending':
-      case 'postponed': return const Color(0xFFD97706);
+      case 'postponed':
+        return _dk ? TutorDark.amberText : const Color(0xFFD97706);
       case 'declined':
-      case 'cancelled': return _red;
+      case 'cancelled': return _redText;
       default:          return _text3;
     }
   }
@@ -496,12 +505,14 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   Color _statusBg(String s) {
     switch (s.toLowerCase()) {
       case 'confirmed':
-      case 'accepted':  return const Color(0xFFF0FDF4);
+      case 'accepted':
+        return _dk ? TutorDark.greenTint : const Color(0xFFF0FDF4);
       case 'pending':
-      case 'postponed': return const Color(0xFFFFFBEB);
+      case 'postponed':
+        return _dk ? TutorDark.amberTint : const Color(0xFFFFFBEB);
       case 'declined':
       case 'cancelled': return _redBg;
-      default:          return const Color(0xFFF3F4F6);
+      default:          return _dk ? TutorDark.cardAlt : const Color(0xFFF3F4F6);
     }
   }
 
@@ -515,11 +526,11 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F3F6),
+              color: _fill,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(b.subject.toUpperCase(),
-                style: const TextStyle(
+                style: TextStyle(
                     color: _text2,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -535,13 +546,13 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
               const Icon(Icons.access_time_rounded, size: 17, color: _blue),
               const SizedBox(width: 8),
               Text('${b.startTime} – ${b.endTime}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: _text1,
                       fontSize: 14,
                       fontWeight: FontWeight.w700)),
               if (b.durationLabel.isNotEmpty)
                 Text('  (${b.durationLabel})',
-                    style: const TextStyle(color: _text3, fontSize: 14)),
+                    style: TextStyle(color: _text3, fontSize: 14)),
             ],
           ),
           // The note the student wrote when booking, as on the Schedule page
@@ -551,14 +562,14 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFF7F8FA),
+                color: _fill,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFEEF0F3)),
+                border: Border.all(color: _border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.format_quote_rounded,
                           color: _text4, size: 18),
@@ -574,13 +585,13 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                   const SizedBox(height: 8),
                   if (b.studentNote != null && b.studentNote!.trim().isNotEmpty)
                     Text('"${b.studentNote!.trim()}"',
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: _text2,
                             fontSize: 13,
                             fontStyle: FontStyle.italic,
                             height: 1.55))
                   else
-                    const Text('No note from the student.',
+                    Text('No note from the student.',
                         style: TextStyle(
                             color: _text4,
                             fontSize: 13,
@@ -630,7 +641,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                         decoration: BoxDecoration(
                           color: _blue,
                           shape: BoxShape.circle,
-                          border: Border.all(color: _white, width: 2),
+                          border: Border.all(color: _surface, width: 2),
                         ),
                         child: const Icon(Icons.check_rounded,
                             size: 10, color: _white),
@@ -652,7 +663,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                       const SizedBox(height: 3),
                       Text(b.studentYear!,
                           style:
-                              const TextStyle(color: _text3, fontSize: 13)),
+                              TextStyle(color: _text3, fontSize: 13)),
                     ],
                     const SizedBox(height: 6),
                     _buildStudentRating(b),
@@ -663,7 +674,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           ),
           // The student's university
           const SizedBox(height: 14),
-          const Divider(color: _border, height: 1),
+          Divider(color: _border, height: 1),
           const SizedBox(height: 14),
           _infoRow(
             icon: Icons.account_balance_outlined,
@@ -688,7 +699,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   Widget _buildStudentRating(BookingDetail b) {
     final rating = b.studentRating;
     if (rating == null || b.studentReviewCount == 0) {
-      return const Text('No rating from this student yet',
+      return Text('No rating from this student yet',
           style: TextStyle(color: _text4, fontSize: 12));
     }
     final count = b.studentReviewCount;
@@ -697,13 +708,13 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
         const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF59E0B)),
         const SizedBox(width: 3),
         Text(rating.toStringAsFixed(1),
-            style: const TextStyle(
+            style: TextStyle(
                 color: _text1, fontSize: 13, fontWeight: FontWeight.w700)),
         const SizedBox(width: 6),
         Flexible(
           child: Text('from $count review${count == 1 ? '' : 's'} of you',
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _text3, fontSize: 12)),
+              style: TextStyle(color: _text3, fontSize: 12)),
         ),
       ],
     );
@@ -721,7 +732,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F3F6),
+            color: _fill,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, size: 16, color: _text3),
@@ -732,7 +743,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: _text4,
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
@@ -760,14 +771,14 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F3F6),
+              color: _fill,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.sync_disabled_rounded,
+            child: Icon(Icons.sync_disabled_rounded,
                 color: _text3, size: 18),
           ),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -807,7 +818,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                     const Icon(Icons.sync_rounded, color: _blue, size: 18),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text('Recurring Booking',
                     style: TextStyle(
                         color: _text1,
@@ -818,12 +829,12 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE0F2FE),
+                  color: _dk ? TutorDark.blueTint : const Color(0xFFE0F2FE),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text('Weekly',
+                child: Text('Weekly',
                     style: TextStyle(
-                        color: Color(0xFF0369A1),
+                        color: _dk ? TutorDark.blueText : const Color(0xFF0369A1),
                         fontSize: 11,
                         fontWeight: FontWeight.w600)),
               ),
@@ -834,9 +845,9 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F8FA),
+              color: _fill,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEEF0F3)),
+              border: Border.all(color: _border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -844,13 +855,13 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                 if (b.recurringPattern != null)
                   Row(
                     children: [
-                      const Text('Pattern:',
+                      Text('Pattern:',
                           style: TextStyle(color: _text3, fontSize: 13)),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(b.recurringPattern!,
                             textAlign: TextAlign.right,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: _text1,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700)),
@@ -862,16 +873,16 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                   Text(
                     'Next ${next.length} sessions: ${next.join(', ')}'
                     '${b.recurringTime != null ? ' (${b.recurringTime})' : ''}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: _text2, fontSize: 13, height: 1.5),
                   ),
                 ],
                 const SizedBox(height: 10),
-                const Divider(color: _border, height: 1),
+                Divider(color: _border, height: 1),
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    const Text('Total Scheduled:',
+                    Text('Total Scheduled:',
                         style: TextStyle(color: _text3, fontSize: 13)),
                     const SizedBox(width: 12),
                     Expanded(
@@ -880,7 +891,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                             ? '${b.totalSessions} Sessions • ${b.totalHours}'
                             : '${b.totalSessions} Sessions',
                         textAlign: TextAlign.right,
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: _text1,
                             fontSize: 13,
                             fontWeight: FontWeight.w700),
@@ -900,7 +911,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
 
   Widget _buildCancelBar() {
     return Container(
-      color: _white,
+      color: _surface,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: SafeArea(
         top: false,
@@ -909,9 +920,9 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           child: OutlinedButton(
             onPressed: _declining ? null : _decline,
             style: OutlinedButton.styleFrom(
-              foregroundColor: _red,
+              foregroundColor: _redText,
               backgroundColor: _redBg,
-              side: const BorderSide(color: Color(0xFFFECACA)),
+              side: BorderSide(color: _dk ? TutorDark.border : const Color(0xFFFECACA)),
               padding: const EdgeInsets.symmetric(vertical: 15),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
@@ -945,7 +956,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: _white,
+        color: _surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(

@@ -8,6 +8,7 @@ import 'tutor_booking_detail.dart';
 import 'tutor_format.dart';
 import 'tutor_nav.dart';
 import 'tutor_notifications.dart';
+import 'tutor_theme.dart';
 
 // ── Models ────────────────────────────────────────────────────────────────────
 
@@ -160,13 +161,19 @@ class _TutorDashboardState extends State<TutorDashboard> {
   int _unread = 0; // the number on the bell
 
   static const _blue  = Color(0xFF246BFE);
-  static const _bg    = Color(0xFFF2F4F8);
-  static const _dark  = Color(0xFF1A1A2E);
-  static const _muted = Color(0xFF9CA3AF);
-  static const _grey  = Color(0xFF6B7280);
   static const _amber = Color(0xFFF59E0B);
   static const _green = Color(0xFF10B981);
   static const _red   = Color(0xFFE53935);
+
+  // Light colours, or the dark ones when the tutor turned on Dark Mode
+  bool get _dk => context.tutorDark;
+  Color get _bg => _dk ? TutorDark.background : const Color(0xFFF2F4F8);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _dark => _dk ? TutorDark.text : const Color(0xFF1A1A2E);
+  Color get _grey => _dk ? TutorDark.textMuted : const Color(0xFF6B7280);
+  Color get _muted => _dk ? TutorDark.textFaint : const Color(0xFF9CA3AF);
+  Color get _line => _dk ? TutorDark.border : const Color(0xFFE5E7EB);
+  Color get _divider => _dk ? TutorDark.border : const Color(0xFFF0F1F4);
 
   @override
   void initState() {
@@ -310,7 +317,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
             Icon(Icons.wifi_off_rounded, size: 56, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(_error ?? 'Something went wrong',
-                style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14),
+                style: GoogleFonts.inter(color: _grey, fontSize: 14),
                 textAlign: TextAlign.center),
             const SizedBox(height: 20),
             ElevatedButton.icon(
@@ -336,7 +343,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
     final photoUrl  = _data?.tutorPhotoUrl;
 
     return Container(
-      color: Colors.white,
+      color: _surface,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
@@ -359,7 +366,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
               isLabelVisible: _unread > 0,
               backgroundColor: _red,
               label: Text(_unread > 99 ? '99+' : '$_unread'),
-              child: const Icon(Icons.notifications_outlined,
+              child: Icon(Icons.notifications_outlined,
                   color: _dark, size: 24),
             ),
             padding: EdgeInsets.zero,
@@ -583,7 +590,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
       _StepState.done => (_green, Icons.check_rounded),
       _StepState.current => (_amber, null),
       _StepState.failed => (_red, Icons.close_rounded),
-      _StepState.upcoming => (const Color(0xFFD1D5DB), null),
+      _StepState.upcoming => (_line, null),
     };
     final filled = state != _StepState.upcoming;
 
@@ -600,7 +607,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                   width: 22,
                   height: 22,
                   decoration: BoxDecoration(
-                    color: filled ? color : Colors.white,
+                    color: filled ? color : _surface,
                     shape: BoxShape.circle,
                     border: Border.all(color: color, width: 2),
                   ),
@@ -619,7 +626,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                       margin: const EdgeInsets.symmetric(vertical: 2),
                       color: state == _StepState.done
                           ? _green
-                          : const Color(0xFFE5E7EB),
+                          : _line,
                     ),
                   ),
               ],
@@ -683,7 +690,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: Colors.white,
+      color: _surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -716,7 +723,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: _muted),
+              Icon(Icons.chevron_right_rounded, color: _muted),
             ],
           ),
         ),
@@ -737,7 +744,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
           child: Container(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _surface,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -745,7 +752,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.person_outline,
+                    Icon(Icons.person_outline,
                         color: _muted, size: 20),
                     const SizedBox(width: 6),
                     Flexible(
@@ -883,7 +890,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                 : rating >= i - 0.5
                     ? Icons.star_half_rounded
                     : Icons.star_outline_rounded,
-            color: rating >= i - 0.5 ? _amber : const Color(0xFFD1D5DB),
+            color: rating >= i - 0.5 ? _amber : _line,
             size: size,
           ),
       ],
@@ -982,7 +989,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
@@ -1065,10 +1072,10 @@ class _TutorDashboardState extends State<TutorDashboard> {
                             width: 34,
                             height: 34,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: _surface,
                               borderRadius: BorderRadius.circular(9),
                               border: Border.all(
-                                  color: const Color(0xFFE5E7EB)),
+                                  color: _line),
                             ),
                             child: Icon(platformIcon,
                                 size: 18, color: hasLink ? color : _muted),
@@ -1078,7 +1085,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
                     ),
 
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF0F1F4)),
+                    Divider(height: 1, color: _divider),
                     const SizedBox(height: 10),
 
                     // Row 3: the student's note, or where the session is
@@ -1212,7 +1219,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
 
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
+      color: _surface,
       borderRadius: BorderRadius.circular(16),
       boxShadow: [
         BoxShadow(
@@ -1266,7 +1273,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         boxShadow: [
           BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),

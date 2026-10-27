@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../notifications_screen.dart';
 import 'tutor_api.dart';
 import 'tutor_booking_detail.dart';
+import 'tutor_theme.dart';
 
 /// The link under a tutor's card, or null: lesson cards open the lesson.
 String? tutorLessonLink(NotificationItem n) {
@@ -52,9 +53,15 @@ class TutorNotificationsScreen extends StatelessWidget {
 
   // The tutor bottom bar with no tab highlighted.
   static Widget _bottomNav(ValueChanged<int> goToTab) {
+    return Builder(
+      builder: (context) => _bottomBar(context, goToTab),
+    );
+  }
+
+  static Widget _bottomBar(BuildContext context, ValueChanged<int> goToTab) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.tutorDark ? TutorDark.card : Colors.white,
         boxShadow: [
           BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),

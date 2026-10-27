@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'Tutor/tutor_format.dart'; // notificationTime
+import 'Tutor/tutor_theme.dart';
 
 // The bell page. Students and tutors see the same layout (documentation
 // 9.4); Tutor/tutor_notifications.dart and
@@ -117,12 +118,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _markingAll = false;
   String? _error;
 
-  static const _bg      = Color(0xFFF2F4F8);
-  static const _dark    = Color(0xFF1A1A2E);
-  static const _muted   = Color(0xFF9CA3AF);
-  static const _grey    = Color(0xFF6B7280);
-  static const _greyBg  = Color(0xFFF1F3F6);
-  static const _border  = Color(0xFFE5E7EB);
+  // Light colours, or the tutor's dark ones (students are always light)
+  bool get _dk => context.tutorDark;
+  Color get _bg => _dk ? TutorDark.background : const Color(0xFFF2F4F8);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _dark => _dk ? TutorDark.text : const Color(0xFF1A1A2E);
+  Color get _muted => _dk ? TutorDark.textFaint : const Color(0xFF9CA3AF);
+  Color get _grey => _dk ? TutorDark.textMuted : const Color(0xFF6B7280);
+  Color get _greyBg => _dk ? TutorDark.cardAlt : const Color(0xFFF1F3F6);
+  Color get _border => _dk ? TutorDark.border : const Color(0xFFE5E7EB);
 
   Color get _accent => widget.accent;
   Color get _accentBg => widget.accent.withValues(alpha: 0.1);
@@ -239,13 +243,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Widget _buildHeader() {
     return Container(
-      color: Colors.white,
+      color: _surface,
       padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
       child: Row(
         children: [
           IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back_rounded, color: _dark),
+            icon: Icon(Icons.arrow_back_rounded, color: _dark),
             tooltip: 'Back',
           ),
           Expanded(
@@ -367,7 +371,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
@@ -441,7 +445,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 if (link != null) ...[
                   const SizedBox(height: 12),
-                  const Divider(height: 1, color: _border),
+                  Divider(height: 1, color: _border),
                   InkWell(
                     onTap: () => _openLink(n),
                     child: Padding(
@@ -515,7 +519,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             Text(
               _error ?? 'Something went wrong',
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14),
+              style: GoogleFonts.inter(color: _dk ? TutorDark.textMuted : Colors.grey[600], fontSize: 14),
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(

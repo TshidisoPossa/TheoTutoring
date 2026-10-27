@@ -11,6 +11,7 @@ import 'Student/student_dashboard.dart';
 import 'Tutor/tutor_api.dart';
 import 'Tutor/tutor_dashboard.dart';
 import 'Tutor/tutor_presence.dart';
+import 'Tutor/tutor_theme.dart';
 import 'role_selection.dart';
 import 'forgot_password.dart';
 import 'privacy_policy.dart';
@@ -211,6 +212,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       // Students see "Available Now" on this tutor's profile from here on
       TutorPresence.instance.start();
+      TutorTheme.signedIn(); // dark mode, if the tutor turned it on
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(

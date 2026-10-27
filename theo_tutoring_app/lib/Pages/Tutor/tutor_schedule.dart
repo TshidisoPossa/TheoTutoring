@@ -5,6 +5,7 @@ import 'tutor_api.dart';
 import 'tutor_booking_detail.dart';
 import 'tutor_format.dart';
 import 'tutor_nav.dart';
+import 'tutor_theme.dart';
 
 // ── Model ──────────────────────────────────────────────────────────────────
 
@@ -144,13 +145,18 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
   };
 
   static const _blue   = Color(0xFF246BFE);
-  static const _bg     = Color(0xFFF2F4F8);
-  static const _card   = Colors.white;
-  static const _border = Color(0xFFE5E7EB);
-  static const _muted  = Color(0xFF6B7280);
-  static const _text1  = Color(0xFF111827);
-  static const _text2  = Color(0xFF374151); // the student's note
-  static const _faint  = Color(0xFF9CA3AF); // "No note from the student."
+
+  // Light colours, or the dark ones when the tutor turned on Dark Mode
+  bool get _dk => context.tutorDark;
+  Color get _bg => _dk ? TutorDark.background : const Color(0xFFF2F4F8);
+  Color get _card => _dk ? TutorDark.card : Colors.white;
+  Color get _border => _dk ? TutorDark.border : const Color(0xFFE5E7EB);
+  Color get _muted => _dk ? TutorDark.textMuted : const Color(0xFF6B7280);
+  Color get _text1 => _dk ? TutorDark.text : const Color(0xFF111827);
+  // the student's note
+  Color get _text2 => _dk ? TutorDark.textSecondary : const Color(0xFF374151);
+  // "No note from the student."
+  Color get _faint => _dk ? TutorDark.textFaint : const Color(0xFF9CA3AF);
 
   @override
   void initState() {
@@ -234,14 +240,14 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Filter by subject',
+                Text('Filter by subject',
                     style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: _text1)),
                 const SizedBox(height: 8),
                 if (_subjects.isEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
                     child: Text('You have no subjects yet.',
                         style: TextStyle(color: _muted, fontSize: 13)),
@@ -253,7 +259,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                     activeColor: _blue,
                     contentPadding: EdgeInsets.zero,
                     title: Text(s['subjectName']?.toString() ?? '',
-                        style: const TextStyle(fontSize: 14, color: _text1)),
+                        style: TextStyle(fontSize: 14, color: _text1)),
                     onChanged: (on) => setSheet(() {
                       on == true ? picked.add(id) : picked.remove(id);
                     }),
@@ -264,7 +270,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                   children: [
                     TextButton(
                       onPressed: () => setSheet(picked.clear),
-                      child: const Text('Clear',
+                      child: Text('Clear',
                           style: TextStyle(color: _muted)),
                     ),
                     const Spacer(),
@@ -318,7 +324,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text('THEO TUTORING',
                   style: TextStyle(
                       color: _blue,
@@ -479,7 +485,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                           'has been approved.'
                       : _error!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: _muted, fontSize: 13)),
+                  style: TextStyle(color: _muted, fontSize: 13)),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed:
@@ -573,19 +579,19 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
           const SizedBox(height: 16),
           Text(title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 16, fontWeight: FontWeight.w700, color: _text1)),
           const SizedBox(height: 8),
           Text(message,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: _muted)),
+              style: TextStyle(fontSize: 13, color: _muted)),
           if (_filtering) ...[
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: _clearFilters,
               style: OutlinedButton.styleFrom(
                 foregroundColor: _blue,
-                side: const BorderSide(color: _border),
+                side: BorderSide(color: _border),
               ),
               child: const Text('Clear filters'),
             ),
@@ -606,7 +612,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(label,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: _text1)),
@@ -679,7 +685,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                       children: [
                         Flexible(
                           child: Text(s.studentName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 14,
                                   color: _text1)),
@@ -703,7 +709,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                       const SizedBox(height: 2),
                       Text(s.statusAgo!,
                           style:
-                              const TextStyle(fontSize: 11, color: _muted)),
+                              TextStyle(fontSize: 11, color: _muted)),
                     ],
                   ],
                 ),
@@ -714,11 +720,11 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
           const SizedBox(height: 10),
 
           Text('${s.startTime} – ${s.endTime}',
-              style: const TextStyle(fontSize: 12, color: _muted)),
+              style: TextStyle(fontSize: 12, color: _muted)),
           const SizedBox(height: 3),
 
           Text(s.subject,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: _text1)),
@@ -727,13 +733,13 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
           const SizedBox(height: 6),
           if (s.note != null && s.note!.trim().isNotEmpty)
             Text('"${s.note!.trim()}"',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12.5,
                     color: _text2,
                     fontStyle: FontStyle.italic,
                     height: 1.5))
           else
-            const Text('No note from the student.',
+            Text('No note from the student.',
                 style: TextStyle(
                     fontSize: 12,
                     color: _faint,
@@ -749,21 +755,21 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.calendar_today_outlined,
+                  Icon(Icons.calendar_today_outlined,
                       size: 13, color: _muted),
                   const SizedBox(width: 4),
                   Text(formatLongDate(s.date),
-                      style: const TextStyle(fontSize: 12, color: _muted)),
+                      style: TextStyle(fontSize: 12, color: _muted)),
                 ],
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.access_time_outlined,
+                  Icon(Icons.access_time_outlined,
                       size: 13, color: _muted),
                   const SizedBox(width: 4),
                   Text('${s.startTime} – ${s.endTime} (${s.duration})',
-                      style: const TextStyle(fontSize: 12, color: _muted)),
+                      style: TextStyle(fontSize: 12, color: _muted)),
                 ],
               ),
             ],
@@ -775,12 +781,12 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
               Icon(s.platformIcon, size: 13, color: _muted),
               const SizedBox(width: 4),
               Text(s.platformLabel,
-                  style: const TextStyle(fontSize: 12, color: _muted)),
+                  style: TextStyle(fontSize: 12, color: _muted)),
             ],
           ),
 
           const SizedBox(height: 12),
-          const Divider(color: Color(0xFFE5E7EB), height: 1),
+          Divider(color: _border, height: 1),
           const SizedBox(height: 12),
 
           Row(
@@ -792,7 +798,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                     style: TextStyle(fontSize: 12)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _blue,
-                  side: const BorderSide(color: _border),
+                  side: BorderSide(color: _border),
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 6),
                   minimumSize: Size.zero,

@@ -14,3 +14,7 @@ build/
 
 # Test related files
 coverage/
+
+#ignore notification api 
+.env
+*firebase-adminsdk*.json

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../services/password_reset_api.dart';
 import 'privacy_policy.dart';
 import 'terms_and_conditions.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
-  const ForgotPasswordPage({super.key, this.auth});
+  const ForgotPasswordPage({super.key, this.auth, this.resetApi});
 
-  // Tests pass a fake here; the app falls back to FirebaseAuth.instance.
+  // Tests pass fakes here; the app falls back to FirebaseAuth.instance and
+  // the real backend.
   final FirebaseAuth? auth;
+  final PasswordResetApi? resetApi;
 
   @override
   State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
@@ -38,6 +41,20 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
     final email = _emailController.text.trim();
     try {
+      // Only send the reset email to an account that exists in Firebase.
+      final exists = await (widget.resetApi ?? PasswordResetApi()).emailExists(
+        email,
+      );
+      if (!mounted) return;
+      if (!exists) {
+        setState(() {
+          _statusIsError = true;
+          _statusMessage =
+              'No account found for that email. Please register first.';
+        });
+        return;
+      }
+
       await (widget.auth ?? FirebaseAuth.instance)
           .sendPasswordResetEmail(email: email);
       // The user may have left the page while the request was in flight.
@@ -46,12 +63,18 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         _statusIsError = false;
         _statusMessage = 'A password reset link has been sent to $email.';
       });
+    } on PasswordResetCheckException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusIsError = true;
+        _statusMessage = e.message;
+      });
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       setState(() {
         _statusIsError = true;
         switch (e.code) {
-          // Only reported when email enumeration protection is off in Firebase.
+          // The account was deleted between the check and the send.
           case 'user-not-found':
             _statusMessage =
                 'No account found for that email. Please register first.';

@@ -5,6 +5,25 @@ import 'package:flutter/material.dart';
 import 'Services/tutor_chat_models.dart';
 import 'Services/tutor_chat_service.dart';
 import 'tutor_format.dart';
+import 'tutor_theme.dart';
+
+// Light colours, or the dark ones when the tutor turned on Dark Mode
+class _Palette {
+  _Palette(BuildContext context) : _dk = context.tutorDark;
+
+  final bool _dk;
+
+  Color get surface => _dk ? TutorDark.card : Colors.white;
+  Color get page => _dk ? TutorDark.background : const Color(0xFFF5F7FA);
+  Color get field => _dk ? TutorDark.cardAlt : const Color(0xFFF5F5F5);
+  Color get divider => _dk ? TutorDark.border : const Color(0xFFEEEEEE);
+  Color get text => _dk ? TutorDark.text : Colors.black87;
+  Color get textSoft => _dk ? TutorDark.textMuted : Colors.black54;
+  Color get textFaint => _dk ? TutorDark.textMuted : Colors.black45;
+  Color get hint => _dk ? TutorDark.textFaint : const Color(0xFFBDBDBD);
+  Color get avatarBg => _dk ? TutorDark.blueTint : const Color(0xFFD0E4FF);
+  Color get avatarText => _dk ? TutorDark.blueText : const Color(0xFF1457D9);
+}
 
 // ─── Chat list screen ───────────────────────────────────────────────────────
 
@@ -19,6 +38,8 @@ class TutorChatListScreen extends StatefulWidget {
 }
 
 class _TutorChatListScreenState extends State<TutorChatListScreen> {
+  _Palette get _c => _Palette(context);
+
   final TextEditingController _searchController = TextEditingController();
   late final TutorChatService _chatService =
       widget.chatService ?? TutorChatService();
@@ -87,7 +108,7 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _c.surface,
       body: SafeArea(
         child: Column(
           children: [
@@ -99,17 +120,17 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
                   if (Navigator.canPop(context)) ...[
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
-                      child: const Icon(Icons.arrow_back,
-                          color: Colors.black87),
+                      child: Icon(Icons.arrow_back,
+                          color: _c.text),
                     ),
                     const SizedBox(width: 12),
                   ],
-                  const Text(
+                  Text(
                     'Messages',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
-                      color: Colors.black87,
+                      color: _c.text,
                     ),
                   ),
                   const Spacer(),
@@ -119,11 +140,11 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: Colors.grey[100],
+                        color: _c.field,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.edit_outlined,
-                          size: 18, color: Colors.black54),
+                      child: Icon(Icons.edit_outlined,
+                          size: 18, color: _c.textSoft),
                     ),
                   ),
                 ],
@@ -136,19 +157,19 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.grey[100],
+                  color: _c.field,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: TextField(
                   controller: _searchController,
                   onChanged: (v) => setState(() => _searchQuery = v),
-                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  style: TextStyle(fontSize: 14, color: _c.text),
                   decoration: InputDecoration(
                     hintText: 'Search conversations…',
                     hintStyle:
-                        TextStyle(color: Colors.grey[400], fontSize: 14),
+                        TextStyle(color: _c.hint, fontSize: 14),
                     prefixIcon:
-                        Icon(Icons.search, color: Colors.grey[400], size: 20),
+                        Icon(Icons.search, color: _c.hint, size: 20),
                     border: InputBorder.none,
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -188,7 +209,7 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
       separatorBuilder: (_, _) => Divider(
         height: 1,
         indent: 76,
-        color: Colors.grey[100],
+        color: _c.field,
       ),
       itemBuilder: (context, index) {
         final contact = contacts[index];
@@ -209,20 +230,21 @@ class _ContactTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = _Palette(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        color: Colors.white,
+        color: c.surface,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           children: [
             CircleAvatar(
               radius: 24,
-              backgroundColor: const Color(0xFFD0E4FF),
+              backgroundColor: c.avatarBg,
               child: Text(
                 contact.initials,
-                style: const TextStyle(
-                  color: Color(0xFF1457D9),
+                style: TextStyle(
+                  color: c.avatarText,
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
                 ),
@@ -237,10 +259,10 @@ class _ContactTile extends StatelessWidget {
                 children: [
                   Text(
                     contact.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      color: c.text,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -251,8 +273,8 @@ class _ContactTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12.5,
                       color: contact.unreadCount > 0
-                          ? Colors.black87
-                          : Colors.black45,
+                          ? c.text
+                          : c.textFaint,
                       fontWeight: contact.unreadCount > 0
                           ? FontWeight.w500
                           : FontWeight.normal,
@@ -269,7 +291,7 @@ class _ContactTile extends StatelessWidget {
               children: [
                 Text(
                   contact.time,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                  style: TextStyle(fontSize: 11, color: c.hint),
                 ),
                 if (contact.unreadCount > 0) ...[
                   const SizedBox(height: 4),
@@ -315,6 +337,8 @@ class TutorChatScreen extends StatefulWidget {
 }
 
 class _TutorChatScreenState extends State<TutorChatScreen> {
+  _Palette get _c => _Palette(context);
+
   static final Random _clientMessageRandom = Random.secure();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -512,7 +536,7 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: _c.page,
       body: SafeArea(
         child: Column(
           children: [
@@ -528,22 +552,22 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
   Widget _buildHeader() {
     return Container(
       height: 64,
-      color: Colors.white,
+      color: _c.surface,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
           GestureDetector(
             onTap: () => Navigator.pop(context),
-            child: const Icon(Icons.arrow_back, color: Colors.black87),
+            child: Icon(Icons.arrow_back, color: _c.text),
           ),
           const SizedBox(width: 8),
           CircleAvatar(
             radius: 20,
-            backgroundColor: const Color(0xFFD0E4FF),
+            backgroundColor: _c.avatarBg,
             child: Text(
               widget.contact.initials,
-              style: const TextStyle(
-                color: Color(0xFF1457D9),
+              style: TextStyle(
+                color: _c.avatarText,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
               ),
@@ -557,29 +581,29 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
               children: [
                 Text(
                   widget.contact.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+                    color: _c.text,
                   ),
                 ),
                 Text(
                   widget.contact.isOnline ? 'Online' : 'Offline',
-                  style: const TextStyle(fontSize: 11, color: Colors.black45),
+                  style: TextStyle(fontSize: 11, color: _c.textFaint),
                 ),
               ],
             ),
           ),
           GestureDetector(
             onTap: () {},
-            child: const Icon(Icons.phone_outlined,
-                color: Colors.black54, size: 22),
+            child: Icon(Icons.phone_outlined,
+                color: _c.textSoft, size: 22),
           ),
           const SizedBox(width: 16),
           GestureDetector(
             onTap: () {},
-            child: const Icon(Icons.more_vert,
-                color: Colors.black54, size: 22),
+            child: Icon(Icons.more_vert,
+                color: _c.textSoft, size: 22),
           ),
         ],
       ),
@@ -638,7 +662,7 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
 
   Widget _buildInputBar() {
     return Container(
-      color: Colors.white,
+      color: _c.surface,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -648,25 +672,25 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
             child: Padding(
               padding: const EdgeInsets.only(bottom: 8, right: 4),
               child: Icon(Icons.attach_file_outlined,
-                  color: Colors.grey[400], size: 22),
+                  color: _c.hint, size: 22),
             ),
           ),
           Expanded(
             child: Container(
               constraints: const BoxConstraints(maxHeight: 96),
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F7FA),
+                color: _c.field,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(color: _c.divider),
               ),
               child: TextField(
                 controller: _messageController,
                 maxLines: null,
-                style: const TextStyle(fontSize: 14, color: Colors.black87),
+                style: TextStyle(fontSize: 14, color: _c.text),
                 decoration: InputDecoration(
                   hintText: 'Type a message…',
                   hintStyle:
-                      TextStyle(color: Colors.grey[400], fontSize: 14),
+                      TextStyle(color: _c.hint, fontSize: 14),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 10),
@@ -716,6 +740,7 @@ class _StatusMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = _Palette(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -725,7 +750,7 @@ class _StatusMessage extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.black45),
+              style: TextStyle(fontSize: 13, color: c.textFaint),
             ),
             if (onRetry != null)
               TextButton(onPressed: onRetry, child: const Text('Try again')),
@@ -742,24 +767,25 @@ class _DateDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = _Palette(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Expanded(child: Divider(color: Colors.grey[200])),
+          Expanded(child: Divider(color: c.divider)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
               label,
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.grey[400],
+                color: c.hint,
                 fontWeight: FontWeight.w500,
                 letterSpacing: .04,
               ),
             ),
           ),
-          Expanded(child: Divider(color: Colors.grey[200])),
+          Expanded(child: Divider(color: c.divider)),
         ],
       ),
     );
@@ -779,6 +805,7 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = _Palette(context);
     return Column(
       crossAxisAlignment: message.isOutgoing
           ? CrossAxisAlignment.end
@@ -793,11 +820,11 @@ class _MessageBubble extends StatelessWidget {
             if (!message.isOutgoing) ...[
               CircleAvatar(
                 radius: 14,
-                backgroundColor: const Color(0xFFD0E4FF),
+                backgroundColor: c.avatarBg,
                 child: Text(
                   initials,
-                  style: const TextStyle(
-                    color: Color(0xFF1457D9),
+                  style: TextStyle(
+                    color: c.avatarText,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                   ),
@@ -815,7 +842,7 @@ class _MessageBubble extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: message.isOutgoing
                       ? const Color(0xFF1457D9)
-                      : Colors.white,
+                      : c.surface,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(18),
                     topRight: const Radius.circular(18),
@@ -839,7 +866,7 @@ class _MessageBubble extends StatelessWidget {
                     height: 1.45,
                     color: message.isOutgoing
                         ? Colors.white
-                        : Colors.black87,
+                        : c.text,
                   ),
                 ),
               ),
@@ -855,7 +882,7 @@ class _MessageBubble extends StatelessWidget {
           ),
           child: Text(
             time,
-            style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+            style: TextStyle(fontSize: 10, color: c.hint),
           ),
         ),
       ],

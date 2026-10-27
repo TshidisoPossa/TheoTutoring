@@ -1,4 +1,6 @@
 import 'package:mysql_client/mysql_client.dart';
+import 'package:theo_tutoring_backend/availability_overrides.dart';
+import 'package:theo_tutoring_backend/booking_domain.dart';
 
 // ---------------------------------------------------------------------------
 // TUTOR BOOKING DETAILS PAGE: BACKEND
@@ -347,30 +349,46 @@ Future<PostponedBooking> postponeBooking(
       );
     }
 
-    // The new slot must sit inside the tutor's availability for that weekday.
+    // The new slot must sit inside the tutor's availability for that date:
+    // its one-off date change if it has one, otherwise the weekday's hours.
     final weekday = _weekdays[DateTime.parse(slot.date).weekday - 1];
-    final ranges = await tx.execute(
-      'SELECT StartTime, end_Time FROM TutAvailability '
-      'WHERE TutorID = :tid AND Day = :day',
-      {'tid': tutorId, 'day': weekday},
+    final day = BookingDate.parse(slot.date);
+    final changes = await loadAvailabilityOverrides(
+      tx,
+      tutorId,
+      from: day,
+      through: day,
     );
-    final covered = availabilityCovers(
-      [
+    final List<({int start, int end})> dayRanges;
+    if (changes.isNotEmpty) {
+      dayRanges = [
+        for (final c in changes)
+          if (!c.isDayOff) (start: c.startMinutes!, end: c.endMinutes!),
+      ];
+    } else {
+      final ranges = await tx.execute(
+        'SELECT StartTime, end_Time FROM TutAvailability '
+        'WHERE TutorID = :tid AND Day = :day',
+        {'tid': tutorId, 'day': weekday},
+      );
+      dayRanges = [
         for (final row in ranges.rows)
           (
             start: _toMinutes(row.colByName('StartTime')!),
             end: _toMinutes(row.colByName('end_Time')!),
           ),
-      ],
-      slot.start,
-      slot.end,
-    );
-    if (!covered) {
+      ];
+    }
+    if (!availabilityCovers(dayRanges, slot.start, slot.end)) {
       throw PostponeException(
         409,
-        'You are not available on $weekday from '
-        '${hhmm(slot.start)} to ${hhmm(slot.end)}. '
-        'Pick a time inside your availability.',
+        changes.isNotEmpty
+            ? 'You changed your hours on ${_shortDate(slot.date)} and are not '
+                  'available from ${hhmm(slot.start)} to ${hhmm(slot.end)}. '
+                  'Pick a time inside your availability.'
+            : 'You are not available on $weekday from '
+                  '${hhmm(slot.start)} to ${hhmm(slot.end)}. '
+                  'Pick a time inside your availability.',
       );
     }
 
@@ -423,6 +441,13 @@ String sessionLabel(String date, String startTime) {
   final d = DateTime.parse(date);
   final day = _weekdays[d.weekday - 1].substring(0, 3);
   return '$day ${d.day} ${_shortMonths[d.month - 1]}, $startTime';
+}
+
+/// "2026-11-13" -> "Fri 13 Nov"
+String _shortDate(String date) {
+  final d = DateTime.parse(date);
+  return '${_weekdays[d.weekday - 1].substring(0, 3)} '
+      '${d.day} ${_shortMonths[d.month - 1]}';
 }
 
 /// 960 -> "16:00"

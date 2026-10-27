@@ -175,6 +175,116 @@ void main() {
     });
   });
 
+  group('one-off date changes', () {
+    final nextMonday = monday.addDays(7);
+    final weekly = [
+      const WeeklyAvailability(
+        weekday: DateTime.monday,
+        startMinutes: 8 * 60,
+        endMinutes: 12 * 60,
+      ),
+    ];
+    final sunday = monday.addDays(6);
+
+    List<String> slotsOn(
+      BookingDate date,
+      List<AvailabilityOverride> overrides,
+    ) => findAvailableLessons(
+      from: date,
+      through: date,
+      nowUtc: now,
+      availability: weekly,
+      busyIntervals: const [],
+      overrides: overrides,
+    ).map((slot) => slot.startTime).toList();
+
+    test('a date without changes keeps its weekly hours', () {
+      expect(availabilityWindowsOn(nextMonday, weekly: weekly), [
+        (startMinutes: 8 * 60, endMinutes: 12 * 60),
+      ]);
+      expect(slotsOn(nextMonday, const []), [
+        '08:00',
+        '09:00',
+        '10:00',
+        '11:00',
+      ]);
+    });
+
+    test('a day off removes every slot on that date only', () {
+      final off = [AvailabilityOverride(date: nextMonday)];
+      expect(availabilityWindowsOn(nextMonday, weekly: weekly, overrides: off),
+          isEmpty);
+      expect(slotsOn(nextMonday, off), isEmpty);
+      // The Monday after still has its weekly hours.
+      expect(slotsOn(nextMonday.addDays(7), off), hasLength(4));
+    });
+
+    test('custom hours replace the weekly hours on that date', () {
+      final custom = [
+        AvailabilityOverride(
+          date: nextMonday,
+          startMinutes: 14 * 60,
+          endMinutes: 16 * 60,
+        ),
+        AvailabilityOverride(
+          date: nextMonday,
+          startMinutes: 18 * 60,
+          endMinutes: 19 * 60,
+        ),
+      ];
+      expect(slotsOn(nextMonday, custom), ['14:00', '15:00', '18:00']);
+    });
+
+    test('extra hours open a day with no weekly hours', () {
+      final extra = [
+        AvailabilityOverride(
+          date: sunday,
+          startMinutes: 10 * 60,
+          endMinutes: 12 * 60,
+        ),
+      ];
+      expect(slotsOn(sunday, const []), isEmpty);
+      expect(slotsOn(sunday, extra), ['10:00', '11:00']);
+    });
+
+    test('booking validation follows the date change', () {
+      void book(BookingDate date, int hour, List<AvailabilityOverride> o) =>
+          validateLessonSlot(
+            slot: LessonInterval(
+              date: date,
+              startMinutes: hour * 60,
+              endMinutes: (hour + 1) * 60,
+            ),
+            nowUtc: now,
+            availability: weekly,
+            overrides: o,
+          );
+
+      final off = [AvailabilityOverride(date: nextMonday)];
+      expect(
+        () => book(nextMonday, 9, off),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains("outside the tutor's availability"),
+          ),
+        ),
+      );
+      expect(() => book(nextMonday, 9, const []), returnsNormally);
+
+      final extra = [
+        AvailabilityOverride(
+          date: sunday,
+          startMinutes: 10 * 60,
+          endMinutes: 12 * 60,
+        ),
+      ];
+      expect(() => book(sunday, 10, extra), returnsNormally);
+      expect(() => book(sunday, 12, extra), throwsFormatException);
+    });
+  });
+
   group('server-side price calculation', () {
     test('applies no discount below ten package lessons', () {
       final price = calculateBookingPrice(

@@ -1,4 +1,5 @@
 import 'package:mysql_client/mysql_client.dart';
+import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/session_rate.dart';
 
@@ -29,9 +30,13 @@ class AvailabilitySnapshot {
     required this.weeklyAvailability,
     required this.busyIntervals,
     required this.platformRate,
+    this.availabilityOverrides = const [],
   });
 
   final List<WeeklyAvailability> weeklyAvailability;
+
+  /// One-off date changes (day off / different hours) inside the range.
+  final List<AvailabilityOverride> availabilityOverrides;
   final List<LessonInterval> busyIntervals;
   final String platformRate;
 }
@@ -171,6 +176,12 @@ class MySqlBookingAvailabilityRepository
       weeklyAvailability: weeklyAvailability,
       busyIntervals: busyIntervals,
       platformRate: rate,
+      availabilityOverrides: await loadAvailabilityOverrides(
+        connection,
+        request.tutorId,
+        from: request.from,
+        through: request.through,
+      ),
     );
   }
 }

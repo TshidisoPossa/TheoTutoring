@@ -1,15 +1,18 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 import '../cloudinary_upload.dart';
 import '../login_page.dart';
 import '../privacy_policy.dart';
 import '../terms_and_conditions.dart';
 import 'tutor_api.dart';
+import 'tutor_availability_calendar.dart';
 import 'tutor_format.dart';
 import 'tutor_nav.dart';
 import 'tutor_presence.dart';
+import 'tutor_theme.dart';
 
 class TutorProfileScreen extends StatefulWidget {
   const TutorProfileScreen({super.key});
@@ -52,18 +55,28 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   Map<String, Set<String>> _saved = {}; // what the server has
   Map<String, Set<String>> _locked = {}; // periods with an upcoming booking
 
+  // Month view under the grid: single-date changes (day off / other hours)
+  AvailabilityCalendarData? _calendar;
+  bool _showCalendar = false;
+
   static const _blue = Color(0xFF2563EB);
-  static const _blueLight = Color(0xFFE8F0FE);
-  static const _bg = Color(0xFFF3F4F8);
-  static const _cellEmpty = Color(0xFFF1F4F9);
-  static const _dark = Color(0xFF111827);
-  static const _grey = Color(0xFF6B7280);
-  static const _muted = Color(0xFF9CA3AF);
-  static const _green = Color(0xFF15803D);
-  static const _greenLight = Color(0xFFDCFCE7);
-  static const _amber = Color(0xFFB45309);
-  static const _amberLight = Color(0xFFFEF3C7);
   static const _red = Color(0xFFE11D48);
+
+  // Light colours, or the dark ones when the tutor turned on Dark Mode
+  bool get _dk => context.tutorDark;
+  Color get _bg => _dk ? TutorDark.background : const Color(0xFFF3F4F8);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _cellEmpty => _dk ? TutorDark.cardAlt : const Color(0xFFF1F4F9);
+  Color get _line => _dk ? TutorDark.border : const Color(0xFFEEF0F4);
+  Color get _dark => _dk ? TutorDark.text : const Color(0xFF111827);
+  Color get _grey => _dk ? TutorDark.textMuted : const Color(0xFF6B7280);
+  Color get _muted => _dk ? TutorDark.textFaint : const Color(0xFF9CA3AF);
+  Color get _blueText => _dk ? TutorDark.blueText : _blue;
+  Color get _blueLight => _dk ? TutorDark.blueTint : const Color(0xFFE8F0FE);
+  Color get _green => _dk ? TutorDark.greenText : const Color(0xFF15803D);
+  Color get _greenLight => _dk ? TutorDark.greenTint : const Color(0xFFDCFCE7);
+  Color get _amber => _dk ? TutorDark.amberText : const Color(0xFFB45309);
+  Color get _amberLight => _dk ? TutorDark.amberTint : const Color(0xFFFEF3C7);
 
   @override
   void initState() {
@@ -88,6 +101,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         _qualifications = (p['qualifications'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>();
         _readGrid(p['availability'] as List<dynamic>? ?? []);
+        _readCalendar(p['availabilityCalendar']);
         _editMode = false;
         _loading = false;
       });
@@ -128,6 +142,46 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     _ticked = ticked;
     _saved = {for (final e in ticked.entries) e.key: {...e.value}};
     if (!keepLocks) _locked = locked;
+  }
+
+  // {today, lastDate, dateChanges, bookings}; null on an older backend
+  void _readCalendar(Object? calendar) {
+    _calendar = calendar is Map<String, dynamic>
+        ? AvailabilityCalendarData.fromJson(calendar)
+        : null;
+    if (_calendar == null) _showCalendar = false;
+  }
+
+  // A date in the calendar: Usual / Day off / Custom hours sheet
+  Future<void> _openDate(DateTime date) async {
+    final calendar = _calendar;
+    if (calendar == null) return;
+    final saved = await showDateHoursSheet(
+      context,
+      date: date,
+      data: calendar,
+      weekly: _saved, // what students see, not unsaved grid edits
+      onSave: (mode, hours) async {
+        final result = await saveTutorDateAvailability(
+          date: dateKey(date),
+          mode: mode.apiName,
+          times: hoursToTimes(hours),
+        );
+        if (mounted) {
+          setState(() => _readCalendar(result['availabilityCalendar']));
+        }
+      },
+    );
+    if (saved != true || !mounted) return;
+    final day = DateFormat('EEE d MMM').format(date);
+    final kind = _calendar == null
+        ? null
+        : calendarDayKind(date, _calendar!, _saved);
+    _showMessage(switch (kind) {
+      CalendarDayKind.off => 'Day off saved for $day.',
+      CalendarDayKind.changed => 'Your hours for $day are saved.',
+      _ => '$day is back to your usual hours.',
+    });
   }
 
   bool get _gridChanged => _days.any((d) {
@@ -224,6 +278,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   Future<void> _logOut() async {
     await TutorPresence.instance.stop(); // offline for students straight away
     await FirebaseAuth.instance.signOut();
+    TutorTheme.signedOut(); // the login screen is always light
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -239,7 +294,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: _surface,
       builder: (sheetContext) {
         var saving = false;
         String? error;
@@ -276,7 +331,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                 children: [
                   _cardTitle('Edit About Me'),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                       'Tell students about your experience and how you teach.',
                       style: TextStyle(fontSize: 12, color: _grey)),
                   const SizedBox(height: 14),
@@ -376,7 +431,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: _surface,
       builder: (sheetContext) {
         var query = '';
         return StatefulBuilder(
@@ -533,13 +588,13 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.white,
+      backgroundColor: _surface,
+      surfaceTintColor: _surface,
       elevation: 0,
       centerTitle: true,
       leading: Builder(
         builder: (context) => IconButton(
-          icon: const Icon(Icons.menu_rounded, color: _dark),
+          icon: Icon(Icons.menu_rounded, color: _dark),
           tooltip: 'Menu',
           onPressed: () => Scaffold.of(context).openDrawer(),
         ),
@@ -556,14 +611,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             child: const Icon(Icons.school_rounded, color: _blue, size: 18),
           ),
           const SizedBox(width: 10),
-          const Text('My Profile',
+          Text('My Profile',
               style: TextStyle(
                   fontSize: 18, fontWeight: FontWeight.w700, color: _dark)),
         ],
       ),
       actions: [
         PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert_rounded, color: _dark),
+          icon: Icon(Icons.more_vert_rounded, color: _dark),
           onSelected: (value) => value == 'refresh' ? _load() : _logOut(),
           itemBuilder: (_) => const [
             PopupMenuItem(value: 'refresh', child: Text('Refresh')),
@@ -589,7 +644,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         );
 
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: _surface,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,7 +658,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                   Expanded(
                     child: Text(_name,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: _dark)),
@@ -644,7 +699,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             const SizedBox(height: 12),
             Text(_error!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: _grey, fontSize: 13)),
+                style: TextStyle(color: _grey, fontSize: 13)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _load,
@@ -698,7 +753,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                     decoration: BoxDecoration(
                       color: _blue,
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
+                      border: Border.all(color: _surface, width: 2),
                     ),
                     child: const Icon(Icons.camera_alt_rounded,
                         size: 13, color: Colors.white),
@@ -713,7 +768,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(_name,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: _dark)),
@@ -725,7 +780,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                     const SizedBox(width: 3),
                     Text(
                       hasRating ? _averageRating.toStringAsFixed(1) : 'New',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: _dark),
@@ -735,7 +790,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                           ? '  ·  $_reviewCount '
                               '${_reviewCount == 1 ? 'review' : 'reviews'}'
                           : '  ·  No reviews yet',
-                      style: const TextStyle(fontSize: 12, color: _grey),
+                      style: TextStyle(fontSize: 12, color: _grey),
                     ),
                   ],
                 ),
@@ -744,7 +799,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    _badge('TUTOR', _blue, _blueLight),
+                    _badge('TUTOR', _blueText, _blueLight),
                     approved
                         ? _badge('VERIFIED', _green, _greenLight)
                         : _badge('PENDING REVIEW', _amber, _amberLight),
@@ -752,7 +807,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text('Session rate: $_rateLabel',
-                    style: const TextStyle(fontSize: 12, color: _grey)),
+                    style: TextStyle(fontSize: 12, color: _grey)),
               ],
             ),
           ),
@@ -821,7 +876,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           _label('SUBJECTS'),
           const SizedBox(height: 8),
           if (_subjects.isEmpty)
-            const Text('No subjects added yet.',
+            Text('No subjects added yet.',
                 style: TextStyle(color: _muted, fontSize: 13))
           else
             Wrap(
@@ -848,7 +903,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           ),
           if (_lockedSubjectIds.isNotEmpty) ...[
             const SizedBox(height: 8),
-            const Row(
+            Row(
               children: [
                 Icon(Icons.lock, size: 12, color: _muted),
                 SizedBox(width: 6),
@@ -865,7 +920,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           _label('QUALIFICATIONS'),
           const SizedBox(height: 8),
           if (_qualifications.isEmpty)
-            const Text('No qualifications added yet.',
+            Text('No qualifications added yet.',
                 style: TextStyle(color: _muted, fontSize: 13))
           else
             for (final q in _qualifications)
@@ -880,12 +935,12 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(q['degree']?.toString() ?? '',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
                                   color: _dark)),
                           Text(q['institution']?.toString() ?? '',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: _grey, fontSize: 12)),
                         ],
                       ),
@@ -935,64 +990,133 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   // ── AVAILABILITY ────────────────────────────────────────────────────────────
 
   Widget _buildAvailabilityCard() {
+    final calendar = _calendar;
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _cardTitle('Availability'),
-          if (_editMode) ...[
+          if (calendar != null) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(
+                    value: false,
+                    label: Text('Weekly'),
+                    icon: Icon(Icons.repeat_rounded, size: 18),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    label: Text('Calendar'),
+                    icon: Icon(Icons.calendar_month_rounded, size: 18),
+                  ),
+                ],
+                selected: {_showCalendar},
+                onSelectionChanged: (s) =>
+                    setState(() => _showCalendar = s.first),
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Text(
+            _showCalendar
+                ? 'Tap a date to take the day off or change its hours. '
+                    'Students see the change straight away.'
+                : 'These hours repeat every week. Students can book up to '
+                    '90 days ahead.',
+            style: TextStyle(fontSize: 12, color: _grey, height: 1.4),
+          ),
+          if (_editMode && !_showCalendar) ...[
             const SizedBox(height: 4),
             const Text('Tap a slot to turn it on or off.',
                 style: TextStyle(fontSize: 12, color: _blue)),
           ],
+          if (_showCalendar && _gridChanged) ...[
+            const SizedBox(height: 4),
+            Text(
+                'The calendar uses your saved weekly hours. Save Changes to '
+                'include your grid edits.',
+                style: TextStyle(fontSize: 12, color: _amber)),
+          ],
           const SizedBox(height: 14),
-          // Day headers
-          Row(
-            children: [
-              const SizedBox(width: 70),
-              for (final d in _days)
-                Expanded(
-                  child: Center(
-                    child: Text(d.substring(0, 3),
-                        style: const TextStyle(
-                            color: _muted,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500)),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          for (final slot in _slots)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 70,
-                    child: Text(slot,
-                        style: const TextStyle(color: _muted, fontSize: 11)),
-                  ),
-                  for (final day in _days) _gridCell(day, slot),
-                ],
-              ),
-            ),
-          if (_hasLocks)
-            const Row(
-              children: [
-                Icon(Icons.lock, size: 12, color: _muted),
-                SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                      'Locked slots have upcoming bookings and cannot be '
-                      'removed.',
-                      style: TextStyle(color: _muted, fontSize: 11)),
-                ),
-              ],
-            ),
+          if (_showCalendar && calendar != null)
+            AvailabilityCalendar(
+              data: calendar,
+              weekly: _saved,
+              onDateTap: _openDate,
+            )
+          else
+            ..._buildWeeklyGrid(),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildWeeklyGrid() {
+    return [
+      // Day headers
+      Row(
+        children: [
+          const SizedBox(width: 70),
+          for (final d in _days)
+            Expanded(
+              child: Center(
+                child: Text(d.substring(0, 3),
+                    style: TextStyle(
+                        color: _muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500)),
+              ),
+            ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      for (final slot in _slots)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 70,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(slot,
+                        style:
+                            TextStyle(color: _grey, fontSize: 11)),
+                    Text(_periodRange(slot),
+                        style:
+                            TextStyle(color: _muted, fontSize: 10)),
+                  ],
+                ),
+              ),
+              for (final day in _days) _gridCell(day, slot),
+            ],
+          ),
+        ),
+      if (_hasLocks)
+        Row(
+          children: [
+            Icon(Icons.lock, size: 12, color: _muted),
+            SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                  'Locked slots have upcoming bookings and cannot be '
+                  'removed.',
+                  style: TextStyle(color: _muted, fontSize: 11)),
+            ),
+          ],
+        ),
+    ];
+  }
+
+  // "Morning" -> "08:00–12:00"
+  String _periodRange(String slot) {
+    final hours = tutorPeriodHours[slot]!;
+    return '${hourLabel(hours.start)}–${hourLabel(hours.end)}';
   }
 
   Widget _gridCell(String day, String slot) {
@@ -1008,7 +1132,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             color: isAvailable ? _blue : _cellEmpty,
             borderRadius: BorderRadius.circular(6),
             border: _editMode && !isAvailable
-                ? Border.all(color: const Color(0xFFD6DEEB))
+                ? Border.all(color: _dk ? TutorDark.border : const Color(0xFFD6DEEB))
                 : null,
           ),
           child: isLocked
@@ -1047,7 +1171,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             onPressed: _saving ? null : _cancelEditing,
             style: OutlinedButton.styleFrom(
               foregroundColor: _grey,
-              side: const BorderSide(color: Color(0xFFD1D5DB)),
+              side: BorderSide(color: _dk ? TutorDark.border : const Color(0xFFD1D5DB)),
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: shape,
             ),
@@ -1095,8 +1219,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         _row(
           icon: Icons.dark_mode_outlined,
           title: 'Dark Mode',
-          subtitle: 'Coming soon',
-          trailing: const Switch(value: false, onChanged: null),
+          trailing: Switch(
+            value: TutorTheme.darkChosen,
+            activeThumbColor: Colors.white,
+            activeTrackColor: _blue,
+            // The whole app rebuilds in the new theme (main.dart)
+            onChanged: (on) => TutorTheme.setDark(on),
+          ),
+          onTap: () => TutorTheme.setDark(!TutorTheme.darkChosen),
         ),
       ],
     );
@@ -1138,7 +1268,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
 
   Widget _buildLogOutCard() {
     return Material(
-      color: Colors.white,
+      color: _surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: _logOut,
@@ -1167,7 +1297,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: child,
@@ -1175,11 +1305,11 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   }
 
   Widget _cardTitle(String text) => Text(text,
-      style: const TextStyle(
+      style: TextStyle(
           fontSize: 16, fontWeight: FontWeight.w700, color: _dark));
 
   Widget _label(String text) => Text(text,
-      style: const TextStyle(
+      style: TextStyle(
           color: _muted,
           fontSize: 11,
           fontWeight: FontWeight.w600,
@@ -1190,7 +1320,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -1201,7 +1331,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             child: _cardTitle(title),
           ),
           for (final row in rows) ...[
-            const Divider(height: 1, color: Color(0xFFEEF0F4)),
+            Divider(height: 1, color: _line),
             row,
           ],
         ],
@@ -1219,13 +1349,13 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
       leading: Icon(icon, color: _blue, size: 22),
-      title: Text(title, style: const TextStyle(fontSize: 14, color: _dark)),
+      title: Text(title, style: TextStyle(fontSize: 14, color: _dark)),
       subtitle: subtitle == null
           ? null
           : Text(subtitle,
-              style: const TextStyle(fontSize: 11, color: _muted)),
+              style: TextStyle(fontSize: 11, color: _muted)),
       trailing: trailing ??
-          const Icon(Icons.chevron_right_rounded, color: _muted),
+          Icon(Icons.chevron_right_rounded, color: _muted),
       onTap: onTap,
     );
   }
@@ -1233,7 +1363,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   Widget _buildBottomNav() {
     return BottomNavigationBar(
       currentIndex: 3,
-      backgroundColor: Colors.white,
+      backgroundColor: _surface,
       elevation: 8,
       selectedItemColor: _blue,
       unselectedItemColor: _muted,
