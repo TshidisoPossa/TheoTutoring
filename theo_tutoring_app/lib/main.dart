@@ -9,6 +9,7 @@ import 'Pages/Admin/admin_settings.dart';
 import 'Pages/Admin/admin_access_guard.dart';
 import 'Pages/Admin/admin_dashboard.dart';
 import 'Pages/Admin/admin_students.dart';
+import 'Pages/Admin/admin_tutors.dart';
 import 'Pages/Admin/admin_unavailable.dart';
 import 'Pages/Admin/admin_users.dart';
 import 'Pages/Admin/application_screen.dart';
@@ -56,7 +57,6 @@ class MyApp extends StatelessWidget {
 /// Admin sidebar sections that have no page yet. Each opens a guarded
 /// "not available yet" page that keeps the sidebar item highlighted.
 const unavailableAdminSections = {
-  AdminRoutes.tutors: 'Tutors',
   AdminRoutes.subjects: 'Subjects',
   AdminRoutes.reviews: 'Reviews',
   AdminRoutes.payouts: 'Payouts',
@@ -94,6 +94,10 @@ final Map<String, WidgetBuilder> appRoutes = {
   AdminRoutes.students: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.students.read', 'admin.students.manage'},
     child: AdminStudentsScreen(),
+  ),
+  AdminRoutes.tutors: (_) => const AdminAccessGuard(
+    requiredPermissions: {'admin.tutors.read', 'admin.tutors.manage'},
+    child: AdminTutorsScreen(),
   ),
   AdminRoutes.users: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.users.manage'},

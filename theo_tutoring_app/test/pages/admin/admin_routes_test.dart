@@ -4,12 +4,12 @@ import 'package:theo_tutoring_app/Pages/Admin/Services/admin_access_service.dart
 import 'package:theo_tutoring_app/Pages/Admin/admin_access_guard.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_shell.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_students.dart';
+import 'package:theo_tutoring_app/Pages/Admin/admin_tutors.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_unavailable.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_users.dart';
 import 'package:theo_tutoring_app/main.dart';
 
 const _sections = {
-  AdminRoutes.tutors: 'Tutors',
   AdminRoutes.subjects: 'Subjects',
   AdminRoutes.reviews: 'Reviews',
   AdminRoutes.payouts: 'Payouts',
@@ -68,6 +68,18 @@ void main() {
     expect(
       built.requiredPermissions,
       {'admin.students.read', 'admin.students.manage'},
+    );
+  });
+
+  testWidgets('Tutors opens the guarded Tutor Roster page', (tester) async {
+    final navigator = await _pumpApp(tester);
+    final built = appRoutes[AdminRoutes.tutors]!(navigator.context);
+
+    expect(built, isA<AdminAccessGuard>());
+    expect((built as AdminAccessGuard).child, isA<AdminTutorsScreen>());
+    expect(
+      built.requiredPermissions,
+      {'admin.tutors.read', 'admin.tutors.manage'},
     );
   });
 

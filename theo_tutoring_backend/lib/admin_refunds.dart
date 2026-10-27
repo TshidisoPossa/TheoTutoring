@@ -36,6 +36,8 @@ const _permissionKeys = <String>{
   'admin.settings.rate.write',
   'admin.students.manage',
   'admin.students.read',
+  'admin.tutors.manage',
+  'admin.tutors.read',
   'admin.users.manage',
 };
 
