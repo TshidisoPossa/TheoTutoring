@@ -4,13 +4,12 @@ import 'package:http/http.dart' as http;
 
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../config/api.dart';
 
 // ── Service ────────────────────────────────────────────────────────────────
 
 class StudentSettingsService {
-  static String get _base =>
-      kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
+  static String get _base => apiBaseUrl;
 
   static Future<Map<String, dynamic>> fetchSettings() async {
     final user = FirebaseAuth.instance.currentUser;

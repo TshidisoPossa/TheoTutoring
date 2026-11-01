@@ -159,75 +159,87 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
           ),
         ),
       ),
+      // The Pay button sits in the body, not the bottom bar, so it stays
+      // above the keyboard while the card details are being typed.
       body: SafeArea(
         top: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        child: Column(
+          children: [
+            Expanded(child: _buildForm()),
+            _buildFooter(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildForm() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            children: [
+              _buildOrderSummary(),
+              const SizedBox(height: 20),
+              _buildPaymentMethod(),
+              const SizedBox(height: 22),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildOrderSummary(),
-                  const SizedBox(height: 20),
-                  _buildPaymentMethod(),
-                  const SizedBox(height: 22),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.lock_outline_rounded,
-                        color: _textMuted,
-                        size: 13,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'PAYMENTS SECURELY PROCESSED',
-                        style: GoogleFonts.poppins(
-                          color: _textMuted,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ],
+                  const Icon(
+                    Icons.lock_outline_rounded,
+                    color: _textMuted,
+                    size: 13,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'PAYMENTS SECURELY PROCESSED',
+                    style: GoogleFonts.poppins(
+                      color: _textMuted,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.8,
+                    ),
                   ),
                 ],
               ),
-            ),
+            ],
           ),
         ),
       ),
-      // Payment errors sit right above the Pay button so they are seen
-      // without scrolling.
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          child: Center(
-            heightFactor: 1,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_paymentFailed)
-                    _buildMessage(
-                      'Payment failed. No booking was confirmed. You can try '
-                      'again while your lesson is still reserved.',
-                    ),
-                  if (_error != null) _buildMessage(_error!),
-                  if (_purchaseUnavailable)
-                    _buildMessage(
-                      'This reservation can no longer be paid. Go back and '
-                      'choose your lesson time again.',
-                    ),
-                  const SizedBox(height: 8),
-                  _buildPayButton(),
-                ],
-              ),
-            ),
+    );
+  }
+
+  // Payment errors sit right above the Pay button so they are seen
+  // without scrolling.
+  Widget _buildFooter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_paymentFailed)
+                _buildMessage(
+                  'Payment failed. No booking was confirmed. You can try '
+                  'again while your lesson is still reserved.',
+                ),
+              if (_error != null) _buildMessage(_error!),
+              if (_purchaseUnavailable)
+                _buildMessage(
+                  'This reservation can no longer be paid. Go back and '
+                  'choose your lesson time again.',
+                ),
+              const SizedBox(height: 8),
+              _buildPayButton(),
+            ],
           ),
         ),
       ),

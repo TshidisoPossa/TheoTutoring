@@ -1212,11 +1212,6 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       title: 'Preferences',
       rows: [
         _row(
-          icon: Icons.notifications_none_rounded,
-          title: 'Notification Preferences',
-          onTap: () => _comingSoon('Notification preferences'),
-        ),
-        _row(
           icon: Icons.dark_mode_outlined,
           title: 'Dark Mode',
           trailing: Switch(

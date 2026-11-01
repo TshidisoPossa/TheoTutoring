@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../config/api.dart';
+
+import '../login_page.dart';
 
 // ── Service ────────────────────────────────────────────────────────────────
 
 class StudentSettingsService {
-  static String get _base =>
-      kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
+  static String get _base => apiBaseUrl;
 
   static Future<Map<String, dynamic>> fetchSettings() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -173,8 +174,12 @@ class _StudentSettingsState extends State<StudentSettings> {
     try {
       await FirebaseAuth.instance.signOut();
       if (mounted) {
-        Navigator.of(context)
-            .pushNamedAndRemoveUntil('/login', (route) => false);
+        // The app has no '/login' route; open the login page directly and
+        // clear the history so Back cannot return to the student's pages.
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(builder: (_) => const LoginPage()),
+          (route) => false,
+        );
       }
     } catch (e) {
       _showSnack('Failed to log out: $e', isError: true);

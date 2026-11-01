@@ -247,39 +247,42 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
     return Scaffold(
       backgroundColor: _background,
       appBar: bookingTopBar(title: 'Lessons', flow: widget.flow),
+      // The footer sits in the body, not the bottom bar, so it stays above
+      // the keyboard while the note is being typed.
       body: SafeArea(
         top: false,
         bottom: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildTutorHeader(),
-                  const SizedBox(height: 22),
-                  _buildCalendarCard(),
-                  if (!_loading && _error == null) ...[
-                    const SizedBox(height: 26),
-                    _buildTimes(),
-                    const SizedBox(height: 26),
-                    _buildNote(),
-                  ],
-                ],
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 640),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildTutorHeader(),
+                        const SizedBox(height: 22),
+                        _buildCalendarCard(),
+                        if (!_loading && _error == null) ...[
+                          const SizedBox(height: 26),
+                          _buildTimes(),
+                          const SizedBox(height: 26),
+                          _buildNote(),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
+            _buildFooter(),
+          ],
         ),
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildFooter(),
-          StudentBottomNav(currentIndex: 1, onTap: _navTapped),
-        ],
-      ),
+      bottomNavigationBar: StudentBottomNav(currentIndex: 1, onTap: _navTapped),
     );
   }
 
