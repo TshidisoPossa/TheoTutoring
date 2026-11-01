@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'registration_validators.dart';
 import 'tutor_registration.dart';
 
 class TutorRegistrationPage1 extends StatefulWidget {
@@ -22,11 +23,6 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
   bool _hasInteracted = false;
   bool _canContinue = false;
   bool _isNavigating = false;
-
-  static final _emailPattern = RegExp(
-    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}$",
-  );
-  static final _phonePattern = RegExp(r'^\+?[\d\s-]{8,15}$');
 
   @override
   void initState() {
@@ -52,21 +48,12 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
     super.dispose();
   }
 
-  bool get _formIsValid {
-    final name = _fullNameController.text.trim();
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    final phone = _phoneController.text.trim();
-    return name.length >= 2 &&
-        name.length <= 100 &&
-        email.length <= 150 &&
-        _emailPattern.hasMatch(email) &&
-        password.length >= 8 &&
-        _confirmPasswordController.text == password &&
-        phone.isNotEmpty &&
-        _phonePattern.hasMatch(phone) &&
-        RegExp(r'\d').allMatches(phone).length >= 8;
-  }
+  bool get _formIsValid =>
+      validateRegistrationName(_fullNameController.text) == null &&
+      validateRegistrationEmail(_emailController.text) == null &&
+      validateRegistrationPassword(_passwordController.text) == null &&
+      _validateConfirmation(_confirmPasswordController.text) == null &&
+      validateRegistrationPhone(_phoneController.text) == null;
 
   void _refreshFormState() {
     if (!mounted) return;
@@ -101,46 +88,8 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
     });
   }
 
-  String? _validateName(String? value) {
-    final name = value?.trim() ?? '';
-    if (name.isEmpty) return 'Please enter your full name.';
-    if (name.length < 2 || name.length > 100) {
-      return 'Name must be between 2 and 100 characters.';
-    }
-    return null;
-  }
-
-  String? _validateEmail(String? value) {
-    final email = value?.trim() ?? '';
-    if (email.isEmpty) return 'Please enter your email address.';
-    if (email.length > 150 || !_emailPattern.hasMatch(email)) {
-      return 'Enter a valid email address.';
-    }
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    if (value == null || value.length < 8) {
-      return 'Password must be at least 8 characters.';
-    }
-    return null;
-  }
-
-  String? _validateConfirmation(String? value) {
-    if (value == null || value.isEmpty) return 'Please confirm your password.';
-    if (value != _passwordController.text) return 'Passwords do not match.';
-    return null;
-  }
-
-  String? _validatePhone(String? value) {
-    final phone = value?.trim() ?? '';
-    if (phone.isEmpty) return 'Please enter your phone number.';
-    if (!_phonePattern.hasMatch(phone) ||
-        RegExp(r'\d').allMatches(phone).length < 8) {
-      return 'Enter a valid phone number with 8–15 digits.';
-    }
-    return null;
-  }
+  String? _validateConfirmation(String? value) =>
+      validateRegistrationPasswordConfirmation(value, _passwordController.text);
 
   @override
   Widget build(BuildContext context) {
@@ -188,7 +137,7 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                   ),
-                  validator: _validateName,
+                  validator: validateRegistrationName,
                 ),
                 const SizedBox(height: 20),
                 _fieldLabel('Email Address'),
@@ -199,7 +148,7 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                   ),
-                  validator: _validateEmail,
+                  validator: validateRegistrationEmail,
                 ),
                 const SizedBox(height: 20),
                 _fieldLabel('Password'),
@@ -218,7 +167,7 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
                           setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
-                  validator: _validatePassword,
+                  validator: validateRegistrationPassword,
                 ),
                 const SizedBox(height: 4),
                 const Text(
@@ -255,7 +204,7 @@ class _TutorRegistrationPage1State extends State<TutorRegistrationPage1> {
                     hintText: '+27 82 123 4567',
                     border: OutlineInputBorder(),
                   ),
-                  validator: _validatePhone,
+                  validator: validateRegistrationPhone,
                 ),
                 const SizedBox(height: 32),
                 SizedBox(
