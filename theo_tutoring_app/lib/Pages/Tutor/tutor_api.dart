@@ -210,6 +210,19 @@ Future<Map<String, dynamic>> saveTutorSubjects(List<int> subjectIds) {
   );
 }
 
+/// Connect / Reconnect on the Google Meet card
+/// (POST /TutorLandingpage/Profile/meet-link). [accessToken] is the one-time
+/// Google token; the backend creates a new Meet room with it and replaces
+/// the tutor's link. Returns {"meetConnected": true}.
+Future<Map<String, dynamic>> connectTutorMeet(String accessToken) {
+  return _send(
+    'POST',
+    '/TutorLandingpage/Profile/meet-link',
+    body: {'accessToken': accessToken},
+    failMessage: "We couldn't connect Google Meet. Please try again.",
+  );
+}
+
 /// Every subject on the platform (GET /subjects), for "+ Add Subject".
 Future<List<Map<String, dynamic>>> fetchAllSubjects() async {
   final body = await _send(

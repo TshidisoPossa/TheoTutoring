@@ -5,7 +5,8 @@ There is no migration runner. Apply `001_booking_foundation.sql`, then
 `003_booking_cancellation_reason.sql`, then `004_report.sql`, then
 `005_tutor_presence.sql`, then `006_student_institution.sql` (adds the
 nullable `StudentProfile.Institution`, the student's university), then
-`007_tutor_availability_override.sql`, after the base `schema.sql`, from one
+`007_tutor_availability_override.sql`, then `008_tutor_meet_link.sql`,
+after the base `schema.sql`, from one
 deployment process with booking writes stopped. Each ledger version is written
 last by its migration.
 
@@ -394,3 +395,19 @@ Student slots (`GET /StudentlandingPage/availability`), booking purchases and
 tutor postponements all apply them. Until this migration runs, the backend
 treats every date as having its usual weekly hours and the tutor cannot save
 date changes.
+
+## `008_tutor_meet_link.sql`
+
+Adds nullable `TutorProfile.MeetLink`: the tutor's one reusable Google Meet
+room, created by the backend when the tutor connects Google Meet on
+registration Step 3 (`POST /auth/tutor/meet-link`) or the Profile page
+(`POST /TutorLandingpage/Profile/meet-link`). Connecting again replaces it.
+Step 3 is refused until it is set. The Google token is used for that one call
+and never stored.
+
+It also adds the `Accepted` and `Postponed` statuses to `Booking.Status`,
+which the tutor booking routes already save. The `ALTER` fails if a booking
+holds any other status or NULL, so check with
+`SELECT Status, COUNT(*) FROM Booking GROUP BY Status;` first. `Booking.Link`
+stays: tutor queries read `COALESCE(b.Link, MeetLink)` (`tutorMeetLinkSql` in
+`lib/google_meet.dart`), so older lessons keep their own link.

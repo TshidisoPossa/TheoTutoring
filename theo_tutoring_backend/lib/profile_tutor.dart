@@ -119,6 +119,22 @@ Future<({double average, int count})> getTutorRating(
   );
 }
 
+// Google Meet card: true once the tutor has a Meet room saved
+// (TutorProfile.MeetLink, lib/google_meet.dart). The link itself stays off
+// the Profile page.
+Future<bool> getTutorMeetConnected(MySQLConnection conn, int tutorId) async {
+  final result = await conn.execute(
+    '''
+    SELECT MeetLink
+    FROM TutorProfile
+    WHERE TutorID = :tutorId
+    ''',
+    {'tutorId': tutorId},
+  );
+  if (result.rows.isEmpty) return false;
+  return (result.rows.first.colByName('MeetLink') ?? '').isNotEmpty;
+}
+
 // ONE call for the whole Profile page.
 // Returns null if the tutor doesn't exist.
 Future<Map<String, dynamic>?> getTutorProfilePage(
@@ -134,6 +150,7 @@ Future<Map<String, dynamic>?> getTutorProfilePage(
   final qualifications = await getTutorQualifications(conn, tutorId);
   final sessionRate = await getSessionRate(conn);
   final rating = await getTutorRating(conn, tutorId);
+  final meetConnected = await getTutorMeetConnected(conn, tutorId);
   final lockedSubjects = await getLockedSubjectIds(conn, tutorId);
   final availability = await getTutorAvailability(conn, tutorId);
 
@@ -164,6 +181,7 @@ Future<Map<String, dynamic>?> getTutorProfilePage(
     'averageRating': rating.average, // 0 until the first review
     'reviewCount': rating.count,
     'about': about, // bio text (null if not written yet)
+    'meetConnected': meetConnected, // Google Meet card: Connect or Reconnect
     'subjects': subjects, // [{subjectId, subjectName}]
     // subjects with an upcoming booking: shown locked, cannot be removed
     'lockedSubjectIds': lockedSubjects.toList()..sort(),

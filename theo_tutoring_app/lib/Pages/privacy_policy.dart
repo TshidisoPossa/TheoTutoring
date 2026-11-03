@@ -60,6 +60,11 @@ class PrivacyPolicyPage extends StatelessWidget {
             'notifications are delivered through Firebase Cloud Messaging. '
             'Uploaded files such as profile photos and certificates are '
             'stored with Cloudinary.',
+        'Video lessons take place on Google Meet. Each tutor signs in with '
+            'Google once so the app can create their Meet room. '
+            'TheoTutoring saves only the room link and does not keep access '
+            'to the tutor\'s Google account. During a lesson, Google\'s own '
+            'privacy policy applies.',
         'These providers only process your information to deliver their '
             'service to TheoTutoring. We never sell your personal '
             'information to third parties.',

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../../services/google_meet_connect.dart';
 import '../cloudinary_upload.dart';
 import '../login_page.dart';
 import '../privacy_policy.dart';
@@ -40,6 +41,8 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   Set<int> _lockedSubjectIds = {}; // subjects with an upcoming booking
   bool _savingSubjects = false;
   List<Map<String, dynamic>> _qualifications = [];
+  bool _meetConnected = false; // the tutor has a Google Meet room saved
+  bool _connectingMeet = false;
 
   // Same limits as the backend (registration rules)
   static const _minAbout = 20;
@@ -100,6 +103,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         _readSubjects(p['subjects'], p['lockedSubjectIds']);
         _qualifications = (p['qualifications'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>();
+        _meetConnected = p['meetConnected'] == true;
         _readGrid(p['availability'] as List<dynamic>? ?? []);
         _readCalendar(p['availabilityCalendar']);
         _editMode = false;
@@ -523,6 +527,30 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     }
   }
 
+  // Connect / Reconnect on the Google Meet card: Google's window gives a
+  // token, the backend makes a new room and every lesson uses its link.
+  Future<void> _connectMeet() async {
+    setState(() => _connectingMeet = true);
+    try {
+      // Google's window first: after any other await the browser can block it
+      final accessToken = await requestMeetAccessToken();
+      await connectTutorMeet(accessToken);
+      if (!mounted) return;
+      final reconnected = _meetConnected;
+      setState(() {
+        _meetConnected = true;
+        _connectingMeet = false;
+      });
+      _showMessage(reconnected
+          ? 'Google Meet reconnected. Your lessons use the new link.'
+          : 'Google Meet connected.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _connectingMeet = false);
+      _showMessage(e.toString(), error: true);
+    }
+  }
+
   void _comingSoon(String feature) =>
       _showMessage('$feature will be available soon.');
 
@@ -573,6 +601,8 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                       _buildAvailabilityCard(),
                       const SizedBox(height: 16),
                       _buildEditButtons(),
+                      const SizedBox(height: 16),
+                      _buildMeetCard(),
                       const SizedBox(height: 16),
                       _buildPreferencesCard(),
                       const SizedBox(height: 16),
@@ -1202,6 +1232,54 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ── GOOGLE MEET ─────────────────────────────────────────────────────────────
+
+  // Lessons happen in the tutor's own Meet room. Reconnect replaces a room
+  // that stopped working (or switches Google account).
+  Widget _buildMeetCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: _cardTitle('Google Meet')),
+              _meetConnected
+                  ? _badge('CONNECTED', _green, _greenLight)
+                  : _badge('NOT CONNECTED', _amber, _amberLight),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _meetConnected
+                ? 'Your lessons take place in your own Google Meet room. '
+                    'Reconnect if the link stops working.'
+                : 'Connect Google Meet so students can join your lessons. '
+                    'Sign in with Google once and the app creates your room.',
+            style: TextStyle(fontSize: 12, color: _grey, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _connectingMeet ? null : _connectMeet,
+            icon: _connectingMeet
+                ? const SizedBox(
+                    height: 14,
+                    width: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.videocam_outlined, size: 18),
+            label: Text(_meetConnected ? 'Reconnect' : 'Connect Google Meet'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _blue,
+              side: const BorderSide(color: _blue),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

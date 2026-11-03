@@ -17,11 +17,13 @@ import 'Pages/Admin/application_review_screen.dart';
 import 'Pages/Admin/models/Tutapplication.dart';
 import 'Pages/Tutor/tutor_theme.dart';
 import 'firebase_options.dart';
+import 'services/google_meet_connect.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  startGoogleSignIn(); // Connect Google Meet; not awaited
   await TutorTheme.load();
 
   runApp(const MyApp());

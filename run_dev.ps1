@@ -39,4 +39,10 @@ while (-not (Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction Sil
 Write-Host 'Backend is up. Starting the Flutter app...'
 
 Set-Location $app
-flutter run -d $Device
+if ($Device -in 'chrome', 'edge') {
+    # Google sign-in (Connect Google Meet) only accepts the addresses listed
+    # on the OAuth client, so the browser build always uses this one.
+    flutter run -d $Device --web-hostname localhost --web-port 7357
+} else {
+    flutter run -d $Device
+}

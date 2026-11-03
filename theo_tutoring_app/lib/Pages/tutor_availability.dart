@@ -5,11 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api.dart';
+import '../services/google_meet_connect.dart';
 
 class TutorAvailabilityPage extends StatefulWidget {
-  const TutorAvailabilityPage({super.key, required this.firebaseUser});
+  const TutorAvailabilityPage({
+    super.key,
+    required this.firebaseUser,
+    this.requestMeetToken = requestMeetAccessToken,
+  });
 
   final User firebaseUser;
+
+  // Opens Google's window for the Meet token (replaced in widget tests)
+  final Future<String> Function() requestMeetToken;
 
   @override
   State<TutorAvailabilityPage> createState() => _TutorAvailabilityPageState();
@@ -37,6 +45,8 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
   final _selected = <String, Set<String>>{}; // day -> ticked periods
   bool _isSubmitting = false;
   bool _showValidation = false;
+  bool _meetConnected = false; // Complete registration waits for this
+  bool _isConnectingMeet = false;
 
   bool _isTicked(String day, String period) =>
       _selected[day]?.contains(period) ?? false;
@@ -163,6 +173,54 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
     }
   }
 
+  // Connect Google Meet: Google's window gives a token, and the backend
+  // creates the tutor's Meet room with it (POST /auth/tutor/meet-link).
+  // Coming back to this page means connecting again, which replaces the room.
+  Future<void> _connectMeet() async {
+    if (_isConnectingMeet || _isSubmitting) return;
+    setState(() => _isConnectingMeet = true);
+    try {
+      // Google's window first: after any other await the browser can block it
+      final accessToken = await widget.requestMeetToken();
+      final token = await widget.firebaseUser.getIdToken(true);
+      if (token == null || token.isEmpty) {
+        throw const _SubmissionFailure(
+          'Could not verify your account. Sign in again.',
+        );
+      }
+      final response = await http
+          .post(
+            Uri.parse('$apiBaseUrl/auth/tutor/meet-link'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({'accessToken': accessToken}),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      final body = _decodeBody(response);
+      if (response.statusCode != 200 || body['meetConnected'] != true) {
+        throw _SubmissionFailure(
+          _responseError(response, body, fallback: _meetFailedMessage),
+        );
+      }
+      if (mounted) setState(() => _meetConnected = true);
+    } on MeetNotConnected {
+      if (mounted) _showMessage(meetNotConnectedMessage);
+    } on _SubmissionFailure catch (error) {
+      if (mounted) _showMessage(error.message);
+    } on Exception {
+      if (mounted) _showMessage(_meetFailedMessage);
+    } finally {
+      if (mounted) setState(() => _isConnectingMeet = false);
+    }
+  }
+
+  static const _meetFailedMessage =
+      "We couldn't connect Google Meet. Please try again.";
+
   Map<String, dynamic> _decodeBody(http.Response response) {
     try {
       final decoded = jsonDecode(response.body);
@@ -173,10 +231,15 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
     return {};
   }
 
-  String _responseError(http.Response response, Map<String, dynamic> body) {
+  String _responseError(
+    http.Response response,
+    Map<String, dynamic> body, {
+    String? fallback,
+  }) {
     final message = body['error'];
     if (message is String && message.trim().isNotEmpty) return message;
-    return 'The server rejected availability (HTTP ${response.statusCode}).';
+    return fallback ??
+        'The server rejected availability (HTTP ${response.statusCode}).';
   }
 
   void _showMessage(String message) {
@@ -229,11 +292,15 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 20),
+                  _buildMeetCard(),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _submit,
+                      onPressed: _isSubmitting || !_meetConnected
+                          ? null
+                          : _submit,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         disabledBackgroundColor: Colors.grey.shade300,
@@ -328,6 +395,63 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
                   ],
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Lessons happen in the tutor's own Google Meet room, created here.
+  // Complete registration stays disabled until it is connected.
+  Widget _buildMeetCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  _meetConnected
+                      ? Icons.check_circle
+                      : Icons.videocam_outlined,
+                  color: _meetConnected ? Colors.green : Colors.blue,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _meetConnected
+                      ? 'Google Meet connected'
+                      : 'Connect Google Meet',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _meetConnected
+                  ? 'Your lessons will take place in your own Google Meet '
+                        'room.'
+                  : 'Your lessons take place in your own Google Meet room. '
+                        'Sign in with Google once and the app creates it. '
+                        'You need this to complete registration.',
+              style: const TextStyle(fontSize: 13, color: Colors.black54),
+            ),
+            if (!_meetConnected) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _isConnectingMeet || _isSubmitting
+                    ? null
+                    : _connectMeet,
+                icon: const Icon(Icons.videocam_outlined),
+                label: Text(
+                  _isConnectingMeet ? 'Connecting…' : 'Connect Google Meet',
+                ),
+              ),
+            ],
           ],
         ),
       ),

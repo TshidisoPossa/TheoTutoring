@@ -10,8 +10,8 @@ import '../../../lib/tutorlanding_session.dart';
 //
 // Everything the tutor's Profile page shows, in one call:
 //   name + profile photo, rating + review count, the fixed session rate
-//   (read-only), About Me, subjects, qualifications and the Mon-Sat
-//   availability grid.
+//   (read-only), About Me, subjects, qualifications, the Mon-Sat
+//   availability grid and meetConnected (whether Google Meet is connected).
 // Each availability day also lists its "locked" periods: ticked periods that
 // have an upcoming booking and so cannot be removed (business rule 12).
 Future<Response> onRequest(RequestContext context) async {

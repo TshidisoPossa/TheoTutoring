@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS TutorProfile (
     UserID INT NOT NULL UNIQUE,
     -- Last time the tutor used the app; "Available Now" while recent.
     LastActiveAtUtc DATETIME(6) NULL,
+    -- The tutor's reusable Google Meet room; NULL until they connect Google.
+    MeetLink VARCHAR(500) NULL,
 
     CONSTRAINT chk_tutor_average_rating
         CHECK (AveRate BETWEEN 0 AND 5),
@@ -314,8 +316,8 @@ CREATE TABLE IF NOT EXISTS Booking (
     Note TEXT NULL,
     CancellationReason TEXT NULL,
     Status ENUM(
-        'Pending', 'Confirmed', 'Completed',
-        'Cancelled', 'Rejected'
+        'Pending', 'Accepted', 'Postponed', 'Confirmed',
+        'Completed', 'Cancelled', 'Rejected'
     ) NOT NULL DEFAULT 'Pending',
     Link VARCHAR(500) NULL,
     LinkUpdatedByUserID INT NULL,

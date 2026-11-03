@@ -13,6 +13,8 @@ import '../../../lib/tutorlanding_session.dart';
 import '../../../routes/TutorLandingpage/Profile/availability.dart'
     as availability_route;
 import '../../../routes/TutorLandingpage/Profile/index.dart' as profile_route;
+import '../../../routes/TutorLandingpage/Profile/meet-link.dart'
+    as meet_link_route;
 import '../../../routes/TutorLandingpage/Profile/photo.dart' as photo_route;
 
 // Runs the Profile routes against the real database from .env, as one tutor.
@@ -161,6 +163,59 @@ void main() {
           (profile['qualifications'] as List).single as Map<String, dynamic>;
       expect(qualification['degree'], 'BSc Test Degree');
       expect(qualification['institution'], 'Test University');
+    });
+  });
+
+  group('Google Meet card', () {
+    Future<void> setMeetLink(String? link) => conn.execute(
+      'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+      {'link': link, 't': _tutorId},
+    );
+
+    Future<String?> savedMeetLink() async => (await conn.execute(
+      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      {'t': _tutorId},
+    )).rows.single.colByName('MeetLink');
+
+    Future<Response> connect(String room) {
+      final context = _MockRequestContext();
+      when(() => context.read<TutorSession>()).thenReturn(
+        TutorSession('profile-mysql-test', _tutorId!),
+      );
+      when(() => context.request).thenReturn(
+        Request(
+          'POST',
+          Uri.parse('http://localhost/TutorLandingpage/Profile/meet-link'),
+          body: jsonEncode({'accessToken': 'fake-google-token'}),
+        ),
+      );
+      return meet_link_route.handleProfileMeetLink(
+        context,
+        roomCreator: (_) async => room, // no real Google room
+      );
+    }
+
+    test('meetConnected is false without a link', () async {
+      await setMeetLink(null);
+      expect((await getProfile())['meetConnected'], isFalse);
+    });
+
+    test('meetConnected is true with a link', () async {
+      await setMeetLink('https://meet.google.com/abc-mnop-xyz');
+      expect((await getProfile())['meetConnected'], isTrue);
+    });
+
+    test('Connect saves the link and Reconnect replaces it', () async {
+      await setMeetLink(null);
+      final first = await connect('https://meet.google.com/abc-mnop-xyz');
+      expect(first.statusCode, 200);
+      expect(await first.json(), {'meetConnected': true});
+      expect(await savedMeetLink(), 'https://meet.google.com/abc-mnop-xyz');
+      expect((await getProfile())['meetConnected'], isTrue);
+
+      final again = await connect('https://meet.google.com/new-room-two');
+      expect(again.statusCode, 200);
+      expect(await savedMeetLink(), 'https://meet.google.com/new-room-two');
     });
   });
 
@@ -322,6 +377,7 @@ class _Snapshot {
     this.name,
     this.photo,
     this.bio,
+    this.meetLink,
     this.availability,
     this.subjects,
     this.qualifications,
@@ -331,6 +387,7 @@ class _Snapshot {
   final String? name;
   final String? photo;
   final String? bio;
+  final String? meetLink;
   final List<Map<String, String?>> availability;
   final List<String?> subjects;
   final List<Map<String, String?>> qualifications;
@@ -338,7 +395,7 @@ class _Snapshot {
   static Future<_Snapshot> take(MySQLConnection conn, int tutorId) async {
     final p = {'t': tutorId};
     final tutor = await conn.execute(
-      'SELECT u.Name, u.ProfilePhoto, tp.Bio FROM TutorProfile tp '
+      'SELECT u.Name, u.ProfilePhoto, tp.Bio, tp.MeetLink FROM TutorProfile tp '
       'JOIN `User` u ON u.UserId = tp.UserID WHERE tp.TutorID = :t',
       p,
     );
@@ -361,6 +418,7 @@ class _Snapshot {
       t['Name'],
       t['ProfilePhoto'],
       t['Bio'],
+      t['MeetLink'],
       availability.rows.map((r) => r.assoc()).toList(),
       subjects.rows.map((r) => r.colByName('SubjectID')).toList(),
       qualifications.rows.map((r) => r.assoc()).toList(),
@@ -373,6 +431,10 @@ class _Snapshot {
       'UPDATE `User` u JOIN TutorProfile tp ON tp.UserID = u.UserId '
       'SET u.ProfilePhoto = :photo WHERE tp.TutorID = :t',
       {'photo': photo, 't': tutorId},
+    );
+    await conn.execute(
+      'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+      {'link': meetLink, 't': tutorId},
     );
     await conn.execute('DELETE FROM TutAvailability WHERE TutorID = :t', p);
     for (final a in availability) {

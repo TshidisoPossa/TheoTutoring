@@ -12,7 +12,7 @@ import '../../../lib/tutor_application_status.dart';
 // Submitting this step completes registration: the account moves from
 // 'incomplete' to 'pending' and a TutorApplication is created for the
 // administrator to review. The tutor stays hidden from students until
-// the application is approved.
+// the application is approved. Google Meet must be connected first.
 
 const _days = [
   'Monday',
@@ -68,6 +68,7 @@ Future<Response> handleTutorAvailability(
     final tutorResult = await db.execute(
       '''
       SELECT tp.TutorID, u.UserId, u.AccountStatus, tp.Bio, tp.Certificate,
+             tp.MeetLink,
              (SELECT COUNT(*) FROM TutorSubjects ts
                WHERE ts.TutorID = tp.TutorID) AS SubjectCount,
              (SELECT COUNT(*) FROM Qualification q
@@ -109,6 +110,11 @@ Future<Response> handleTutorAvailability(
         400,
         'Please complete your teaching profile (Step 2) first.',
       );
+    }
+
+    // ── Lessons need the tutor's Meet room (POST /auth/tutor/meet-link) ──
+    if ((row.colByName('MeetLink') ?? '').isEmpty) {
+      return jsonError(400, 'Please connect Google Meet first.');
     }
 
     // ── Save slots, submit the application, all in one transaction ──
