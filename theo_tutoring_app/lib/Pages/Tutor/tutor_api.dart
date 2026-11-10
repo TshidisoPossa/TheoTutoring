@@ -59,20 +59,25 @@ Future<Map<String, dynamic>> fetchTutorBooking(int bookingId) {
   );
 }
 
-/// The Decline button: moves the booking to a new time that the student
-/// must confirm (POST /TutorLandingpage/bookings/{id}/postpone).
-/// [date] is "2026-10-31", [startTime] and [endTime] are "16:00".
-Future<Map<String, dynamic>> postponeTutorBooking(
-  int bookingId, {
-  required String date,
-  required String startTime,
-  required String endTime,
-}) {
+/// The Cancel button: cancels the session and tells the student
+/// (POST /TutorLandingpage/bookings/{id}/cancel).
+Future<Map<String, dynamic>> cancelTutorBooking(int bookingId) {
   return _send(
     'POST',
-    '/TutorLandingpage/bookings/$bookingId/postpone',
-    body: {'date': date, 'startTime': startTime, 'endTime': endTime},
-    failMessage: 'Could not postpone this session. Please try again.',
+    '/TutorLandingpage/bookings/$bookingId/cancel',
+    body: const {},
+    failMessage: 'Could not cancel this session. Please try again.',
+  );
+}
+
+/// The Reschedule button: cancels the session and asks the student to book
+/// a new time (POST /TutorLandingpage/bookings/{id}/reschedule).
+Future<Map<String, dynamic>> rescheduleTutorBooking(int bookingId) {
+  return _send(
+    'POST',
+    '/TutorLandingpage/bookings/$bookingId/reschedule',
+    body: const {},
+    failMessage: 'Could not reschedule this session. Please try again.',
   );
 }
 
@@ -242,6 +247,38 @@ Future<Map<String, dynamic>> saveTutorPhoto(String profilePhotoUrl) {
     '/TutorLandingpage/Profile/photo',
     body: {'profilePhotoUrl': profilePhotoUrl},
     failMessage: 'Could not update your photo. Please try again.',
+  );
+}
+
+/// The students who have booked this tutor, for the Student issues dropdown
+/// on Report a Problem (GET /TutorLandingpage/reports/students).
+/// Each is {"userId", "name", "photo"}.
+Future<List<Map<String, dynamic>>> fetchReportableStudents() async {
+  final body = await _send(
+    'GET',
+    '/TutorLandingpage/reports/students',
+    failMessage: 'Could not load your students. Please try again.',
+  );
+  return (body['students'] as List<dynamic>? ?? [])
+      .cast<Map<String, dynamic>>();
+}
+
+/// Sends Report a Problem to the admin (POST /TutorLandingpage/reports).
+/// [studentUserId] is only for the Student issues category.
+Future<Map<String, dynamic>> sendTutorReport({
+  required String category,
+  required String description,
+  int? studentUserId,
+}) {
+  return _send(
+    'POST',
+    '/TutorLandingpage/reports',
+    body: {
+      'category': category,
+      'description': description,
+      'studentUserId': ?studentUserId,
+    },
+    failMessage: 'Could not send your report. Please try again.',
   );
 }
 

@@ -851,6 +851,9 @@ class _ReasonDialogState extends State<_ReasonDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      // Scrolls when the phone keyboard leaves too little room, so the
+      // buttons are never pushed off screen
+      scrollable: true,
       title: Text(widget.title),
       content: SizedBox(
         width: 400,
@@ -931,6 +934,9 @@ class _OverrideDialogState extends State<_OverrideDialog> {
         ? null
         : formatRand(paid * pct / 100);
     return AlertDialog(
+      // Scrolls when the phone keyboard leaves too little room, so the
+      // buttons are never pushed off screen
+      scrollable: true,
       title: const Text('Override refund decision'),
       content: SizedBox(
         width: 420,

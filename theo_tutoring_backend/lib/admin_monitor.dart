@@ -185,10 +185,10 @@ class MySqlAdminMonitorRepository implements AdminMonitorRepository {
             NULLIF(TRIM(report.ResolutionNote), '') AS detail,
             report.ResolvedAtUtc AS createdAt,
             'current_state_summary' AS recordType
-          FROM UserReport report
-          INNER JOIN Admin admin ON admin.AdminID = report.ResolvedByAdminID
+          FROM Report report
+          INNER JOIN Admin admin ON admin.AdminID = report.AdminID
           INNER JOIN `User` actor ON actor.UserId = admin.UserId
-          WHERE report.ReportStatus = 'Resolved'
+          WHERE report.Status = 'Resolved'
             AND report.ResolvedAtUtc IS NOT NULL
 
         ) audit_entries

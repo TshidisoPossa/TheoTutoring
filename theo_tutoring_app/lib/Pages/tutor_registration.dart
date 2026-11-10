@@ -289,6 +289,7 @@ class _TutorRegistrationState extends State<TutorRegistration> {
         }
         _firebaseUser = user;
         _registrationPassword = null;
+        // The email is verified with a code after step 3.
       }
 
       final token = await _getFreshToken(user);
@@ -659,14 +660,26 @@ class _TutorRegistrationState extends State<TutorRegistration> {
               for (final s in options)
                 if (s.name.toLowerCase().contains(query.toLowerCase())) s,
             ];
+            // 60% of the screen, but never taller than the room left above
+            // the phone keyboard (or the search box is pushed off the top)
+            final media = MediaQuery.of(sheetContext);
+            final room =
+                media.size.height -
+                media.viewInsets.bottom -
+                media.padding.top -
+                96; // drag handle and margins
+            final height = (media.size.height * 0.6).clamp(
+              0.0,
+              room < 160 ? 160.0 : room,
+            );
             return Padding(
               padding: EdgeInsets.only(
                 left: 16,
                 right: 16,
-                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+                bottom: media.viewInsets.bottom + 16,
               ),
               child: SizedBox(
-                height: MediaQuery.of(sheetContext).size.height * 0.6,
+                height: height,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -680,6 +693,8 @@ class _TutorRegistrationState extends State<TutorRegistration> {
                     const SizedBox(height: 12),
                     TextField(
                       autofocus: true,
+                      // Filters as you type; Search just closes the keyboard
+                      textInputAction: TextInputAction.search,
                       decoration: const InputDecoration(
                         hintText: 'Search subjects',
                         prefixIcon: Icon(Icons.search),

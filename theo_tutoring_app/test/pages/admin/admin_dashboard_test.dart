@@ -15,12 +15,13 @@ const _fullAdminPermissions = [
   'admin.reports.read',
 ];
 
-AdminAccessResult _access(List<String> permissions) => AdminAccessResult.allowed(
-  'Admin Tester',
-  adminId: 1,
-  roleKey: 'admin',
-  permissions: permissions,
-);
+AdminAccessResult _access(List<String> permissions) =>
+    AdminAccessResult.allowed(
+      'Admin Tester',
+      adminId: 1,
+      roleKey: 'admin',
+      permissions: permissions,
+    );
 
 final _snapshot = MonitorSnapshot.fromJson({
   'adminName': 'Admin Tester',

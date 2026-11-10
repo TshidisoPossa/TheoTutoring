@@ -2,6 +2,7 @@ import 'package:mysql_client/mysql_client.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
+import 'package:theo_tutoring_backend/student_lessons.dart';
 
 // ---------------------------------------------------------------------------
 // TUTOR BOOKING DETAILS PAGE: BACKEND
@@ -14,10 +15,17 @@ import 'package:theo_tutoring_backend/google_meet.dart';
 //   status becomes 'Postponed' -> the student accepts or rejects the new time.
 //   Accepting puts it back to 'Confirmed' (already paid) or 'Accepted'
 //   (not paid yet, the student can now pay). Rejecting cancels it.
+//
+// The page itself now has Cancel and Reschedule buttons (see
+// [tutorCancelBooking]); the postpone route is no longer used by the app.
 // ---------------------------------------------------------------------------
 
 /// Statuses the tutor may postpone from.
 const postponableStatuses = {'Pending', 'Confirmed'};
+
+/// Statuses the tutor may cancel or reschedule from (the student's upcoming
+/// lessons).
+const tutorCancellableStatuses = upcomingLessonStatuses;
 
 /// Statuses that hold a time slot in the tutor's diary.
 const slotHoldingStatuses = ['Pending', 'Accepted', 'Confirmed', 'Postponed'];
@@ -227,8 +235,8 @@ Future<Map<String, dynamic>?> getBookingDetail(
       'link': r['Link'], // where the session takes place (may be null)
       'receivedMinutesAgo': number(r['ReceivedMinutesAgo']),
       'hasStarted': hasStarted,
-      // shows the Decline (postpone) button
-      'canPostpone': postponableStatuses.contains(status) && !hasStarted,
+      // shows the Cancel and Reschedule buttons
+      'canCancel': tutorCancellableStatuses.contains(status) && !hasStarted,
     },
     'student': {
       'name': r['StudentName'],
@@ -433,6 +441,112 @@ Future<PostponedBooking> postponeBooking(
       previousEndTime: _clock(b['EndTime'])!,
       subject: b['Subject'] ?? '',
       studentFirebaseUid: b['StudentUid'],
+    );
+  });
+}
+
+/// The Cancel and Reschedule buttons on the booking details page.
+enum TutorCancelKind {
+  /// The tutor cancels the session.
+  cancel,
+
+  /// The tutor cannot make it and asks the student to book a new time.
+  reschedule,
+}
+
+/// Saved as the booking's CancellationReason; the student sees it on the
+/// Cancelled tab of My Schedule.
+String tutorCancellationReason(TutorCancelKind kind) => switch (kind) {
+  TutorCancelKind.cancel => 'Cancelled by your tutor.',
+  TutorCancelKind.reschedule =>
+    'Your tutor asked to reschedule. Please book a new time.',
+};
+
+/// What the student is told after the tutor cancels or reschedules.
+typedef TutorCancellation = ({
+  int subjectId,
+  String subject,
+  String date,
+  String startTime,
+  String? studentFirebaseUid,
+
+  /// What the student paid, e.g. "250.00"; null when nothing was paid.
+  String? refundAmount,
+});
+
+/// Cancels one of the tutor's sessions that has not started yet, for
+/// either button. Both free the time slot (status 'Cancelled') and, when
+/// the student paid, record a full refund for the admin to approve: the
+/// student did not cause it, so the time-based policy in documentation 4.6
+/// (which is about students cancelling) does not reduce it. Rescheduling
+/// differs only in the reason saved and the student's notification, which
+/// asks them to book a new time.
+/// Throws a [PostponeException] when the session cannot be cancelled.
+Future<TutorCancellation> tutorCancelBooking(
+  MySQLConnection conn,
+  int tutorId,
+  int bookingId,
+  TutorCancelKind kind,
+) async {
+  return conn.transactional((tx) async {
+    // Lock the booking so two taps cannot cancel it twice.
+    final found = await tx.execute(
+      'SELECT b.Status, b.PurchaseID, b.LessonPriceAtPurchase, b.SubjectID, '
+      "DATE_FORMAT(b.`Date`, '%Y-%m-%d') AS SessionDate, "
+      "TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime, "
+      'sj.subjectName AS Subject, u.FirebaseUid AS StudentUid, '
+      'TIMESTAMP(b.`Date`, b.StartTime) <= NOW() AS HasStarted '
+      'FROM Booking b '
+      'JOIN Subjects sj ON sj.subjectId = b.SubjectID '
+      'JOIN StudentProfile s ON s.StudentID = b.StudentID '
+      'JOIN `User` u ON u.UserId = s.UserID '
+      'WHERE b.Booking_id = :id AND b.TutorID = :tid '
+      'FOR UPDATE OF b',
+      {'id': bookingId, 'tid': tutorId},
+    );
+    if (found.rows.isEmpty) {
+      throw const PostponeException(404, 'Booking not found.');
+    }
+    final b = found.rows.first.assoc();
+    final action = kind == TutorCancelKind.cancel ? 'cancelled' : 'rescheduled';
+    if (!tutorCancellableStatuses.contains(b['Status'])) {
+      throw PostponeException(409, 'This session can no longer be $action.');
+    }
+    if (b['HasStarted'] == '1') {
+      throw PostponeException(
+        409,
+        'This session has already started, so it cannot be $action.',
+      );
+    }
+
+    final paid = await lessonAmountPaid(
+      tx,
+      bookingId: bookingId,
+      purchaseId: b['PurchaseID'],
+      lessonPrice: b['LessonPriceAtPurchase'],
+    );
+    final refundAmount = paid == null
+        ? null
+        : await recordPendingRefund(
+            tx,
+            bookingId: bookingId,
+            paidAmount: paid,
+            percent: 100,
+          );
+
+    await tx.execute(
+      "UPDATE Booking SET Status = 'Cancelled', CancellationReason = :reason "
+      'WHERE Booking_id = :id',
+      {'id': bookingId, 'reason': tutorCancellationReason(kind)},
+    );
+
+    return (
+      subjectId: int.parse(b['SubjectID']!),
+      subject: b['Subject'] ?? '',
+      date: b['SessionDate']!,
+      startTime: b['StartTime']!,
+      studentFirebaseUid: b['StudentUid'],
+      refundAmount: refundAmount,
     );
   });
 }

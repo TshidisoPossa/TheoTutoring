@@ -15,6 +15,9 @@ void main() {
   test('only an open paid cancellation can offer Override Decision', () {
     expect(_case(type: 'cancellation', status: 'pending').canOverride, isTrue);
     expect(_case(type: 'report', status: 'open').canOverride, isFalse);
-    expect(_case(type: 'cancellation', status: 'approved').canOverride, isFalse);
+    expect(
+      _case(type: 'cancellation', status: 'approved').canOverride,
+      isFalse,
+    );
   });
 }

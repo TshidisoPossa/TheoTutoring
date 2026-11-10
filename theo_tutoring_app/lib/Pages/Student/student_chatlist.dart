@@ -2,16 +2,27 @@ import 'package:flutter/material.dart';
 
 import '../../services/student_chat_models.dart';
 import '../../services/student_chat_service.dart';
+import '../Tutor/tutor_theme.dart';
 import 'student_chats.dart' show ChatScreen;
 
+/// The chat list's colours: light, or dark while dark mode is on.
 class AppColors {
-  static const ink = Color(0xFF1B2433);
-  static const muted = Color(0xFF6B7585);
-  static const hint = Color(0xFF9AA3B2);
-  static const border = Color(0xFFDDE3EC);
-  static const brand = Color(0xFF2A66B0);
-  static const tagBg = Color(0xFFE8F0FB);
-  static const inactive = Color(0xFF5B6B84);
+  const AppColors._(this._dk);
+
+  factory AppColors.of(BuildContext context) => AppColors._(context.tutorDark);
+
+  final bool _dk;
+
+  static const brand = Color(0xFF2A66B0); // fills: badges, focus
+
+  Color get ink => _dk ? TutorDark.text : const Color(0xFF1B2433);
+  Color get muted => _dk ? TutorDark.textMuted : const Color(0xFF6B7585);
+  Color get hint => _dk ? TutorDark.textFaint : const Color(0xFF9AA3B2);
+  Color get border => _dk ? TutorDark.border : const Color(0xFFDDE3EC);
+  Color get tagBg => _dk ? TutorDark.blueTint : const Color(0xFFE8F0FB);
+  Color get inactive => _dk ? TutorDark.textMuted : const Color(0xFF5B6B84);
+  Color get surface => _dk ? TutorDark.card : Colors.white;
+  Color get accent => _dk ? TutorDark.blueText : brand; // blue text
 }
 
 class TutorApp extends StatelessWidget {
@@ -102,6 +113,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -110,50 +122,52 @@ class _ChatsScreenState extends State<ChatsScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Chats',
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.ink,
+                        color: colors.ink,
                       ),
                     ),
                   ),
                   IconButton(
                     onPressed: () {},
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.search,
                       size: 28,
-                      color: AppColors.ink,
+                      color: colors.ink,
                     ),
                   ),
                 ],
               ),
             ),
-            const Divider(height: 1, thickness: 1, color: AppColors.border),
+            Divider(height: 1, thickness: 1, color: colors.border),
 
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
               child: TextField(
                 controller: _searchController,
                 onChanged: (v) => setState(() => _query = v),
-                style: const TextStyle(fontSize: 16, color: AppColors.ink),
+                // Results filter as you type; Search just closes the keyboard
+                textInputAction: TextInputAction.search,
+                style: TextStyle(fontSize: 16, color: colors.ink),
                 decoration: InputDecoration(
                   hintText: 'Search conversations...',
-                  hintStyle: const TextStyle(
-                    color: AppColors.hint,
+                  hintStyle: TextStyle(
+                    color: colors.hint,
                     fontSize: 16,
                   ),
-                  prefixIcon: const Icon(
+                  prefixIcon: Icon(
                     Icons.search,
-                    color: AppColors.inactive,
+                    color: colors.inactive,
                     size: 24,
                   ),
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: AppColors.border),
+                    borderSide: BorderSide(color: colors.border),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -174,6 +188,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   Widget _buildChatList() {
+    final colors = AppColors.of(context);
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -182,15 +197,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Could not load conversations. Please try again.',
-              style: TextStyle(color: AppColors.muted),
+              style: TextStyle(color: colors.muted),
             ),
             if (_loadError != null)
               Text(
                 '$_loadError',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.muted),
+                style: TextStyle(color: colors.muted),
               ),
             TextButton(onPressed: _loadChats, child: const Text('Try again')),
           ],
@@ -205,7 +220,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
           _chats.isEmpty
               ? 'No conversations yet'
               : 'No conversations match your search',
-          style: const TextStyle(color: AppColors.muted),
+          style: TextStyle(color: colors.muted),
         ),
       );
     }
@@ -232,11 +247,12 @@ class ChatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Material(
-      color: Colors.white,
+      color: colors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: colors.border),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -267,19 +283,19 @@ class ChatTile extends StatelessWidget {
                             chat.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.ink,
+                              color: colors.ink,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           chat.time,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
-                            color: AppColors.muted,
+                            color: colors.muted,
                           ),
                         ),
                       ],
@@ -292,9 +308,9 @@ class ChatTile extends StatelessWidget {
                             chat.lastMessage,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
-                              color: AppColors.muted,
+                              color: colors.muted,
                             ),
                           ),
                         ),
@@ -322,31 +338,32 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return SizedBox(
       width: 48,
       height: 48,
       child: ClipOval(
         child: url == null || url!.isEmpty
-            ? _fallbackAvatar()
+            ? _fallbackAvatar(colors)
             : Image.network(
                 url!,
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _fallbackAvatar(),
+                errorBuilder: (_, _, _) => _fallbackAvatar(colors),
               ),
       ),
     );
   }
 
-  Widget _fallbackAvatar() {
+  Widget _fallbackAvatar(AppColors colors) {
     return Container(
-      color: AppColors.tagBg,
+      color: colors.tagBg,
       alignment: Alignment.center,
       child: Text(
         initials,
-        style: const TextStyle(
-          color: AppColors.brand,
+        style: TextStyle(
+          color: colors.accent,
           fontWeight: FontWeight.w700,
         ),
       ),

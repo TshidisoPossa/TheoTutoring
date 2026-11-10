@@ -149,7 +149,12 @@ class RefundCase {
     status: CaseStatus.parse(j['status']),
     bookingId: _text(j['bookingId']),
     transactionId: _text(j['transactionId']),
-    studentName: _text(j['studentName']) ?? 'Unknown student',
+    // A tutor's Payments & Payouts / Other report is not about a student
+    studentName:
+        _text(j['studentName']) ??
+        (j['type'] == 'report' && j['reportedBy'] == 'tutor'
+            ? 'No student involved'
+            : 'Unknown student'),
     tutorName: _text(j['tutorName']) ?? 'Unknown tutor',
     subject: _text(j['subject']),
     sessionStart: _date(j['sessionStart']),

@@ -163,6 +163,8 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
                 child: TextField(
                   controller: _searchController,
                   onChanged: (v) => setState(() => _searchQuery = v),
+                  // Results filter as you type; Search just closes the keyboard
+                  textInputAction: TextInputAction.search,
                   style: TextStyle(fontSize: 14, color: _c.text),
                   decoration: InputDecoration(
                     hintText: 'Search conversations…',

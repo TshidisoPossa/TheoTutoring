@@ -3,7 +3,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../login_page.dart';
+import '../auth_gate.dart';
 import 'Services/settings_services.dart';
 import 'admin_shell.dart';
 
@@ -542,7 +542,7 @@ class _AccountSectionState extends State<_AccountSection> {
     await widget.service.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      MaterialPageRoute(builder: (_) => const AuthGate()),
       (_) => false,
     );
   }

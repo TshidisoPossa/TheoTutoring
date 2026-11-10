@@ -12,13 +12,18 @@ import 'package:theo_tutoring_backend/notifications.dart';
 // Same import as the routes, so it is the same TutorSession type.
 import '../../../lib/tutorlanding_session.dart';
 
+import '../../../routes/TutorLandingpage/bookings/[id]/cancel.dart'
+    as cancel_route;
 import '../../../routes/TutorLandingpage/bookings/[id]/index.dart'
     as detail_route;
 import '../../../routes/TutorLandingpage/bookings/[id]/postpone.dart'
     as postpone_route;
+import '../../../routes/TutorLandingpage/bookings/[id]/reschedule.dart'
+    as reschedule_route;
 
-// Runs the booking details + postpone routes against the real database from
-// .env, as one tutor. Opt in, so a normal `dart test` never touches it:
+// Runs the booking details, postpone, cancel and reschedule routes against
+// the real database from .env, as one tutor. Opt in, so a normal
+// `dart test` never touches it:
 //   BOOKING_MYSQL_TEST_TUTOR_ID=1 dart test test/routes/TutorLandingpage/booking_detail_mysql_test.dart
 // It adds sample bookings and availability for that tutor and deletes them
 // afterwards. The link test sets the tutor's MeetLink and puts it back. The
@@ -117,6 +122,20 @@ void main() {
       ),
       '${ids[name]}',
     );
+    return (
+      response.statusCode,
+      await response.json() as Map<String, dynamic>,
+    );
+  }
+
+  Future<(int, Map<String, dynamic>)> cancelOrReschedule(
+    String name, {
+    required bool reschedule,
+  }) async {
+    final context = contextFor('POST');
+    final response = reschedule
+        ? await reschedule_route.onRequest(context, '${ids[name]}')
+        : await cancel_route.onRequest(context, '${ids[name]}');
     return (
       response.statusCode,
       await response.json() as Map<String, dynamic>,
@@ -238,10 +257,37 @@ void main() {
       start: '09:00:00',
       end: '10:00:00',
     );
+    // For the Cancel and Reschedule buttons: one paid, one not
+    await add(
+      'paid',
+      status: 'Confirmed',
+      date: day(3),
+      start: '09:00:00',
+      end: '10:00:00',
+    );
+    await conn.execute(
+      'INSERT INTO Payment (BookingId, PaymentMethod, PaymentStatus, '
+      "Paid_At, Amount) VALUES (:id, 'Card', 'Successful', NOW(), 250.00)",
+      {'id': ids['paid']},
+    );
+    await add(
+      'unpaid',
+      status: 'Confirmed',
+      date: day(3),
+      start: '11:00:00',
+      end: '12:00:00',
+    );
   });
 
   tearDownAll(() async {
     for (final id in ids.values) {
+      for (final table in ['Refund', 'Payment']) {
+        final column = table == 'Refund' ? 'BookingID' : 'BookingId';
+        await conn.execute(
+          'DELETE FROM $table WHERE $column = :id',
+          {'id': id},
+        );
+      }
       await conn.execute(
         'DELETE FROM Booking WHERE Booking_id = :id',
         {'id': id},
@@ -269,7 +315,7 @@ void main() {
     expect(booking['durationMinutes'], 60);
     expect(booking['note'], 'booking-mysql-test week1');
     expect(booking['receivedMinutesAgo'], inInclusiveRange(179, 181));
-    expect(booking['canPostpone'], isTrue);
+    expect(booking['canCancel'], isTrue);
 
     final student = body['student'] as Map<String, dynamic>;
     expect(student['name'], studentName);
@@ -308,11 +354,11 @@ void main() {
     expect(body['recurring'], isNull);
   });
 
-  test('details: a finished session cannot be postponed', () async {
+  test('details: a finished session cannot be cancelled', () async {
     final (_, body) = await detail('ended');
     final booking = body['booking'] as Map<String, dynamic>;
     expect(booking['hasStarted'], isTrue);
-    expect(booking['canPostpone'], isFalse);
+    expect(booking['canCancel'], isFalse);
   });
 
   test("details: another tutor's or a missing booking is a 404", () async {
@@ -425,9 +471,10 @@ void main() {
     expect(r['StartTime'], '11:00:00');
     expect(r['EndTime'], '13:00:00');
 
-    // Postponed: the button is gone and it is no longer part of the series.
+    // Postponed: it is no longer part of the series, but the tutor can
+    // still cancel or reschedule it.
     final (_, detailBody) = await detail('week1');
-    expect((detailBody['booking'] as Map)['canPostpone'], isFalse);
+    expect((detailBody['booking'] as Map)['canCancel'], isTrue);
     expect(detailBody['recurring'], isNull);
 
     // ...and it cannot be postponed again until the student answers.
@@ -439,5 +486,76 @@ void main() {
     final (status, body) = await postpone('request', day(1), '12:00', '13:00');
     expect(status, 200);
     expect((body['previous'] as Map)['status'], 'Pending');
+  });
+
+  test('cancel: a paid session gets a full Pending refund', () async {
+    firestoreRequests.clear();
+    final (status, body) = await cancelOrReschedule('paid', reschedule: false);
+    expect(status, 200);
+    expect(body['status'], 'Cancelled');
+    expect(body['refundAmount'], '250.00');
+    expect(body['studentNotified'], isTrue);
+
+    final sent = firestoreRequests.single.body;
+    expect(sent, contains('BookingCancelled'));
+    expect(sent, contains('refunded in full'));
+
+    final booking = await conn.execute(
+      'SELECT Status, CancellationReason FROM Booking WHERE Booking_id = :id',
+      {'id': ids['paid']},
+    );
+    expect(booking.rows.first.colByName('Status'), 'Cancelled');
+    expect(
+      booking.rows.first.colByName('CancellationReason'),
+      'Cancelled by your tutor.',
+    );
+    final refund = await conn.execute(
+      'SELECT RefundPercentage, RefundAmount, RefundStatus FROM Refund '
+      'WHERE BookingID = :id',
+      {'id': ids['paid']},
+    );
+    final r = refund.rows.single.assoc();
+    expect(double.parse(r['RefundPercentage']!), 100);
+    expect(r['RefundAmount'], '250.00');
+    expect(r['RefundStatus'], 'Pending');
+
+    // the buttons are gone, and a second tap is refused
+    final (_, detailBody) = await detail('paid');
+    expect((detailBody['booking'] as Map)['canCancel'], isFalse);
+    final (again, _) = await cancelOrReschedule('paid', reschedule: false);
+    expect(again, 409);
+  });
+
+  test('reschedule: links the student back to this tutor', () async {
+    firestoreRequests.clear();
+    final (status, body) = await cancelOrReschedule('unpaid', reschedule: true);
+    expect(status, 200);
+    expect(body['refundAmount'], isNull); // nothing was paid
+
+    final sent = firestoreRequests.single.body;
+    expect(sent, contains('BookingRescheduled'));
+    expect(sent, contains('Please book again'));
+    expect(sent, contains('"tutorId":{"integerValue":"$_tutorId"}'));
+
+    final booking = await conn.execute(
+      'SELECT Status, CancellationReason FROM Booking WHERE Booking_id = :id',
+      {'id': ids['unpaid']},
+    );
+    expect(booking.rows.first.colByName('Status'), 'Cancelled');
+    expect(
+      booking.rows.first.colByName('CancellationReason'),
+      contains('reschedule'),
+    );
+    final refund = await conn.execute(
+      'SELECT RefundID FROM Refund WHERE BookingID = :id',
+      {'id': ids['unpaid']},
+    );
+    expect(refund.rows, isEmpty);
+  });
+
+  test('cancel: a finished session cannot be cancelled', () async {
+    final (status, body) = await cancelOrReschedule('ended', reschedule: true);
+    expect(status, 409);
+    expect(body['error'], contains('already started'));
   });
 }

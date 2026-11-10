@@ -41,6 +41,37 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <!--
+    iPhone Safari: when a text box gets the keyboard, Safari pushes the whole
+    page up to keep the box in view. Flutter already shrinks the app to the
+    space above the keyboard, so that push is not needed, and after the
+    keyboard closes Safari often leaves the page pushed up: the bottom of the
+    screen (e.g. the page buttons under a table) is cut off and cannot be
+    scrolled back. This puts the page back whenever the keyboard has closed.
+  -->
+  <script>
+    (function () {
+      function typing() {
+        var el = document.activeElement;
+        return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ||
+          el.isContentEditable);
+      }
+      function putPageBack() {
+        if (typing()) return; // keyboard still open
+        if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+      }
+      function soon() {
+        // after the keyboard has finished closing
+        setTimeout(putPageBack, 100);
+        setTimeout(putPageBack, 400);
+      }
+      document.addEventListener('focusout', soon, true);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', soon);
+      }
+      window.addEventListener('orientationchange', soon);
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

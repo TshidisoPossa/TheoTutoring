@@ -13,6 +13,7 @@ import 'cloudinary_upload.dart';
 import 'privacy_policy.dart';
 import 'registration_validators.dart';
 import 'terms_and_conditions.dart';
+import 'verify_email_page.dart';
 
 class _SafeRegistrationFailure implements Exception {
   const _SafeRegistrationFailure(this.message);
@@ -762,24 +763,21 @@ class _StudentRegistrationPageState extends State<StudentRegistrationPage> {
                               rethrow;
                             }
 
-                            // Creating the account signs the user in; sign out so they log in
-                            // themselves on the login page.
-                            await FirebaseAuth.instance.signOut();
-
                             if (!context.mounted) return;
 
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Registration successful! Please log in.',
+                            // Stay signed in while they enter the emailed code;
+                            // that page then signs out and opens the login page.
+                            // Clears the registration pages so Back cannot
+                            // return to them.
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute<void>(
+                                builder: (_) => VerifyEmailPage(
+                                  email: firebaseUser.email ??
+                                      emailController.text.trim(),
                                 ),
                               ),
+                              (_) => false,
                             );
-
-                            // Back to the LoginPage (the first route), closing role selection
-                            // and this registration page.
-                            Navigator.of(context)
-                                .popUntil((route) => route.isFirst);
                           } on FirebaseAuthException catch (e) {
                             if (!context.mounted) return;
 

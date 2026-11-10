@@ -1,7 +1,7 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import 'Pages/login_page.dart';
+import 'Pages/auth_gate.dart';
 import 'Pages/Admin/admin_shell.dart';
 import 'Pages/Admin/admin_refunds.dart';
 import 'Pages/Admin/admin_monitor.dart';
@@ -13,10 +13,12 @@ import 'Pages/Admin/admin_tutors.dart';
 import 'Pages/Admin/admin_unavailable.dart';
 import 'Pages/Admin/admin_users.dart';
 import 'Pages/Admin/application_screen.dart';
+import 'Pages/Admin/admin_reviews.dart';
 import 'Pages/Admin/application_review_screen.dart';
 import 'Pages/Admin/models/Tutapplication.dart';
 import 'Pages/Tutor/tutor_theme.dart';
 import 'firebase_options.dart';
+import 'services/auth_service.dart';
 import 'services/google_meet_connect.dart';
 
 Future<void> main() async {
@@ -30,7 +32,10 @@ Future<void> main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.authService});
+
+  /// Tests pass a fake; the app uses the real Firebase sign-in.
+  final AuthService? authService;
 
   @override
   Widget build(BuildContext context) {
@@ -41,14 +46,13 @@ class MyApp extends StatelessWidget {
         title: 'TheoTutoring',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF246BFE),
-          ),
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF246BFE)),
           useMaterial3: true,
         ),
         darkTheme: TutorTheme.darkTheme,
         themeMode: themeMode,
-        home: const LoginPage(),
+        // Signed in: their dashboard. Signed out: the splash screen.
+        home: AuthGate(service: authService),
         routes: appRoutes,
         onUnknownRoute: onUnknownAppRoute,
       ),
@@ -60,7 +64,6 @@ class MyApp extends StatelessWidget {
 /// "not available yet" page that keeps the sidebar item highlighted.
 const unavailableAdminSections = {
   AdminRoutes.subjects: 'Subjects',
-  AdminRoutes.reviews: 'Reviews',
   AdminRoutes.payouts: 'Payouts',
   AdminRoutes.reports: 'Reports',
 };
@@ -101,6 +104,10 @@ final Map<String, WidgetBuilder> appRoutes = {
     requiredPermissions: {'admin.tutors.read', 'admin.tutors.manage'},
     child: AdminTutorsScreen(),
   ),
+  AdminRoutes.reviews: (_) => const AdminAccessGuard(
+    requiredPermissions: {'admin.reviews.read'},
+    child: AdminReviewsScreen(),
+  ),
   AdminRoutes.users: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.users.manage'},
     child: AdminUsersScreen(),
@@ -133,9 +140,9 @@ Route<void> onUnknownAppRoute(RouteSettings settings) => MaterialPageRoute(
             ),
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: () => Navigator.of(
-                context,
-              ).pushNamedAndRemoveUntil('/', (_) => false),
+              onPressed: () =>
+                  Navigator.of(context)
+                      .pushNamedAndRemoveUntil('/', (_) => false),
               child: const Text('Return to sign in'),
             ),
           ],

@@ -1,5 +1,6 @@
 import 'package:mysql_client/mysql_client.dart';
 import 'package:theo_tutoring_backend/student_dashboard.dart';
+import 'package:theo_tutoring_backend/student_reviews.dart';
 
 /// Booking statuses shown on the student's Upcoming tab (documentation 4.5),
 /// plus the tutor's Accepted/Postponed steps from booking_tutor.dart.
@@ -91,9 +92,78 @@ class MySqlStudentLessonsRepository {
       };
       (status == 'Cancelled' ? cancelled : upcoming).add(lesson);
     }
+
+    // Completed: lessons that have taken place, most recent first, with the
+    // student's own rating once they have reviewed it (null = can review).
+    final completedResult = await connection.execute(
+      '''
+      SELECT b.Booking_id, s.subjectName, tu.Name AS TutorName,
+        tu.ProfilePhoto AS TutorPhoto,
+        DATE_FORMAT(b.Date, '%Y-%m-%d') AS SessionDate,
+        TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime,
+        TIME_FORMAT(b.EndTime, '%H:%i') AS EndTime,
+        r.Rating AS MyRating,
+        tp.AveRate AS TutorRating, tp.VerificationStat AS TutorVerification,
+        (SELECT COUNT(*) FROM Reviews r2 WHERE r2.TutorID = tp.TutorID)
+          AS TutorReviewCount,
+        (SELECT GROUP_CONCAT(s2.subjectName ORDER BY s2.subjectName
+                             SEPARATOR ', ')
+         FROM TutorSubjects ts
+         INNER JOIN Subjects s2 ON s2.subjectId = ts.SubjectID
+         WHERE ts.TutorID = tp.TutorID) AS TutorSubjects
+      FROM Booking b
+      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
+      INNER JOIN `User` tu ON tu.UserId = tp.UserID
+      INNER JOIN Subjects s ON s.subjectId = b.SubjectID
+      LEFT JOIN Reviews r ON r.BookingID = b.Booking_id
+      WHERE b.StudentID = :studentId AND $completedLessonSql
+      ORDER BY b.Date DESC, b.StartTime DESC, b.Booking_id DESC
+      LIMIT 50
+      ''',
+      {'studentId': studentId},
+    );
+    final completed = [
+      for (final row in completedResult.rows)
+        <String, Object?>{
+          'bookingId': int.parse(row.colByName('Booking_id')!),
+          'status': 'Completed',
+          'subject': row.colByName('subjectName'),
+          'tutorName': row.colByName('TutorName'),
+          'tutorPhoto': row.colByName('TutorPhoto'),
+          'date': row.colByName('SessionDate'),
+          'startTime': row.colByName('StartTime'),
+          'endTime': row.colByName('EndTime'),
+          'myRating': int.tryParse(row.colByName('MyRating') ?? ''),
+          // For the Leave a Review page's header
+          'tutorRating': double.tryParse(row.colByName('TutorRating') ?? ''),
+          'tutorReviewCount':
+              int.tryParse(row.colByName('TutorReviewCount') ?? '') ?? 0,
+          'tutorVerified': row.colByName('TutorVerification') == 'Approved',
+          'tutorSubjects': row.colByName('TutorSubjects'),
+        },
+    ];
+
+    // Who is reviewing, for the "Lerato Dube (Year 2)" line
+    final me = await connection.execute(
+      '''
+      SELECT u.Name, sp.InstitutionYear, sp.Institution
+      FROM StudentProfile sp
+      INNER JOIN `User` u ON u.UserId = sp.UserID
+      WHERE sp.StudentID = :studentId
+      ''',
+      {'studentId': studentId},
+    );
+    final meRow = me.rows.isEmpty ? null : me.rows.first;
+
     return {
       'upcoming': upcoming,
+      'completed': completed,
       'cancelled': cancelled.reversed.toList(),
+      'student': {
+        'name': meRow?.colByName('Name'),
+        'year': meRow?.colByName('InstitutionYear'),
+        'institution': meRow?.colByName('Institution'),
+      },
     };
   }
 
@@ -149,30 +219,21 @@ class MySqlStudentLessonsRepository {
         );
       }
 
-      final paidAmount = await _paidAmount(
+      int? refundPercent;
+      String? refundAmount;
+      final paid = await lessonAmountPaid(
         tx,
         bookingId: bookingId,
         purchaseId: row.colByName('PurchaseID'),
         lessonPrice: row.colByName('LessonPriceAtPurchase'),
       );
-
-      int? refundPercent;
-      String? refundAmount;
-      if (paidAmount != null) {
+      if (paid != null) {
         refundPercent = refundPercentFor(minutesBefore);
-        final paidCents = _cents(paidAmount);
-        refundAmount = _rands(paidCents * refundPercent ~/ 100);
-        await tx.execute(
-          '''
-          INSERT INTO Refund
-            (BookingID, RefundPercentage, RefundAmount, RefundStatus)
-          VALUES (:bookingId, :percent, :amount, 'Pending')
-          ''',
-          {
-            'bookingId': bookingId,
-            'percent': refundPercent,
-            'amount': refundAmount,
-          },
+        refundAmount = await recordPendingRefund(
+          tx,
+          bookingId: bookingId,
+          paidAmount: paid,
+          percent: refundPercent,
         );
       }
 
@@ -245,7 +306,7 @@ class MySqlStudentLessonsRepository {
     final status = row.colByName('Status');
     if (status != 'Confirmed' && status != 'Postponed') throw cannotJoin;
     if (status == 'Postponed') {
-      final paidAmount = await _paidAmount(
+      final paidAmount = await lessonAmountPaid(
         connection,
         bookingId: bookingId,
         purchaseId: row.colByName('PurchaseID'),
@@ -273,44 +334,62 @@ class MySqlStudentLessonsRepository {
     }
     return link;
   }
+}
 
-  /// What the student paid for this lesson, or null if nothing was paid: a
-  /// successful direct Payment, or this lesson's price in a paid package.
-  /// Used by [cancel] for the refund and by [joinLink] for Postponed lessons.
-  static Future<String?> _paidAmount(
-    MySQLConnection db, {
-    required int bookingId,
-    required String? purchaseId,
-    required String? lessonPrice,
-  }) async {
-    final paid = purchaseId == null
-        ? await db.execute(
-            '''
-            SELECT Amount FROM Payment
-            WHERE BookingId = :bookingId AND PaymentStatus = 'Successful'
-            ''',
-            {'bookingId': bookingId},
-          )
-        : await db.execute(
-            '''
-            SELECT :price AS Amount FROM PurchasePayment
-            WHERE PurchaseID = :purchaseId
-            ''',
-            {'purchaseId': purchaseId, 'price': lessonPrice},
-          );
-    return paid.rows.isEmpty ? null : paid.rows.first.colByName('Amount');
-  }
+/// What the student paid for a lesson, e.g. "250.00", or null if nothing
+/// was paid: a direct Payment, or the lesson's price in a paid package.
+/// Used by both student and tutor cancellations.
+Future<String?> lessonAmountPaid(
+  MySQLConnection tx, {
+  required int bookingId,
+  required String? purchaseId,
+  required String? lessonPrice,
+}) async {
+  final paid = purchaseId == null
+      ? await tx.execute(
+          '''
+          SELECT Amount FROM Payment
+          WHERE BookingId = :bookingId AND PaymentStatus = 'Successful'
+          ''',
+          {'bookingId': bookingId},
+        )
+      : await tx.execute(
+          '''
+          SELECT :price AS Amount FROM PurchasePayment
+          WHERE PurchaseID = :purchaseId
+          ''',
+          {'purchaseId': purchaseId, 'price': lessonPrice},
+        );
+  return paid.rows.isEmpty ? null : paid.rows.first.colByName('Amount');
+}
 
-  // "250.00" -> 25000
-  static int _cents(String amount) {
-    final parts = amount.split('.');
-    final cents = parts.length > 1 ? parts[1].padRight(2, '0') : '00';
-    return int.parse(parts[0]) * 100 + int.parse(cents.substring(0, 2));
-  }
+/// Saves a Pending Refund of [percent] of [paidAmount] for the admin to
+/// approve (documentation 4.6). Returns the refund amount, e.g. "125.00".
+Future<String> recordPendingRefund(
+  MySQLConnection tx, {
+  required int bookingId,
+  required String paidAmount,
+  required int percent,
+}) async {
+  final amount = refundAmountOf(paidAmount, percent);
+  await tx.execute(
+    '''
+    INSERT INTO Refund
+      (BookingID, RefundPercentage, RefundAmount, RefundStatus)
+    VALUES (:bookingId, :percent, :amount, 'Pending')
+    ''',
+    {'bookingId': bookingId, 'percent': percent, 'amount': amount},
+  );
+  return amount;
+}
 
-  // 12500 -> "125.00"
-  static String _rands(int cents) =>
-      '${cents ~/ 100}.${(cents % 100).toString().padLeft(2, '0')}';
+/// [percent] of [paidAmount] in rands: ("250.00", 50) -> "125.00".
+String refundAmountOf(String paidAmount, int percent) {
+  final parts = paidAmount.split('.');
+  final decimals = parts.length > 1 ? parts[1].padRight(2, '0') : '00';
+  final cents = int.parse(parts[0]) * 100 + int.parse(decimals.substring(0, 2));
+  final refund = cents * percent ~/ 100;
+  return '${refund ~/ 100}.${(refund % 100).toString().padLeft(2, '0')}';
 }
 
 /// Refund percentage for cancelling [minutesBefore] the lesson starts

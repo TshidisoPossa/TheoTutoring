@@ -1,21 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../Tutor/tutor_theme.dart';
 import 'student_lessons_api.dart';
+import 'student_review.dart';
 
+/// The Lessons tab's colours: light, or dark while dark mode is on.
 class _LessonColors {
-  static const background = Color(0xFFF0F4FA);
-  static const primary = Color(0xFF2A6BB2);
-  static const textDark = Color(0xFF1E293B);
-  static const textGrey = Color(0xFF64748B);
-  static const border = Color(0xFFE2E8F0);
-  static const cancelBg = Color(0xFFF1F5F9);
-  static const confirmedBg = Color(0xFFDCFCE7);
-  static const confirmedText = Color(0xFF16A34A);
-  static const cancelledBg = Color(0xFFFEE2E2);
-  static const cancelledText = Color(0xFFDC2626);
-  static const pendingBg = Color(0xFFFEF3C7);
-  static const pendingText = Color(0xFFB45309);
+  const _LessonColors(this._dk);
+
+  final bool _dk;
+
+  Color get background => _dk ? TutorDark.background : const Color(0xFFF0F4FA);
+  Color get surface => _dk ? TutorDark.card : Colors.white;
+  Color get primary => const Color(0xFF2A6BB2); // fills: tabs, buttons
+  Color get accent => _dk ? TutorDark.blueText : primary; // blue text
+  Color get textDark => _dk ? TutorDark.text : const Color(0xFF1E293B);
+  Color get textGrey => _dk ? TutorDark.textMuted : const Color(0xFF64748B);
+  Color get border => _dk ? TutorDark.border : const Color(0xFFE2E8F0);
+  Color get cancelBg => _dk ? TutorDark.cardAlt : const Color(0xFFF1F5F9);
+  Color get confirmedBg => _dk ? TutorDark.greenTint : const Color(0xFFDCFCE7);
+  Color get confirmedText =>
+      _dk ? TutorDark.greenText : const Color(0xFF16A34A);
+  Color get cancelledBg => _dk ? TutorDark.redTint : const Color(0xFFFEE2E2);
+  Color get cancelledText => _dk ? TutorDark.redText : const Color(0xFFDC2626);
+  Color get pendingBg => _dk ? TutorDark.amberTint : const Color(0xFFFEF3C7);
+  Color get pendingText => _dk ? TutorDark.amberText : const Color(0xFFB45309);
+  Color get completedBg => _dk ? TutorDark.blueTint : const Color(0xFFE4ECFF);
+  Color get completedText => accent;
+  Color get star => const Color(0xFFFFB347);
+}
+
+extension on BuildContext {
+  _LessonColors get lessonColors => _LessonColors(tutorDark);
 }
 
 /// One booking from GET /students/lessons: the tutor, subject and time come
@@ -30,6 +47,15 @@ class Lesson {
   final String? avatarUrl;
   final String? cancellationReason;
 
+  /// The student's own stars for a Completed lesson, null until reviewed.
+  final int? myRating;
+
+  // Completed lessons only, for the Leave a Review header
+  final double? tutorRating; // null until the tutor's first review
+  final int tutorReviewCount;
+  final bool tutorVerified;
+  final String? tutorSubjects; // "Mathematics, Physics"
+
   const Lesson({
     required this.bookingId,
     required this.tutorName,
@@ -39,6 +65,11 @@ class Lesson {
     required this.status,
     this.avatarUrl,
     this.cancellationReason,
+    this.myRating,
+    this.tutorRating,
+    this.tutorReviewCount = 0,
+    this.tutorVerified = false,
+    this.tutorSubjects,
   });
 
   factory Lesson.fromJson(Map<String, dynamic> json) {
@@ -62,6 +93,15 @@ class Lesson {
       status: optional(json['status']) ?? 'Pending',
       avatarUrl: optional(json['tutorPhoto']),
       cancellationReason: optional(json['cancellationReason']),
+      myRating: json['myRating'] is int ? json['myRating'] as int : null,
+      tutorRating: json['tutorRating'] is num
+          ? (json['tutorRating'] as num).toDouble()
+          : null,
+      tutorReviewCount: json['tutorReviewCount'] is int
+          ? json['tutorReviewCount'] as int
+          : 0,
+      tutorVerified: json['tutorVerified'] == true,
+      tutorSubjects: optional(json['tutorSubjects']),
     );
   }
 
@@ -70,6 +110,8 @@ class Lesson {
   /// Start session is enabled for paid lessons the student can join. The
   /// server still checks the time window and payment when it is tapped.
   bool get canStart => status == 'Confirmed' || status == 'Postponed';
+
+  bool get isCompleted => status == 'Completed';
 
   /// e.g. "2 hrs", "1 hr", "1 hr 30 min".
   String get duration {
@@ -117,12 +159,14 @@ class StudentLessonsPage extends StatefulWidget {
 }
 
 class _StudentLessonsPageState extends State<StudentLessonsPage> {
-  int _tabIndex = 0; // 0 = Upcoming, 1 = Cancelled
+  int _tabIndex = 0; // 0 = Upcoming, 1 = Completed, 2 = Cancelled
 
   late final StudentLessonsApi _api = widget.api ?? StudentLessonsApi();
   bool _joining = false; // waiting for the join route; ignores double taps
   List<Lesson> _upcoming = [];
+  List<Lesson> _completed = [];
   List<Lesson> _cancelled = [];
+  ReviewStudent? _me; // for the Leave a Review header
   bool _loading = true;
   String? _error;
 
@@ -148,7 +192,10 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
       if (!mounted) return;
       setState(() {
         _upcoming = _readLessons(data['upcoming'] as List);
+        _completed = _readLessons(data['completed'] as List? ?? const []);
         _cancelled = _readLessons(data['cancelled'] as List);
+        final me = data['student'];
+        _me = me is Map<String, dynamic> ? ReviewStudent.fromJson(me) : null;
       });
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
@@ -229,6 +276,15 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
     }
   }
 
+  Future<void> _reviewLesson(Lesson lesson) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => LeaveReviewScreen(lesson: lesson, student: _me),
+      ),
+    );
+    if (saved == true && mounted) await _loadLessons();
+  }
+
   void _showSoon(String feature) {
     ScaffoldMessenger.of(
       context,
@@ -302,7 +358,7 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: _LessonColors.background,
+      color: context.lessonColors.background,
       child: SafeArea(
         child: Column(
           children: [
@@ -328,7 +384,10 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
   }
 
   List<Widget> _buildLessons() {
-    if (_loading && _upcoming.isEmpty && _cancelled.isEmpty) {
+    if (_loading &&
+        _upcoming.isEmpty &&
+        _completed.isEmpty &&
+        _cancelled.isEmpty) {
       return const [
         Padding(
           padding: EdgeInsets.only(top: 80),
@@ -338,7 +397,11 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
     }
     if (_error != null) return [_buildError()];
 
-    final lessons = _tabIndex == 0 ? _upcoming : _cancelled;
+    final lessons = switch (_tabIndex) {
+      0 => _upcoming,
+      1 => _completed,
+      _ => _cancelled,
+    };
     if (lessons.isEmpty) return [_buildEmptyState()];
     return [
       for (final lesson in lessons)
@@ -352,6 +415,9 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
             onReschedule: () => _showSoon('Rescheduling'),
             onReport: () => _reportLesson(lesson),
             onStart: lesson.canStart ? () => _startSession(lesson) : null,
+            onReview: lesson.isCompleted && lesson.myRating == null
+                ? () => _reviewLesson(lesson)
+                : null,
           ),
         ),
     ];
@@ -359,22 +425,22 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
 
   Widget _buildHeader() {
     return Container(
-      color: Colors.white,
+      color: context.lessonColors.surface,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
       child: Row(
         children: [
           IconButton(
             onPressed: () => Scaffold.maybeOf(context)?.openDrawer(),
-            icon: const Icon(Icons.menu, color: _LessonColors.textDark),
+            icon: Icon(Icons.menu, color: context.lessonColors.textDark),
             tooltip: 'Open menu',
           ),
           const SizedBox(width: 8),
-          const Text(
+          Text(
             'My Schedule',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w700,
-              color: _LessonColors.textDark,
+              color: context.lessonColors.textDark,
             ),
           ),
         ],
@@ -386,8 +452,10 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
     return Row(
       children: [
         Expanded(child: _tabButton('Upcoming', 0)),
-        const SizedBox(width: 12),
-        Expanded(child: _tabButton('Cancelled', 1)),
+        const SizedBox(width: 8),
+        Expanded(child: _tabButton('Completed', 1)),
+        const SizedBox(width: 8),
+        Expanded(child: _tabButton('Cancelled', 2)),
       ],
     );
   }
@@ -401,18 +469,25 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
         height: 44,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? _LessonColors.primary : Colors.white,
+          color: selected
+              ? context.lessonColors.primary
+              : context.lessonColors.surface,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: selected ? _LessonColors.primary : _LessonColors.border,
+            color: selected
+                ? context.lessonColors.primary
+                : context.lessonColors.border,
           ),
         ),
         child: Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.fade,
+          softWrap: false,
           style: TextStyle(
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : _LessonColors.textGrey,
+            color: selected ? Colors.white : context.lessonColors.textGrey,
           ),
         ),
       ),
@@ -424,8 +499,12 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
       padding: const EdgeInsets.only(top: 80),
       child: Center(
         child: Text(
-          _tabIndex == 0 ? 'No upcoming lessons' : 'No cancelled lessons',
-          style: const TextStyle(color: _LessonColors.textGrey, fontSize: 16),
+          switch (_tabIndex) {
+            0 => 'No upcoming lessons',
+            1 => 'No completed lessons yet',
+            _ => 'No cancelled lessons',
+          },
+          style: TextStyle(color: context.lessonColors.textGrey, fontSize: 16),
         ),
       ),
     );
@@ -436,16 +515,16 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
       padding: const EdgeInsets.only(top: 60),
       child: Column(
         children: [
-          const Icon(
+          Icon(
             Icons.cloud_off_rounded,
             size: 42,
-            color: _LessonColors.textGrey,
+            color: context.lessonColors.textGrey,
           ),
           const SizedBox(height: 12),
           Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: _LessonColors.textGrey),
+            style: TextStyle(color: context.lessonColors.textGrey),
           ),
           const SizedBox(height: 12),
           FilledButton(onPressed: _loadLessons, child: const Text('Retry')),
@@ -466,6 +545,9 @@ class LessonCard extends StatelessWidget {
   /// which disables the button. The server checks the rest when tapped.
   final VoidCallback? onStart;
 
+  /// "Leave a review" on a Completed lesson the student has not reviewed.
+  final VoidCallback? onReview;
+
   const LessonCard({
     super.key,
     required this.lesson,
@@ -473,6 +555,7 @@ class LessonCard extends StatelessWidget {
     required this.onReschedule,
     required this.onReport,
     required this.onStart,
+    this.onReview,
     this.showActions = true,
   });
 
@@ -482,9 +565,9 @@ class LessonCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.lessonColors.surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: _LessonColors.border),
+        border: Border.all(color: context.lessonColors.border),
       ),
       child: Column(
         children: [
@@ -493,18 +576,18 @@ class LessonCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 28,
-                backgroundColor: _LessonColors.cancelBg,
+                backgroundColor: context.lessonColors.cancelBg,
                 child: avatarUrl == null
-                    ? const Icon(Icons.person, color: _LessonColors.textGrey)
+                    ? Icon(Icons.person, color: context.lessonColors.textGrey)
                     : ClipOval(
                         child: Image.network(
                           avatarUrl,
                           width: 56,
                           height: 56,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const Icon(
+                          errorBuilder: (_, _, _) => Icon(
                             Icons.person,
-                            color: _LessonColors.textGrey,
+                            color: context.lessonColors.textGrey,
                           ),
                         ),
                       ),
@@ -517,10 +600,10 @@ class LessonCard extends StatelessWidget {
                     Text(
                       lesson.tutorName,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: _LessonColors.textDark,
+                        color: context.lessonColors.textDark,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -530,24 +613,26 @@ class LessonCard extends StatelessWidget {
                           child: Text(
                             lesson.subject,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
-                              color: _LessonColors.primary,
+                              color: context.lessonColors.accent,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Text(
+                        Text(
                           '·',
-                          style: TextStyle(color: _LessonColors.textGrey),
+                          style: TextStyle(
+                            color: context.lessonColors.textGrey,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           lesson.duration,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
-                            color: _LessonColors.textGrey,
+                            color: context.lessonColors.textGrey,
                           ),
                         ),
                       ],
@@ -566,32 +651,32 @@ class LessonCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          const Divider(height: 1, color: _LessonColors.border),
+          Divider(height: 1, color: context.lessonColors.border),
 
           // Date row
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.calendar_today_outlined,
                   size: 20,
-                  color: _LessonColors.textGrey,
+                  color: context.lessonColors.textGrey,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     lesson.dateTime,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
-                      color: _LessonColors.textDark,
+                      color: context.lessonColors.textDark,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1, color: _LessonColors.border),
+          Divider(height: 1, color: context.lessonColors.border),
 
           if (lesson.cancellationReason != null) ...[
             const SizedBox(height: 14),
@@ -599,12 +684,30 @@ class LessonCard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 'Cancellation reason: ${lesson.cancellationReason}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: _LessonColors.textGrey,
+                  color: context.lessonColors.textGrey,
                 ),
               ),
             ),
+          ],
+
+          if (lesson.isCompleted) ...[
+            const SizedBox(height: 14),
+            if (lesson.myRating != null)
+              _MyRating(rating: lesson.myRating!)
+            else
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 280),
+                  child: _ActionButton(
+                    label: 'Leave a review',
+                    background: context.lessonColors.primary,
+                    foreground: Colors.white,
+                    onTap: onReview,
+                  ),
+                ),
+              ),
           ],
 
           if (showActions) ...[
@@ -614,7 +717,7 @@ class LessonCard extends StatelessWidget {
                 constraints: const BoxConstraints(maxWidth: 280),
                 child: _ActionButton(
                   label: 'Start session',
-                  background: _LessonColors.primary,
+                  background: context.lessonColors.primary,
                   foreground: Colors.white,
                   onTap: onStart,
                 ),
@@ -634,9 +737,19 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (background, foreground) = switch (status) {
-      'Confirmed' => (_LessonColors.confirmedBg, _LessonColors.confirmedText),
-      'Cancelled' => (_LessonColors.cancelledBg, _LessonColors.cancelledText),
-      _ => (_LessonColors.pendingBg, _LessonColors.pendingText),
+      'Confirmed' => (
+        context.lessonColors.confirmedBg,
+        context.lessonColors.confirmedText,
+      ),
+      'Cancelled' => (
+        context.lessonColors.cancelledBg,
+        context.lessonColors.cancelledText,
+      ),
+      'Completed' => (
+        context.lessonColors.completedBg,
+        context.lessonColors.completedText,
+      ),
+      _ => (context.lessonColors.pendingBg, context.lessonColors.pendingText),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -652,6 +765,34 @@ class _StatusBadge extends StatelessWidget {
           color: foreground,
         ),
       ),
+    );
+  }
+}
+
+/// "Your rating ★★★★☆" on a Completed lesson the student has reviewed.
+class _MyRating extends StatelessWidget {
+  final int rating;
+  const _MyRating({required this.rating});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          'Your rating',
+          style: TextStyle(fontSize: 14, color: context.lessonColors.textGrey),
+        ),
+        const SizedBox(width: 8),
+        for (var star = 1; star <= 5; star++)
+          Icon(
+            star <= rating ? Icons.star_rounded : Icons.star_outline_rounded,
+            size: 22,
+            color: star <= rating
+                ? context.lessonColors.star
+                : context.lessonColors.border,
+          ),
+      ],
     );
   }
 }
@@ -673,22 +814,22 @@ class _LessonMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<_LessonAction>(
-      icon: const Icon(Icons.menu, color: _LessonColors.textGrey),
+      icon: Icon(Icons.menu, color: context.lessonColors.textGrey),
       tooltip: 'Lesson options',
-      color: Colors.white,
+      color: context.lessonColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       onSelected: (action) => switch (action) {
         _LessonAction.cancel => onCancel(),
         _LessonAction.reschedule => onReschedule(),
         _LessonAction.report => onReport(),
       },
-      itemBuilder: (_) => const [
+      itemBuilder: (_) => [
         PopupMenuItem(
           value: _LessonAction.cancel,
           child: _MenuRow(
             icon: Icons.cancel_outlined,
             label: 'Cancel',
-            color: _LessonColors.cancelledText,
+            color: context.lessonColors.cancelledText,
           ),
         ),
         PopupMenuItem(
@@ -696,7 +837,7 @@ class _LessonMenu extends StatelessWidget {
           child: _MenuRow(
             icon: Icons.event_repeat_outlined,
             label: 'Reschedule',
-            color: _LessonColors.textDark,
+            color: context.lessonColors.textDark,
           ),
         ),
         PopupMenuItem(
@@ -704,7 +845,7 @@ class _LessonMenu extends StatelessWidget {
           child: _MenuRow(
             icon: Icons.flag_outlined,
             label: 'Report',
-            color: _LessonColors.textDark,
+            color: context.lessonColors.textDark,
           ),
         ),
       ],
@@ -818,6 +959,9 @@ class _ReasonDialogState extends State<ReasonDialog> {
   Widget build(BuildContext context) {
     final message = widget.message;
     return AlertDialog(
+      // Scrolls when the phone keyboard leaves too little room, so the
+      // buttons are never pushed off screen
+      scrollable: true,
       title: Text(widget.title),
       content: Form(
         key: _formKey,
@@ -828,9 +972,9 @@ class _ReasonDialogState extends State<ReasonDialog> {
             if (message != null) ...[
               Text(
                 message,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: _LessonColors.textGrey,
+                  color: context.lessonColors.textGrey,
                 ),
               ),
               const SizedBox(height: 16),

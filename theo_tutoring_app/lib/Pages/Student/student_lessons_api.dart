@@ -103,6 +103,46 @@ class StudentLessonsApi {
     return link;
   }
 
+  /// Reviews a completed lesson: 1-5 stars, an optional public review, the
+  /// badges the student tapped and an optional private note for the admin.
+  /// The response has the tutor's new average (tutorAverage).
+  Future<Map<String, dynamic>> review(
+    int bookingId, {
+    required int rating,
+    String? comment,
+    List<String> highlights = const [],
+    String? privateNote,
+  }) async {
+    final token = await _token();
+    final response = await _client
+        .post(
+          Uri.parse('$apiBaseUrl/students/lessons/$bookingId/review'),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'rating': rating,
+            if (comment != null && comment.trim().isNotEmpty)
+              'comment': comment.trim(),
+            if (highlights.isNotEmpty) 'highlights': highlights,
+            if (privateNote != null && privateNote.trim().isNotEmpty)
+              'privateNote': privateNote.trim(),
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode != 201 || decoded is! Map<String, dynamic>) {
+      throw StudentLessonsException(
+        decoded is Map<String, dynamic>
+            ? decoded['error'] as String? ?? 'Review could not be saved.'
+            : 'Review could not be saved.',
+      );
+    }
+    return decoded;
+  }
+
   Future<Map<String, dynamic>> fetch() async {
     final token = await _token();
 
@@ -127,6 +167,8 @@ class StudentLessonsApi {
         decoded['cancelled'] is! List) {
       throw const FormatException('Student lessons response is invalid.');
     }
+    // An older backend has no Completed list
+    decoded['completed'] ??= <dynamic>[];
     return decoded;
   }
 }

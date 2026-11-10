@@ -1,706 +1,917 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 
-import 'dart:convert';
+import '../Tutor/tutor_theme.dart';
+import '../auth_gate.dart';
+import '../cloudinary_upload.dart';
+import '../privacy_policy.dart';
+import '../terms_and_conditions.dart';
+import 'student_profile_api.dart';
 
-import '../../config/api.dart';
+/// The student's Profile tab, laid out like the tutor's profile.
+///
+/// View mode: photo (camera badge changes it), name, email and school, then
+/// Subjects of Interest, an Edit Profile button, Dark Mode, Support and
+/// Log Out.
+///
+/// Edit Profile makes the name, school and subjects editable; Save Changes
+/// sends them to PATCH /students/profile and the back arrow throws the
+/// changes away.
+///
+/// Everything comes from GET /students/profile. The values the dashboard
+/// passes in are shown straight away while that loads, and stay if it fails.
+class StudentProfileTab extends StatefulWidget {
+  const StudentProfileTab({
+    super.key,
+    this.name,
+    this.email,
+    this.institution,
+    this.photo,
+    this.loadProfile,
+    this.saveProfile,
+    this.loadSubjects,
+    this.choosePhoto,
+    this.onChanged,
+  });
 
-// ── Service ────────────────────────────────────────────────────────────────
+  final String? name;
+  final String? email;
+  final String? institution;
+  final String? photo;
 
-class StudentSettingsService {
-  static String get _base => apiBaseUrl;
+  /// Loads the profile; null uses [StudentProfileApi] (tests pass a fake).
+  final Future<StudentProfileData> Function()? loadProfile;
 
-  static Future<Map<String, dynamic>> fetchSettings() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    final res = await http.get(
-      Uri.parse('$_base/student/settings'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    if (res.statusCode != 200) {
-      throw Exception('Failed to load settings (${res.statusCode})');
-    }
-    return jsonDecode(res.body) as Map<String, dynamic>;
-  }
+  /// Saves changed fields; null uses [StudentProfileApi.update].
+  final Future<StudentProfileSaved> Function(Map<String, Object?> changes)?
+  saveProfile;
 
-  static Future<void> saveSettings({
-    required String email,
-    required String phone,
-  }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    final res = await http.put(
-      Uri.parse('$_base/student/settings'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({'email': email, 'phone': phone}),
-    );
-    if (res.statusCode != 200) {
-      final body = jsonDecode(res.body);
-      throw Exception(body['error'] ?? 'Failed to save settings');
-    }
-  }
+  /// The subject catalogue for the chips; null uses GET /subjects.
+  final Future<List<String>> Function()? loadSubjects;
 
-  static Future<void> changePassword() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    final res = await http.post(
-      Uri.parse('$_base/student/settings/change-password'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    if (res.statusCode != 200) {
-      throw Exception('Failed to send password reset');
-    }
-  }
-}
+  /// Picks and uploads a photo, returning its Cloudinary URL (null when the
+  /// student cancels); null uses the gallery and [uploadToCloudinary].
+  final Future<String?> Function()? choosePhoto;
 
-// ── Screen ────────────────────────────────────────────────────────────────
-
-class StudentSettings extends StatefulWidget {
-  const StudentSettings({super.key});
+  /// Called after the name or photo changed, so the dashboard can refresh.
+  final VoidCallback? onChanged;
 
   @override
-  State<StudentSettings> createState() => _StudentSettingsState();
+  State<StudentProfileTab> createState() => _StudentProfileTabState();
 }
 
-class _StudentSettingsState extends State<StudentSettings> {
-  // palette — matches dashboard light theme
-  static const _bg = Color(0xFFF2F4F8);
-  static const _blue = Color(0xFF246BFE);
-  static const _text1 = Color(0xFF111827);
-  static const _text2 = Color(0xFF374151);
-  static const _text3 = Color(0xFF6B7280);
-  static const _border = Color(0xFFE5E7EB);
-  static const _red = Color(0xFFDC2626);
+class _StudentProfileTabState extends State<StudentProfileTab> {
+  static const _blue = Color(0xFF356AE6);
+  static const _red = Color(0xFFE05252);
 
-  final _emailCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
+  // Same limits as PATCH /students/profile
+  static const _maxName = 100;
+  static const _maxInstitution = 150;
+  static const _maxSubjects = 10;
 
-  String _fullName = '';
-  String? _profilePhotoUrl;
-  bool _loading = true;
+  StudentProfileApi? _api;
+  StudentProfileData? _profile; // null until the server answers
+
+  bool _editing = false;
   bool _saving = false;
-  bool _loggingOut = false;
-  String? _error;
+  bool _uploading = false;
 
-  // notification toggles (UI only — backend returns hardcoded for now)
-  bool _sessionReminders = true;
-  bool _bookingConfirmations = true;
-  bool _directMessages = true;
+  // Edit Profile draft
+  final _nameController = TextEditingController();
+  final _institutionController = TextEditingController();
+  List<String> _subjects = [];
+  List<String>? _catalogue; // GET /subjects, loaded on the first edit
+  bool _catalogueFailed = false;
 
-  final int _selectedIndex = 3; // Profile tab
+  StudentProfileApi get _client => _api ??= StudentProfileApi();
+
+  // The server's value, or the dashboard's while it loads or if it failed
+  String? get name => _pick(_profile?.name, widget.name);
+  String? get email => _pick(_profile?.email, widget.email);
+  String? get institution =>
+      _profile != null ? _profile!.institution : widget.institution;
+  String? get photo => _profile != null ? _profile!.photo : widget.photo;
+
+  static String? _pick(String? server, String? fallback) =>
+      server != null && server.trim().isNotEmpty ? server : fallback;
 
   @override
   void initState() {
     super.initState();
+    _nameController.addListener(_redraw);
+    _institutionController.addListener(_redraw);
     _load();
   }
 
   @override
   void dispose() {
-    _emailCtrl.dispose();
-    _phoneCtrl.dispose();
+    _nameController.dispose();
+    _institutionController.dispose();
+    _api?.close();
     super.dispose();
   }
 
+  void _redraw() {
+    if (mounted && _editing) setState(() {});
+  }
+
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
     try {
-      final data = await StudentSettingsService.fetchSettings();
-      final firebaseUser = FirebaseAuth.instance.currentUser;
-      _emailCtrl.text = data['email']?.toString() ?? '';
-      _phoneCtrl.text = data['phone']?.toString() ?? '';
-      final notif = data['notifications'] as Map<String, dynamic>? ?? {};
-      setState(() {
-        _fullName =
-            data['fullName']?.toString() ??
-            data['name']?.toString() ??
-            firebaseUser?.displayName ??
-            'Student';
-        _profilePhotoUrl =
-            data['profilePhotoUrl']?.toString() ?? firebaseUser?.photoURL;
-        _sessionReminders = notif['sessionReminders'] as bool? ?? true;
-        _bookingConfirmations = notif['bookingConfirmations'] as bool? ?? true;
-        _directMessages = notif['directMessages'] as bool? ?? true;
-        _loading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      final load = widget.loadProfile ?? _client.fetch;
+      final profile = await load();
+      if (mounted) setState(() => _profile = profile);
+    } catch (error) {
+      // Keep showing what the dashboard passed in
+      debugPrint('Student profile could not be loaded: $error');
     }
+  }
+
+  // ── Editing ────────────────────────────────────────────────────────────
+
+  Future<void> _startEditing() async {
+    if (_profile == null) {
+      await _load();
+      if (!mounted) return;
+      if (_profile == null) {
+        _showMessage(
+          'Your profile could not be loaded. Please try again.',
+          error: true,
+        );
+        return;
+      }
+    }
+    final p = _profile!;
+    setState(() {
+      _nameController.text = p.name ?? '';
+      _institutionController.text = p.institution ?? '';
+      _subjects = [...p.subjectsOfInterest];
+      _editing = true;
+    });
+    if (_catalogue == null) _loadCatalogue();
+  }
+
+  Future<void> _loadCatalogue() async {
+    setState(() => _catalogueFailed = false);
+    try {
+      final load = widget.loadSubjects ?? _client.fetchSubjects;
+      final subjects = await load();
+      if (mounted) setState(() => _catalogue = subjects);
+    } catch (error) {
+      debugPrint('Subjects could not be loaded: $error');
+      if (mounted) setState(() => _catalogueFailed = true);
+    }
+  }
+
+  /// The fields that differ from the saved profile.
+  Map<String, Object?> get _changes {
+    final p = _profile;
+    if (p == null) return const {};
+    final name = _nameController.text.trim();
+    final school = _institutionController.text.trim();
+    return {
+      if (name != (p.name ?? '').trim()) 'name': name,
+      if (school != (p.institution ?? '').trim()) 'institution': school,
+      if (!_sameList(_subjects, p.subjectsOfInterest))
+        'subjectsOfInterest': _subjects,
+    };
+  }
+
+  static bool _sameList(List<String> a, List<String> b) =>
+      a.length == b.length &&
+      Iterable<int>.generate(a.length).every((i) => a[i] == b[i]);
+
+  /// Why Save Changes is off, or null when the draft can be saved.
+  String? get _problem {
+    if (_nameController.text.trim().isEmpty) return 'Enter your name.';
+    if (_institutionController.text.trim().isEmpty) {
+      return 'Enter your school or university.';
+    }
+    if (_subjects.isEmpty) return 'Choose at least one subject.';
+    return null;
+  }
+
+  Future<void> _cancelEditing() async {
+    if (_changes.isNotEmpty) {
+      final discard = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Discard changes?'),
+          content: const Text('Your changes have not been saved.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Keep editing'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Discard', style: TextStyle(color: _red)),
+            ),
+          ],
+        ),
+      );
+      if (discard != true || !mounted) return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() => _editing = false);
   }
 
   Future<void> _save() async {
-    final email = _emailCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
-    if (email.isEmpty) {
-      _showSnack('Email cannot be empty', isError: true);
+    final problem = _problem;
+    if (problem != null) {
+      _showMessage(problem, error: true);
       return;
     }
-    if (phone.isEmpty) {
-      _showSnack('Phone number cannot be empty', isError: true);
+    final changes = _changes;
+    if (changes.isEmpty) {
+      setState(() => _editing = false);
       return;
     }
+    FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
-      await StudentSettingsService.saveSettings(email: email, phone: phone);
-      _showSnack('Settings saved successfully');
-    } catch (e) {
-      _showSnack(e.toString(), isError: true);
-    } finally {
-      if (mounted) setState(() => _saving = false);
+      final save = widget.saveProfile ?? _client.update;
+      final saved = await save(changes);
+      if (!mounted) return;
+      setState(() {
+        _profile = saved.profile;
+        _editing = false;
+        _saving = false;
+      });
+      _showMessage(saved.message);
+      if (changes.containsKey('name')) widget.onChanged?.call();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _showMessage(error.toString(), error: true);
     }
   }
 
-  Future<void> _sendPasswordReset() async {
+  // Camera badge: pick a picture, upload it to Cloudinary, save its URL.
+  Future<void> _changePhoto() async {
+    setState(() => _uploading = true);
     try {
-      await StudentSettingsService.changePassword();
-      _showSnack('Password reset email sent');
-    } catch (e) {
-      _showSnack(e.toString(), isError: true);
-    }
-  }
-
-  Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Log Out'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: _text3)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Log Out',
-              style: TextStyle(color: _red, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    setState(() => _loggingOut = true);
-    try {
-      await FirebaseAuth.instance.signOut();
-      if (mounted) {
-        Navigator.of(context)
-            .pushNamedAndRemoveUntil('/login', (route) => false);
+      final url = await (widget.choosePhoto ?? _pickAndUpload)();
+      if (url == null) {
+        if (mounted) setState(() => _uploading = false);
+        return;
       }
-    } catch (e) {
-      _showSnack('Failed to log out: $e', isError: true);
-      if (mounted) setState(() => _loggingOut = false);
+      final save = widget.saveProfile ?? _client.update;
+      final saved = await save({'photo': url});
+      if (!mounted) return;
+      setState(() {
+        _profile = saved.profile;
+        _uploading = false;
+      });
+      _showMessage(saved.message);
+      widget.onChanged?.call();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _uploading = false);
+      _showMessage(switch (error) {
+        StudentProfileException(:final message) => message,
+        CloudinaryUploadException(:final message) => message,
+        _ => 'Could not upload the photo.',
+      }, error: true);
     }
   }
 
-  void _showSnack(String msg, {bool isError = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: isError ? _red : const Color(0xFF16A34A),
-        behavior: SnackBarBehavior.floating,
-      ),
+  static Future<String?> _pickAndUpload() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      imageQuality: 85,
     );
+    return file == null ? null : uploadToCloudinary(file);
   }
 
-  void _onNavTap(int index) {
-    if (index == _selectedIndex) return;
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/student/dashboard');
-        break;
-      case 1:
-        Navigator.pushReplacementNamed(context, '/student/schedule');
-        break;
-      case 2:
-        Navigator.pushReplacementNamed(context, '/student/chats');
-        break;
-      case 3:
-        break; // already here
-    }
+  void _showMessage(String message, {bool error = false}) {
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: error ? const Color(0xFFDC2626) : null,
+        ),
+      );
   }
+
+  // ── Page ───────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 0,
-        leading: const BackButton(color: _text1),
-        title: const Text(
-          'My Profile',
-          style: TextStyle(
-            color: _text1,
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
+    final colors = _ProfileColors.of(context);
+    final children = _editing ? _editView(colors) : _profileView(colors);
+    return ColoredBox(
+      color: colors.background,
+      child: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: _editing ? () async {} : _load,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 30),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < children.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 16),
+                        children[i],
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Icon(Icons.more_vert, color: _text1),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _blue))
-          : _error != null
-          ? _buildError()
-          : _buildBody(),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onNavTap,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: _blue,
-        unselectedItemColor: _text3,
-        backgroundColor: Colors.white,
-        elevation: 8,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.grid_view_rounded),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.inbox_rounded),
-            label: 'Schedule',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            label: 'Chats',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_rounded),
-            label: 'Profile',
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildError() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, color: _text3, size: 40),
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: _text3, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _load,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _blue,
-                foregroundColor: Colors.white,
+  List<Widget> _profileView(_ProfileColors colors) {
+    final p = _profile;
+    return [
+      Text(
+        'My Profile',
+        style: GoogleFonts.poppins(
+          color: colors.text,
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      _headerCard(colors),
+      _card(
+        colors,
+        title: 'Subjects of Interest',
+        child: p == null || p.subjectsOfInterest.isEmpty
+            ? _placeholder(colors, 'No subjects chosen yet')
+            : Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final subject in p.subjectsOfInterest)
+                    _chip(colors, subject, selected: true),
+                ],
               ),
-              child: const Text('Retry'),
+      ),
+      _primaryButton('Edit Profile', onPressed: _startEditing),
+      _listCard(colors, 'Preferences', [
+        _row(
+          colors,
+          icon: Icons.dark_mode_outlined,
+          title: 'Dark Mode',
+          trailing: Switch(
+            value: TutorTheme.darkChosen,
+            activeThumbColor: Colors.white,
+            activeTrackColor: _blue,
+            // The whole app rebuilds in the new theme
+            onChanged: (on) => TutorTheme.setDark(on),
+          ),
+          onTap: () => TutorTheme.setDark(!TutorTheme.darkChosen),
+        ),
+      ]),
+      _listCard(colors, 'Support', [
+        _row(
+          colors,
+          icon: Icons.description_outlined,
+          title: 'Terms of Service',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const TermsAndConditionsPage(),
+            ),
+          ),
+        ),
+        _row(
+          colors,
+          icon: Icons.privacy_tip_outlined,
+          title: 'Privacy Policy',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const PrivacyPolicyPage()),
+          ),
+        ),
+      ]),
+      _logOutCard(colors),
+    ];
+  }
+
+  List<Widget> _editView(_ProfileColors colors) {
+    final catalogue = _catalogue ?? const <String>[];
+    // Catalogue subjects, then any the student typed at registration
+    final subjectChoices = [
+      ...catalogue,
+      for (final s in _subjects)
+        if (!catalogue.any((c) => c.toLowerCase() == s.toLowerCase())) s,
+    ];
+
+    return [
+      Row(
+        children: [
+          IconButton(
+            onPressed: _saving ? null : _cancelEditing,
+            tooltip: 'Back',
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: colors.text),
+            visualDensity: VisualDensity.compact,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Edit Profile',
+            style: GoogleFonts.poppins(
+              color: colors.text,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+      _card(
+        colors,
+        child: Row(
+          children: [
+            _photoWithBadge(colors, radius: 44),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                children: [
+                  _textField(
+                    colors,
+                    _nameController,
+                    hint: 'Full name',
+                    maxLength: _maxName,
+                  ),
+                  const SizedBox(height: 10),
+                  _textField(
+                    colors,
+                    _institutionController,
+                    hint: 'School or university',
+                    maxLength: _maxInstitution,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
+      _card(
+        colors,
+        title: 'Subjects of Interest',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_catalogue == null && !_catalogueFailed)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final subject in subjectChoices)
+                  _chip(
+                    colors,
+                    subject,
+                    selected: _subjects.contains(subject),
+                    onTap: () => _toggleSubject(subject),
+                  ),
+              ],
+            ),
+            if (_catalogueFailed) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: _loadCatalogue,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Could not load subjects. Try again'),
+              ),
+            ],
+          ],
+        ),
+      ),
+      _primaryButton(
+        'Save Changes',
+        busy: _saving,
+        onPressed: _saving ? null : _save,
+      ),
+    ];
+  }
+
+  void _toggleSubject(String subject) {
+    setState(() {
+      if (_subjects.contains(subject)) {
+        _subjects.remove(subject);
+      } else if (_subjects.length >= _maxSubjects) {
+        _showMessage('Choose up to $_maxSubjects subjects.', error: true);
+      } else {
+        _subjects.add(subject);
+      }
+    });
+  }
+
+  // ── Pieces ─────────────────────────────────────────────────────────────
+
+  Widget _headerCard(_ProfileColors colors) {
+    final displayName = name == null || name!.trim().isEmpty
+        ? 'Student'
+        : name!.trim();
+    final school = institution == null || institution!.trim().isEmpty
+        ? null
+        : institution!.trim();
+    return _card(
+      colors,
+      child: Row(
+        children: [
+          _photoWithBadge(colors, radius: 40),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: GoogleFonts.poppins(
+                    color: colors.text,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (email != null && email!.isNotEmpty)
+                  Text(
+                    email!,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      color: colors.muted,
+                      fontSize: 12,
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                _badge(colors, 'STUDENT'),
+                if (school != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.school_outlined,
+                        size: 16,
+                        color: colors.muted,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          school,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                            color: colors.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildBody() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildProfileHeader(),
-          const SizedBox(height: 16),
-          // ── Account Settings ──────────────────────────────────────────
-          _sectionCard([
-            _sectionTitle('Personal Information'),
-            const SizedBox(height: 12),
-            _fieldLabel('Email Address'),
-            const SizedBox(height: 4),
-            _inputField(
-              _emailCtrl,
-              'Email address',
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 12),
-            _fieldLabel('Phone Number'),
-            const SizedBox(height: 4),
-            _inputField(
-              _phoneCtrl,
-              'Phone number',
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: _saving
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text(
-                        'Save Changes',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Divider(height: 24),
-            _chevronRow('Change Password', onTap: _sendPasswordReset),
-          ]),
-
-          const SizedBox(height: 16),
-
-          // ── Notification Preferences ──────────────────────────────────
-          _sectionCard([
-            _sectionTitle('Notification Preferences'),
-            const SizedBox(height: 12),
-            _toggleRow(
-              'Session Reminders',
-              '24 hours before your session starts',
-              _sessionReminders,
-              (val) => setState(() => _sessionReminders = val),
-            ),
-            const Divider(height: 24),
-            _toggleRow(
-              'Booking Confirmations',
-              'When tutor accepts your request',
-              _bookingConfirmations,
-              (val) => setState(() => _bookingConfirmations = val),
-            ),
-            const Divider(height: 24),
-            _toggleRow(
-              'Direct Messages',
-              'New messages from your active tutors',
-              _directMessages,
-              (val) => setState(() => _directMessages = val),
-            ),
-          ]),
-
-          const SizedBox(height: 16),
-
-          // ── Payment Methods ───────────────────────────────────────────
-          _sectionCard([
-            _sectionTitle('Payment Methods'),
-            const SizedBox(height: 12),
-            Row(
-              children: const [
-                Icon(Icons.credit_card, size: 20, color: _text3),
-                SizedBox(width: 8),
-                Text(
-                  'Visa ends in *4321',
-                  style: TextStyle(fontSize: 14, color: _text2),
-                ),
-                Spacer(),
-                Text(
-                  'Expires 08/27',
-                  style: TextStyle(fontSize: 12, color: _text3),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            GestureDetector(
-              onTap: () {},
-              child: const Text(
-                '+ Add New Payment Method',
-                style: TextStyle(
-                  color: _blue,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ]),
-
-          const SizedBox(height: 16),
-
-          // ── App Preferences ───────────────────────────────────────────
-          _sectionCard([
-            _sectionTitle('App Preferences'),
-            const SizedBox(height: 12),
-            _chevronRow(
-              'App Language',
-              trailing: const Text(
-                'English',
-                style: TextStyle(fontSize: 14, color: _text3),
-              ),
-            ),
-          ]),
-
-          const SizedBox(height: 24),
-
-          // ── Log Out ───────────────────────────────────────────────────
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: _loggingOut ? null : _logout,
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: _red),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: _loggingOut
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        color: _red,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Text(
-                      'Log Out',
-                      style: TextStyle(
-                        color: _red,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
+  Widget _photoWithBadge(_ProfileColors colors, {required double radius}) {
+    final displayName = (name ?? '').trim().isEmpty ? 'Student' : name!;
+    final url = photo;
+    final initials = Text(
+      _initials(displayName),
+      style: GoogleFonts.poppins(
+        color: colors.blueText,
+        fontSize: radius * 0.6,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+    return Semantics(
+      button: true,
+      label: 'Change profile photo',
+      child: GestureDetector(
+        onTap: _uploading || _saving ? null : _changePhoto,
+        child: Stack(
+          children: [
+            CircleAvatar(
+              radius: radius,
+              backgroundColor: colors.blueTint,
+              child: _uploading
+                  ? const CircularProgressIndicator(color: _blue)
+                  : url == null
+                  ? initials
+                  : ClipOval(
+                      child: Image.network(
+                        url,
+                        width: radius * 2,
+                        height: radius * 2,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Center(child: initials),
                       ),
                     ),
             ),
-          ),
-
-          const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfileHeader() {
-    final email = _emailCtrl.text.trim();
-    return _sectionCard([
-      Center(
-        child: CircleAvatar(
-          radius: 42,
-          backgroundColor: const Color(0xFFE8F0FE),
-          backgroundImage: _profilePhotoUrl == null
-              ? null
-              : NetworkImage(_profilePhotoUrl!),
-          child: _profilePhotoUrl == null
-              ? Text(
-                  _initials(_fullName),
-                  style: const TextStyle(
-                    color: _blue,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
-                  ),
-                )
-              : null,
-        ),
-      ),
-      const SizedBox(height: 12),
-      Center(
-        child: Text(
-          _fullName.isEmpty ? 'Student' : _fullName,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: _text1,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-      if (email.isNotEmpty) ...[
-        const SizedBox(height: 4),
-        Center(
-          child: Text(
-            email,
-            style: const TextStyle(color: _text3, fontSize: 13),
-          ),
-        ),
-      ],
-      const SizedBox(height: 16),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.school_outlined, color: _blue, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Student account',
-              style: TextStyle(
-                color: _text2,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: _blue,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colors.surface, width: 2),
+                ),
+                child: const Icon(
+                  Icons.camera_alt_rounded,
+                  size: 13,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],
         ),
       ),
-    ]);
+    );
   }
 
-  String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'))
-      ..removeWhere((part) => part.isEmpty);
-    if (parts.isEmpty) return 'S';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
-        .toUpperCase();
-  }
+  Widget _badge(_ProfileColors colors, String text) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+    decoration: BoxDecoration(
+      color: colors.blueTint,
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      text,
+      style: GoogleFonts.poppins(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
+        color: colors.blueText,
+      ),
+    ),
+  );
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  Widget _sectionCard(List<Widget> children) {
+  // A white card, with a bold title when given
+  Widget _card(_ProfileColors colors, {String? title, required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
+        children: [
+          if (title != null) ...[
+            Text(
+              title,
+              style: GoogleFonts.poppins(
+                color: colors.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          child,
+        ],
       ),
     );
   }
 
-  Widget _sectionTitle(String title) => Text(
-    title,
-    style: const TextStyle(
-      fontWeight: FontWeight.w700,
-      fontSize: 15,
-      color: _text1,
-    ),
+  Widget _placeholder(_ProfileColors colors, String text) => Text(
+    text,
+    style: GoogleFonts.poppins(color: colors.faint, fontSize: 13),
   );
 
-  Widget _fieldLabel(String label) =>
-      Text(label, style: const TextStyle(fontSize: 12, color: _text3));
+  // Filled blue when chosen, grey otherwise; tappable when [onTap] is set
+  Widget _chip(
+    _ProfileColors colors,
+    String label, {
+    bool selected = false,
+    VoidCallback? onTap,
+  }) {
+    final chip = AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? colors.chipSelected : colors.field,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.poppins(
+          color: selected ? Colors.white : colors.text,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+    if (onTap == null) return chip;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: chip,
+      ),
+    );
+  }
 
-  Widget _inputField(
-    TextEditingController ctrl,
-    String hint, {
-    TextInputType? keyboardType,
+  Widget _textField(
+    _ProfileColors colors,
+    TextEditingController controller, {
+    required String hint,
+    required int maxLength,
   }) {
     return TextField(
-      controller: ctrl,
-      keyboardType: keyboardType,
-      style: const TextStyle(fontSize: 14, color: _text1),
+      controller: controller,
+      maxLength: maxLength,
+      enabled: !_saving,
+      textCapitalization: TextCapitalization.words,
+      style: GoogleFonts.poppins(color: colors.text, fontSize: 13),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: _text3),
+        hintStyle: GoogleFonts.poppins(color: colors.faint, fontSize: 13),
+        counterText: '',
+        filled: true,
+        fillColor: colors.surface,
+        isDense: true,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
           vertical: 12,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: _border),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: colors.line),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: _border),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: colors.line),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: _blue, width: 1.5),
         ),
       ),
     );
   }
 
-  Widget _chevronRow(String label, {Widget? trailing, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 14, color: _text2)),
-          Row(
+  Widget _primaryButton(
+    String label, {
+    required VoidCallback? onPressed,
+    bool busy = false,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _blue,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: _blue.withValues(alpha: 0.6),
+          disabledForegroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 0,
+        ),
+        child: busy
+            ? const SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+            : Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _logOutCard(_ProfileColors colors) {
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: () => signOutToStart(context),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (trailing != null) trailing,
-              const Icon(Icons.chevron_right, color: _text3),
+              const Icon(Icons.logout_rounded, color: _red, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Log Out',
+                style: GoogleFonts.poppins(
+                  color: _red,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // A card with a title and tappable rows separated by lines
+  Widget _listCard(_ProfileColors colors, String title, List<Widget> rows) {
+    // Material, so the rows' tap ripple shows on the card
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+            child: Text(
+              title,
+              style: GoogleFonts.poppins(
+                color: colors.text,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          for (final row in rows) ...[
+            Divider(height: 1, color: colors.line),
+            row,
+          ],
         ],
       ),
     );
   }
 
-  Widget _toggleRow(
-    String title,
-    String subtitle,
-    bool value,
-    Function(bool) onChanged,
-  ) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: _text1,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 12, color: _text3),
-              ),
-            ],
-          ),
-        ),
-        Switch(value: value, onChanged: onChanged, activeColor: _blue),
-      ],
+  Widget _row(
+    _ProfileColors colors, {
+    required IconData icon,
+    required String title,
+    Widget? trailing,
+    VoidCallback? onTap,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
+      leading: Icon(icon, color: colors.blueText, size: 22),
+      title: Text(
+        title,
+        style: GoogleFonts.poppins(fontSize: 14, color: colors.text),
+      ),
+      trailing:
+          trailing ?? Icon(Icons.chevron_right_rounded, color: colors.muted),
+      onTap: onTap,
     );
   }
+
+  // "Lerato Dube" -> "LD"
+  static String _initials(String name) => name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .take(2)
+      .map((part) => part[0].toUpperCase())
+      .join();
+}
+
+/// Light colours, or the dark ones while dark mode is on.
+class _ProfileColors {
+  const _ProfileColors(this.dark);
+
+  factory _ProfileColors.of(BuildContext context) =>
+      _ProfileColors(context.tutorDark);
+
+  final bool dark;
+
+  Color get background => dark ? TutorDark.background : const Color(0xFFF7F9FE);
+  Color get surface => dark ? TutorDark.card : Colors.white;
+  Color get field => dark ? TutorDark.cardAlt : const Color(0xFFF1F4F9);
+  Color get line => dark ? TutorDark.border : const Color(0xFFE3E8F0);
+  Color get text => dark ? TutorDark.text : const Color(0xFF17233D);
+  Color get muted => dark ? TutorDark.textMuted : const Color(0xFF5B6478);
+  Color get faint => dark ? TutorDark.textFaint : const Color(0xFF9AA3B5);
+  Color get blueText => dark ? TutorDark.blueText : const Color(0xFF356AE6);
+  Color get blueTint => dark ? TutorDark.blueTint : const Color(0xFFE4ECFF);
+  Color get chipSelected =>
+      dark ? const Color(0xFF3D6FE0) : const Color(0xFF2F5FAF);
 }

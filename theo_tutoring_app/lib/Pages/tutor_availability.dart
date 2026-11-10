@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api.dart';
 import '../services/google_meet_connect.dart';
+import 'verify_email_page.dart';
 
 class TutorAvailabilityPage extends StatefulWidget {
   const TutorAvailabilityPage({
@@ -141,24 +142,20 @@ class _TutorAvailabilityPageState extends State<TutorAvailabilityPage> {
         throw _SubmissionFailure(_responseError(response, body));
       }
 
-      var signedOut = true;
-      try {
-        await FirebaseAuth.instance.signOut();
-      } on Exception {
-        signedOut = false;
-      }
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            signedOut
-                ? 'Registration complete. Your application is under review.'
-                : 'Registration is complete. Please sign out before leaving this device.',
+      // The next page emails a 6-digit code and waits for it, then signs
+      // out to the login page. Clears registration so Back cannot return.
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(
+          builder: (_) => VerifyEmailPage(
+            email: widget.firebaseUser.email ?? '',
+            verifiedMessage:
+                'Your email is verified and your application is with our '
+                'team for review. Log in any time to check its status.',
           ),
         ),
+        (_) => false,
       );
-      Navigator.of(context).popUntil((route) => route.isFirst);
     } on _SubmissionFailure catch (error) {
       if (mounted) _showMessage(error.message);
     } on Exception {

@@ -222,7 +222,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
         builder: (_) => TutorBookingDetailScreen(bookingId: s.bookingId),
       ),
     );
-    if (changed == true) _load(); // postponed: it moved to another day
+    if (changed == true) _load(); // cancelled or rescheduled
   }
 
   Future<void> _joinSession(ScheduleSession s) async {
@@ -243,6 +243,11 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
     final apply = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: _card,
+      // Up to 80% of the screen; a long subject list scrolls and Apply
+      // stays visible at the bottom
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => StatefulBuilder(
@@ -265,19 +270,29 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                     child: Text('You have no subjects yet.',
                         style: TextStyle(color: _muted, fontSize: 13)),
                   ),
-                ..._subjects.map((s) {
-                  final id = s['subjectId'] as int;
-                  return CheckboxListTile(
-                    value: picked.contains(id),
-                    activeColor: _blue,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(s['subjectName']?.toString() ?? '',
-                        style: TextStyle(fontSize: 14, color: _text1)),
-                    onChanged: (on) => setSheet(() {
-                      on == true ? picked.add(id) : picked.remove(id);
-                    }),
-                  );
-                }),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ..._subjects.map((s) {
+                          final id = s['subjectId'] as int;
+                          return CheckboxListTile(
+                            value: picked.contains(id),
+                            activeColor: _blue,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(s['subjectName']?.toString() ?? '',
+                                style:
+                                    TextStyle(fontSize: 14, color: _text1)),
+                            onChanged: (on) => setSheet(() {
+                              on == true ? picked.add(id) : picked.remove(id);
+                            }),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [

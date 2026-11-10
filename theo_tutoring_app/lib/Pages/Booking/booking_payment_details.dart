@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../Tutor/tutor_theme.dart';
 import 'booking_api.dart';
 import 'booking_confirmation.dart';
 import 'booking_flow_context.dart';
@@ -31,12 +32,21 @@ class BookingPaymentDetailsPage extends StatefulWidget {
 }
 
 class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
-  static const Color _primaryBlue = Color(0xFF356AE6);
-  static const Color _background = Color(0xFFF7F9FE);
-  static const Color _textDark = Color(0xFF17233D);
-  static const Color _textMuted = Color(0xFF7B8498);
-  static const Color _fieldBackground = Color(0xFFF2F4FB);
+  static const Color _primaryBlue = Color(0xFF356AE6); // buttons
   static const Color _errorRed = Color(0xFFD64545);
+
+  // Light colours, or the dark ones while dark mode is on
+  bool get _dk => context.tutorDark;
+  Color get _background => _dk ? TutorDark.background : const Color(0xFFF7F9FE);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _textDark => _dk ? TutorDark.text : const Color(0xFF17233D);
+  Color get _textMuted => _dk ? TutorDark.textMuted : const Color(0xFF7B8498);
+  Color get _fieldBackground =>
+      _dk ? TutorDark.cardAlt : const Color(0xFFF2F4FB);
+  Color get _line => _dk ? TutorDark.border : const Color(0xFFE6E9F2);
+  Color get _hint => _dk ? TutorDark.textFaint : const Color(0xFFB4BACB);
+  Color get _blueTint => _dk ? TutorDark.blueTint : const Color(0xFFE6ECFC);
+  Color get _accent => _dk ? TutorDark.blueText : _primaryBlue; // blue text
 
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
@@ -140,14 +150,14 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: _surface,
+        surfaceTintColor: _surface,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
           tooltip: 'Back',
           onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_rounded, color: _textDark),
+          icon: Icon(Icons.arrow_back_rounded, color: _textDark),
         ),
         titleSpacing: 0,
         title: Text(
@@ -189,7 +199,7 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.lock_outline_rounded,
                     color: _textMuted,
                     size: 13,
@@ -276,7 +286,7 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
@@ -304,12 +314,12 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
                 height: 38,
                 width: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE6ECFC),
+                  color: _blueTint,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.event_note_rounded,
-                  color: _primaryBlue,
+                  color: _accent,
                   size: 20,
                 ),
               ),
@@ -333,9 +343,9 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
               '−R${_purchase.discountAmount}',
             ),
           ],
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
-            child: Divider(height: 1, color: Color(0xFFE6E9F2)),
+            child: Divider(height: 1, color: _line),
           ),
           Row(
             children: [
@@ -352,7 +362,7 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
               Text(
                 'R${_purchase.totalAmount}',
                 style: GoogleFonts.poppins(
-                  color: _primaryBlue,
+                  color: _accent,
                   fontSize: 24,
                   fontWeight: FontWeight.w600,
                 ),
@@ -558,7 +568,7 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: GoogleFonts.poppins(
-          color: const Color(0xFFB4BACB),
+          color: _hint,
           fontSize: 13,
         ),
         prefixIcon: Icon(icon, color: _textMuted, size: 18),
@@ -568,8 +578,8 @@ class _BookingPaymentDetailsPageState extends State<BookingPaymentDetailsPage> {
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(vertical: 13),
         errorStyle: GoogleFonts.poppins(fontSize: 11),
-        border: border(const Color(0xFFE6E9F2)),
-        enabledBorder: border(const Color(0xFFE6E9F2)),
+        border: border(_line),
+        enabledBorder: border(_line),
         focusedBorder: border(_primaryBlue),
         errorBorder: border(_errorRed),
         focusedErrorBorder: border(_errorRed),

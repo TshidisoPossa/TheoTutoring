@@ -35,7 +35,13 @@ class _Backend {
   bool missingEndpoints = false;
   http.Response? patchResponse;
   final students = [
-    _student(12, 'Lerato Mokoena', 'Active', phone: '+27 82 000 0000', lessons: 20),
+    _student(
+      12,
+      'Lerato Mokoena',
+      'Active',
+      phone: '+27 82 000 0000',
+      lessons: 20,
+    ),
     _student(13, 'Sipho Dlamini', 'Suspended', lessons: 5),
     _student(14, 'Ayesha Patel', 'Pending'),
   ];
@@ -75,10 +81,8 @@ class _Backend {
     tokenProvider: () async => 'admin-token',
   );
 
-  Map<String, String> get lastQuery => requests
-      .lastWhere((r) => r.method == 'GET')
-      .url
-      .queryParameters;
+  Map<String, String> get lastQuery =>
+      requests.lastWhere((r) => r.method == 'GET').url.queryParameters;
 }
 
 Future<void> _pump(WidgetTester tester, _Backend backend) async {
@@ -106,7 +110,10 @@ void main() {
     await _pump(tester, backend);
 
     expect(find.text('Student Roster'), findsOneWidget);
-    expect(find.text('Student management is not available yet.'), findsOneWidget);
+    expect(
+      find.text('Student management is not available yet.'),
+      findsOneWidget,
+    );
     expect(find.text('STUDENT NAME'), findsNothing);
   });
 
@@ -129,17 +136,17 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('status filters and search are sent to the API', (
-    tester,
-  ) async {
+  testWidgets('status filters and search are sent to the API', (tester) async {
     final backend = _Backend();
     await _pump(tester, backend);
 
     await tester.tap(
-      find.descendant(
-        of: find.byType(InkWell),
-        matching: find.text('Suspended'),
-      ).first,
+      find
+          .descendant(
+            of: find.byType(InkWell),
+            matching: find.text('Suspended'),
+          )
+          .first,
     );
     await tester.pumpAndSettle();
     expect(backend.lastQuery['status'], 'suspended');
@@ -187,7 +194,10 @@ void main() {
     );
 
     await tester.tap(
-      find.descendant(of: dialog, matching: find.widgetWithText(ChoiceChip, 'Suspended')),
+      find.descendant(
+        of: dialog,
+        matching: find.widgetWithText(ChoiceChip, 'Suspended'),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save status'));
@@ -229,7 +239,9 @@ void main() {
   ) async {
     final backend = _Backend()
       ..patchResponse = http.Response(
-        jsonEncode({'error': 'The administrator lacks the required permission.'}),
+        jsonEncode({
+          'error': 'The administrator lacks the required permission.',
+        }),
         403,
       );
     await _pump(tester, backend);

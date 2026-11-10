@@ -15,7 +15,7 @@ import '../../../../lib/tutorlanding_session.dart';
 // Returns:
 //   tutor     - name + profile picture (top right)
 //   booking   - subject, date, time, duration, student note, "ID #REQ-8842",
-//               "Received 3h ago", and canPostpone (shows the Decline button)
+//               "Received 3h ago", and canCancel (shows Cancel and Reschedule)
 //   student   - name, photo, year, course ("Major & Focus"), verified tick
 //   recurring - the "Recurring Booking" card, or null for a one-off session
 //

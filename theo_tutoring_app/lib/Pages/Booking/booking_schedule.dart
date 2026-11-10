@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../Student/student_bottom_nav.dart';
+import '../Tutor/tutor_theme.dart';
 import 'booking_api.dart';
 import 'booking_flow_context.dart';
 import 'booking_payment_details.dart';
@@ -32,14 +33,23 @@ class BookingSchedulePage extends StatefulWidget {
 }
 
 class _BookingSchedulePageState extends State<BookingSchedulePage> {
-  static const Color _primaryBlue = Color(0xFF356AE6);
-  static const Color _background = Color(0xFFF7F9FE);
-  static const Color _textDark = Color(0xFF17233D);
-  static const Color _textMuted = Color(0xFF7B8498);
-  static const Color _textFaint = Color(0xFFC3C8D4);
-  static const Color _border = Color(0xFFE6E9F2);
-  static const Color _headerBackground = Color(0xFFEEF1FB);
+  static const Color _primaryBlue = Color(0xFF356AE6); // fills: buttons, days
   static const Color _errorRed = Color(0xFFD64545);
+
+  // Light colours, or the dark ones while dark mode is on
+  bool get _dk => context.tutorDark;
+  Color get _background => _dk ? TutorDark.background : const Color(0xFFF7F9FE);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _textDark => _dk ? TutorDark.text : const Color(0xFF17233D);
+  Color get _textMuted => _dk ? TutorDark.textMuted : const Color(0xFF7B8498);
+  Color get _textFaint => _dk ? TutorDark.border : const Color(0xFFC3C8D4);
+  Color get _hint => _dk ? TutorDark.textFaint : const Color(0xFFB4BACB);
+  Color get _border => _dk ? TutorDark.border : const Color(0xFFE6E9F2);
+  Color get _inputBorder => _dk ? TutorDark.border : const Color(0xFFD9DDE8);
+  Color get _headerBackground =>
+      _dk ? TutorDark.cardAlt : const Color(0xFFEEF1FB);
+  Color get _blueTint => _dk ? TutorDark.blueTint : const Color(0xFFE0E7FB);
+  Color get _accent => _dk ? TutorDark.blueText : _primaryBlue; // blue text
 
   late final DateTime _today = DateUtils.dateOnly(DateTime.now());
   late final DateTime _lastDate = _today.add(const Duration(days: 90));
@@ -300,7 +310,7 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
     final fallback = Text(
       initials,
       style: GoogleFonts.poppins(
-        color: _primaryBlue,
+        color: _accent,
         fontSize: 18,
         fontWeight: FontWeight.w600,
       ),
@@ -316,7 +326,7 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
         children: [
           CircleAvatar(
             radius: 32,
-            backgroundColor: const Color(0xFFE0E7FB),
+            backgroundColor: _blueTint,
             child: photo == null || photo.isEmpty
                 ? fallback
                 : ClipOval(
@@ -395,7 +405,7 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
@@ -513,12 +523,12 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
     final Color? circle = isSelectedDay
         ? _primaryBlue
         : hasChosenTime
-        ? const Color(0xFFE0E7FB)
+        ? _blueTint
         : null;
     final Color textColor = isSelectedDay
         ? Colors.white
         : available
-        ? _primaryBlue
+        ? _accent
         : _textFaint;
 
     return Semantics(
@@ -580,7 +590,7 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
       children: [
         Row(
           children: [
-            const Icon(Icons.access_time_rounded, size: 16, color: _textDark),
+            Icon(Icons.access_time_rounded, size: 16, color: _textDark),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -635,7 +645,7 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
   Widget _buildTimeChip(AvailableBookingSlot slot) {
     final selected = _selected.contains(_slotKey(slot));
     return Material(
-      color: selected ? _primaryBlue : Colors.white,
+      color: selected ? _primaryBlue : _surface,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -702,15 +712,15 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
           decoration: InputDecoration(
             hintText: 'What would you like to focus on?',
             hintStyle: GoogleFonts.poppins(
-              color: const Color(0xFFB4BACB),
+              color: _hint,
               fontSize: 13,
             ),
             counterText: '',
             filled: true,
-            fillColor: Colors.white,
+            fillColor: _surface,
             contentPadding: const EdgeInsets.all(14),
-            border: border(const Color(0xFFD9DDE8)),
-            enabledBorder: border(const Color(0xFFD9DDE8)),
+            border: border(_inputBorder),
+            enabledBorder: border(_inputBorder),
             focusedBorder: border(_primaryBlue),
           ),
         ),

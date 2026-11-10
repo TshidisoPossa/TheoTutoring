@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:theo_tutoring_app/Pages/Student/student_profile.dart';
 import 'package:theo_tutoring_app/Pages/Tutor/tutor_availability_calendar.dart';
 import 'package:theo_tutoring_app/Pages/Tutor/tutor_notifications.dart';
 import 'package:theo_tutoring_app/Pages/Tutor/tutor_theme.dart';
@@ -57,6 +59,27 @@ void main() {
       expect(TutorTheme.mode.value, ThemeMode.dark);
     });
 
+    test('students and tutors each keep their own choice', () async {
+      TutorTheme.signedIn('tutor');
+      await TutorTheme.setDark(true);
+      TutorTheme.signedOut();
+
+      TutorTheme.signedIn('student');
+      expect(TutorTheme.darkChosen, isFalse);
+      expect(TutorTheme.mode.value, ThemeMode.light);
+
+      await TutorTheme.setDark(true);
+      expect(TutorTheme.mode.value, ThemeMode.dark);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('student_dark_mode'), isTrue);
+
+      await TutorTheme.setDark(false);
+      TutorTheme.signedOut();
+      TutorTheme.signedIn('tutor'); // still the tutor's own choice
+      expect(TutorTheme.mode.value, ThemeMode.dark);
+      await TutorTheme.setDark(false);
+    });
+
     test('the choice is remembered on the device', () async {
       await TutorTheme.setDark(true);
       final prefs = await SharedPreferences.getInstance();
@@ -93,6 +116,51 @@ void main() {
       await TutorTheme.setDark(false);
       await tester.pumpAndSettle();
       expect(_scaffoldColour(tester), const Color(0xFFF2F4F8));
+    });
+
+    testWidgets('the student Profile switch turns their screens dark', (
+      tester,
+    ) async {
+      GoogleFonts.config.allowRuntimeFetching = false;
+      TutorTheme.signedIn('student');
+      await tester.pumpWidget(
+        _app(
+          const Scaffold(
+            body: StudentProfileTab(
+              name: 'Lerato Dube',
+              email: 'lerato@example.com',
+              institution: 'University of Pretoria',
+              photo: null,
+            ),
+          ),
+        ),
+      );
+      Color background() => tester
+          .widget<ColoredBox>(
+            find
+                .descendant(
+                  of: find.byType(StudentProfileTab),
+                  matching: find.byType(ColoredBox),
+                )
+                .first,
+          )
+          .color;
+
+      expect(find.text('University of Pretoria'), findsOneWidget);
+      expect(background(), const Color(0xFFF7F9FE));
+
+      // Dark Mode sits below the profile details
+      await tester.ensureVisible(find.byType(Switch));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(TutorTheme.mode.value, ThemeMode.dark);
+      expect(background(), TutorDark.background);
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(background(), const Color(0xFFF7F9FE));
     });
 
     testWidgets('calendar dates use the dark tints', (tester) async {

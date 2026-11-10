@@ -558,35 +558,6 @@ CREATE TABLE IF NOT EXISTS RefundAdminAction (
         (RefundID, CreatedAtUtc, RefundAdminActionID)
 ) ENGINE=InnoDB;
 
--- User-submitted issues shown in the administrator Refunds & Issues screen.
-CREATE TABLE IF NOT EXISTS UserReport (
-    ReportID INT AUTO_INCREMENT PRIMARY KEY,
-    ReporterUserID INT NOT NULL,
-    ReportedUserID INT NOT NULL,
-    BookingID INT NULL,
-    Reason VARCHAR(191) NOT NULL,
-    Description TEXT NOT NULL,
-    ReportStatus ENUM('Open', 'UnderReview', 'Resolved')
-        NOT NULL DEFAULT 'Open',
-    ResolutionNote TEXT NULL,
-    ResolvedByAdminID INT NULL,
-    CreatedAtUtc DATETIME(6) NOT NULL,
-    ResolvedAtUtc DATETIME(6) NULL,
-
-    CONSTRAINT chk_user_report_distinct_users
-        CHECK (ReporterUserID <> ReportedUserID),
-    CONSTRAINT fk_user_report_reporter
-        FOREIGN KEY (ReporterUserID) REFERENCES `User`(UserId),
-    CONSTRAINT fk_user_report_reported
-        FOREIGN KEY (ReportedUserID) REFERENCES `User`(UserId),
-    CONSTRAINT fk_user_report_booking
-        FOREIGN KEY (BookingID) REFERENCES Booking(Booking_id),
-    CONSTRAINT fk_user_report_admin
-        FOREIGN KEY (ResolvedByAdminID) REFERENCES Admin(AdminID),
-
-    INDEX idx_user_report_status_created (ReportStatus, CreatedAtUtc)
-) ENGINE=InnoDB;
-
 -- A hold row represents one 60-minute slot in a purchase. Expiration
 -- timestamps are UTC; lesson date/time remain Johannesburg local values.
 CREATE TABLE IF NOT EXISTS BookingSlotHold (
@@ -668,6 +639,8 @@ CREATE TABLE IF NOT EXISTS Reviews (
     TutorID INT NOT NULL,
     Rating TINYINT NOT NULL,
     `comment` TEXT NULL,
+    Highlights VARCHAR(255) NULL, -- migration 011; admin only
+    PrivateNote VARCHAR(500) NULL, -- migration 011; admin only
     Created_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     BookingID INT NOT NULL UNIQUE,
 
@@ -685,19 +658,24 @@ CREATE TABLE IF NOT EXISTS Reviews (
 
 -- =========================================================
 -- 13b. REPORTS
--- A student reporting a tutor or a tutor reporting a student.
--- The administrator reviews them (AdminID = who handled it).
+-- A student reporting a tutor or a tutor reporting a student, and the
+-- tutors' Report a Problem (Category; ReportedUserID empty when it is not
+-- about another user). Shown on the admin Refunds & issues screen and
+-- GET /admin/reports (AdminID = who resolved it).
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS Report (
     ReportID INT AUTO_INCREMENT PRIMARY KEY,
     ReporterID INT NOT NULL,
-    ReportedUserID INT NOT NULL,
+    ReportedUserID INT NULL,
     BookingID INT NULL,
+    Category VARCHAR(40) NULL,
     AdminID INT NULL,
     Reason TEXT NOT NULL,
     Status ENUM('Open', 'Under review', 'Resolved')
         NOT NULL DEFAULT 'Open',
+    ResolutionNote TEXT NULL,
+    ResolvedAtUtc DATETIME(6) NULL,
     Created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT chk_report_not_self

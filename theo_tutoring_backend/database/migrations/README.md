@@ -6,6 +6,10 @@ There is no migration runner. Apply `001_booking_foundation.sql`, then
 `005_tutor_presence.sql`, then `006_student_institution.sql` (adds the
 nullable `StudentProfile.Institution`, the student's university), then
 `007_tutor_availability_override.sql`, then `008_tutor_meet_link.sql`,
+then `009_email_verification_code.sql` (the emailed sign-up codes),
+then `010_report_category.sql` (Report a Problem categories),
+then `011_review_highlights_note.sql` (review badges and private note,
+both admin only),
 after the base `schema.sql`, from one
 deployment process with booking writes stopped. Each ledger version is written
 last by its migration.

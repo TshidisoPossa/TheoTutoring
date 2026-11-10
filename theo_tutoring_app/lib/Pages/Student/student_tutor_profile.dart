@@ -8,6 +8,7 @@ import '../../models/tutor_profile_details.dart';
 import '../../services/tutor_search_api.dart';
 import '../Booking/booking_flow_context.dart';
 import '../Booking/booking_select_lesson.dart';
+import '../Tutor/tutor_theme.dart';
 import 'student_bottom_nav.dart';
 import 'student_lesson.dart';
 import 'student_reports_api.dart';
@@ -45,17 +46,22 @@ class StudentTutorProfilePage extends StatefulWidget {
 }
 
 class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
-  static const Color _primaryBlue = Color(0xFF3B7BF2);
+  static const Color _primaryBlue = Color(0xFF3B7BF2); // fills: buttons, dots
   static const Color _darkBlue = Color(0xFF173B8F);
-  static const Color _background = Color(0xFFF1F4F9);
-  static const Color _border = Color(0xFFE5E9F2);
-  static const Color _textDark = Color(0xFF17233D);
-  static const Color _textMuted = Color(0xFF6B7385);
-  static const Color _chipFill = Color(0xFFEAF1FE);
   static const Color _star = Color(0xFFF5B301);
-  static const Color _greenFill = Color(0xFFDDF7E6);
-  static const Color _greenText = Color(0xFF15803D);
-  static const Color _dotOff = Color(0xFFDCE1EA);
+
+  // Light colours, or the dark ones while dark mode is on
+  bool get _dk => context.tutorDark;
+  Color get _background => _dk ? TutorDark.background : const Color(0xFFF1F4F9);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _border => _dk ? TutorDark.border : const Color(0xFFE5E9F2);
+  Color get _textDark => _dk ? TutorDark.text : const Color(0xFF17233D);
+  Color get _textMuted => _dk ? TutorDark.textMuted : const Color(0xFF6B7385);
+  Color get _chipFill => _dk ? TutorDark.blueTint : const Color(0xFFEAF1FE);
+  Color get _greenFill => _dk ? TutorDark.greenTint : const Color(0xFFDDF7E6);
+  Color get _greenText => _dk ? TutorDark.greenText : const Color(0xFF15803D);
+  Color get _dotOff => _dk ? TutorDark.border : const Color(0xFFDCE1EA);
+  Color get _accent => _dk ? TutorDark.blueText : _primaryBlue; // blue text
 
   static const _weekdays = [
     ('Monday', 'Mon'),
@@ -146,7 +152,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
     } else {
       subject = await showModalBottomSheet<TutorSubject>(
         context: context,
-        backgroundColor: Colors.white,
+        backgroundColor: _surface,
         builder: (sheetContext) => SafeArea(
           child: ListView(
             shrinkWrap: true,
@@ -244,11 +250,11 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: _surface,
+        surfaceTintColor: _surface,
         elevation: 0,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: _textDark),
+        iconTheme: IconThemeData(color: _textDark),
         title: Text(
           'Tutor Profile',
           style: GoogleFonts.poppins(
@@ -260,8 +266,8 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
         actions: [
           PopupMenuButton<String>(
             tooltip: 'More options',
-            icon: const Icon(Icons.more_vert_rounded, color: _textDark),
-            color: Colors.white,
+            icon: Icon(Icons.more_vert_rounded, color: _textDark),
+            color: _surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
@@ -333,7 +339,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
     final initialsText = Text(
       _initials,
       style: GoogleFonts.poppins(
-        color: _darkBlue,
+        color: _dk ? TutorDark.blueText : _darkBlue,
         fontSize: 28,
         fontWeight: FontWeight.w700,
       ),
@@ -344,7 +350,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
         children: [
           CircleAvatar(
             radius: 48,
-            backgroundColor: const Color(0xFFE4ECFF),
+            backgroundColor: _chipFill,
             child: tutor.profilePhoto == null
                 ? initialsText
                 : ClipOval(
@@ -404,10 +410,10 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
                     '(${tutor.reviewCount} '
                     '${tutor.reviewCount == 1 ? 'review' : 'reviews'})',
                     style: GoogleFonts.poppins(
-                      color: _primaryBlue,
+                      color: _accent,
                       fontSize: 13,
                       decoration: TextDecoration.underline,
-                      decorationColor: _primaryBlue,
+                      decorationColor: _accent,
                     ),
                   ),
                 ),
@@ -428,7 +434,9 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
       decoration: BoxDecoration(
-        color: availableNow ? _greenFill : const Color(0xFFEDF0F5),
+        color: availableNow
+            ? _greenFill
+            : (_dk ? TutorDark.cardAlt : const Color(0xFFEDF0F5)),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -494,7 +502,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
                     child: Text(
                       subject.subjectName,
                       style: GoogleFonts.poppins(
-                        color: _primaryBlue,
+                        color: _accent,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -506,7 +514,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
             const SizedBox(height: 14),
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.work_history_outlined,
                   size: 16,
                   color: _textMuted,
@@ -523,12 +531,12 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.sell_outlined, size: 16, color: _primaryBlue),
+                Icon(Icons.sell_outlined, size: 16, color: _accent),
                 const SizedBox(width: 6),
                 Text(
                   'R${tutor.hourlyRate!.toStringAsFixed(2)} per session',
                   style: GoogleFonts.poppins(
-                    color: _primaryBlue,
+                    color: _accent,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -595,7 +603,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
           : Column(
               children: [
                 for (var i = 0; i < qualifications.length; i++) ...[
-                  if (i > 0) const Divider(height: 24, color: _border),
+                  if (i > 0) Divider(height: 24, color: _border),
                   Row(
                     children: [
                       Container(
@@ -605,9 +613,9 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
                           color: _chipFill,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.school_outlined,
-                          color: _primaryBlue,
+                          color: _accent,
                           size: 22,
                         ),
                       ),
@@ -738,13 +746,13 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      border: Border.all(color: _primaryBlue),
+                      border: Border.all(color: _accent),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       '$selected ${slot.startTime} – ${slot.endTime}',
                       style: GoogleFonts.poppins(
-                        color: _primaryBlue,
+                        color: _accent,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -821,11 +829,11 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
                     ? 'Show fewer reviews'
                     : 'See all ${reviews.length} reviews',
                 style: GoogleFonts.poppins(
-                  color: _primaryBlue,
+                  color: _accent,
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                   decoration: TextDecoration.underline,
-                  decorationColor: _primaryBlue,
+                  decorationColor: _accent,
                 ),
               ),
             ),
@@ -849,7 +857,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
                       ? '?'
                       : review.studentName[0].toUpperCase(),
                   style: GoogleFonts.poppins(
-                    color: _primaryBlue,
+                    color: _accent,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -948,8 +956,8 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
           icon: const Icon(Icons.chat_bubble_outline_rounded, size: 20),
           label: const Text('Message Tutor'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: _primaryBlue,
-            side: const BorderSide(color: _primaryBlue, width: 1.5),
+            foregroundColor: _accent,
+            side: BorderSide(color: _accent, width: 1.5),
             padding: const EdgeInsets.symmetric(vertical: 15),
             textStyle: GoogleFonts.poppins(
               fontSize: 15,
@@ -993,7 +1001,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _border),
       ),

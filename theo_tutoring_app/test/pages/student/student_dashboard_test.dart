@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_chatlist.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_dashboard.dart';
+import 'package:theo_tutoring_app/Pages/Student/student_profile.dart';
 
 // Firebase is not initialised in widget tests, so the dashboard and the chat
 // list both land in their error states; these tests only cover navigation.
@@ -49,13 +50,26 @@ void main() {
     expect(_topBar, findsOneWidget);
   });
 
-  testWidgets('Profile still shows its placeholder', (tester) async {
+  testWidgets('the Profile tab has Dark Mode and Log Out', (tester) async {
     await _pump(tester);
     await tester.tap(find.text('Profile'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(find.text('Profile will be connected soon.'), findsOneWidget);
-    expect(find.byType(ChatsScreen), findsNothing);
-    expect(_topBar, findsOneWidget);
+    expect(find.byType(StudentProfileTab), findsOneWidget);
+    expect(find.text('Profile will be connected soon.'), findsNothing);
+    expect(find.text('Dark Mode'), findsOneWidget);
+    expect(find.text('Log Out'), findsOneWidget);
+    // The Profile tab has its own header
+    expect(_topBar, findsNothing);
+  });
+
+  testWidgets('the side menu has no Settings item', (tester) async {
+    await _pump(tester);
+    tester.state<ScaffoldState>(find.byType(Scaffold).first).openDrawer();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Session History'), findsOneWidget);
+    expect(find.text('Settings'), findsNothing);
+    expect(find.byIcon(Icons.settings_outlined), findsNothing);
   });
 }

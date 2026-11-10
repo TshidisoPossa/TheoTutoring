@@ -1,24 +1,18 @@
-import 'dart:convert';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
-import '../config/api.dart';
-import 'Admin/admin_shell.dart';
-import 'Admin/Services/admin_access_service.dart';
-import 'Student/student_dashboard.dart';
-import 'Tutor/tutor_api.dart';
-import 'Tutor/tutor_dashboard.dart';
-import 'Tutor/tutor_presence.dart';
-import 'Tutor/tutor_theme.dart';
+import '../services/auth_service.dart';
+import 'auth_gate.dart';
 import 'role_selection.dart';
 import 'forgot_password.dart';
 import 'privacy_policy.dart';
 import 'terms_and_conditions.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.initialEmail = ''});
+
+  /// Filled in after registering, so only the password is left to type.
+  final String initialEmail;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -27,7 +21,9 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
 
-  final _emailController = TextEditingController();
+  late final _emailController = TextEditingController(
+    text: widget.initialEmail,
+  );
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
@@ -51,143 +47,17 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+      await AuthService.instance.signIn(
+        _emailController.text.trim(),
+        _passwordController.text,
       );
-      final user = credential.user;
-      if (user == null) {
-        if (mounted) {
-          setState(() => _errorMessage = 'Login failed. Please try again.');
-        }
-        return;
-      }
-
-      final String? idToken;
-      try {
-        idToken = await user.getIdToken();
-      } on Exception {
-        if (mounted) {
-          setState(() {
-            _errorMessage =
-                'Could not verify your account. Please sign in again.';
-          });
-        }
-        return;
-      }
-
-      if (idToken == null || idToken.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _errorMessage =
-                'Could not verify your account. Please sign in again.';
-          });
-        }
-        return;
-      }
-
-      final http.Response response;
-      try {
-        response = await http
-            .get(
-              Uri.parse('$apiBaseUrl/StudentlandingPage/myprofile'),
-              headers: {
-                'Authorization': 'Bearer $idToken',
-                'Accept': 'application/json',
-              },
-            )
-            .timeout(const Duration(seconds: 15));
-      } on Exception {
-        if (mounted) {
-          setState(() {
-            _errorMessage =
-                'Could not connect to the server. Please try again.';
-          });
-        }
-        return;
-      }
-
-      // No student profile: this may be a tutor account
-      if (response.statusCode == 404) {
-        // Check for an administrator only after the existing student lookup.
-        // Student logins therefore keep their current path unchanged.
-        final adminAccess = await AdminAccessService().checkToken(idToken);
-        if (adminAccess.isAllowed) {
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, AdminRoutes.dashboard);
-          }
-          return;
-        }
-        await _openTutorDashboard(idToken);
-        return;
-      }
-
-      if (response.statusCode != 200) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = switch (response.statusCode) {
-              401 =>
-                'Your session could not be verified. Please sign in again.',
-              404 => 'No student profile was found for this account.',
-              403 => 'This account is not active. Please contact support.',
-              _ =>
-                'We could not verify your student profile. Please try again.',
-            };
-          });
-        }
-        return;
-      }
-
-      final dynamic profile;
-      try {
-        profile = jsonDecode(response.body);
-      } on FormatException {
-        if (mounted) {
-          setState(() {
-            _errorMessage =
-                'The server returned an invalid response. Please try again.';
-          });
-        }
-        return;
-      }
-
-      if (profile is! Map<String, dynamic> ||
-          profile['userId'] is! int ||
-          profile['studentId'] is! int ||
-          profile['name'] is! String ||
-          (profile['name'] as String).trim().isEmpty ||
-          profile['email'] is! String ||
-          (profile['email'] as String).trim().isEmpty ||
-          profile['role'] is! String ||
-          profile['accountStatus'] is! String ||
-          (profile['accountStatus'] as String).trim().isEmpty) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'The server returned an invalid student profile. Please try again.';
-          });
-        }
-        return;
-      }
-
-      if (profile['role'] != 'student') {
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'This account is not registered as a student.';
-          });
-        }
-        return;
-      }
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => StudentDashboard(
-              studentName: (profile['name'] as String).trim(),
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+      // The start screen asks the backend who this is (GET /auth/me) and
+      // opens their student, tutor or admin dashboard.
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const AuthGate()),
+        (_) => false,
+      );
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         setState(() {
@@ -202,32 +72,6 @@ class _LoginPageState extends State<LoginPage> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  // Loads the tutor dashboard; opens it if this account is a tutor
-  Future<void> _openTutorDashboard(String idToken) async {
-    try {
-      final dashboard = await fetchTutorDashboard(idToken: idToken);
-      if (!mounted) return;
-      // Students see "Available Now" on this tutor's profile from here on
-      TutorPresence.instance.start();
-      TutorTheme.signedIn(); // dark mode, if the tutor turned it on
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => TutorDashboard(initialData: dashboard),
-        ),
-      );
-    } on TutorApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = switch (e.statusCode) {
-          403 || 404 =>
-            'No active student or tutor profile was found for this account.',
-          _ => e.message,
-        };
-      });
     }
   }
 
