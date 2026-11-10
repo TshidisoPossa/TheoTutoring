@@ -70,6 +70,39 @@ class StudentLessonsApi {
     }
   }
 
+  /// Asks the backend for the lesson's Google Meet link (Start session).
+  /// The server only gives it for the student's own paid lesson, from 15
+  /// minutes before it starts; otherwise this throws
+  /// [StudentLessonsException] with the server's message, e.g. "This
+  /// session opens 15 minutes before it starts."
+  Future<String> join(int bookingId) async {
+    final token = await _token();
+    final response = await _client
+        .post(
+          Uri.parse('$apiBaseUrl/students/lessons/$bookingId/join'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(const Duration(seconds: 15));
+    Object? decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      decoded = null;
+    }
+    final link = decoded is Map<String, dynamic> ? decoded['link'] : null;
+    if (response.statusCode != 200 || link is! String || link.isEmpty) {
+      throw StudentLessonsException(
+        decoded is Map<String, dynamic> && decoded['error'] is String
+            ? decoded['error'] as String
+            : 'Session could not be opened. Please try again.',
+      );
+    }
+    return link;
+  }
+
   Future<Map<String, dynamic>> fetch() async {
     final token = await _token();
 

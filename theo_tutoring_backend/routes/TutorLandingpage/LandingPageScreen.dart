@@ -1,6 +1,7 @@
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mysql_client/mysql_client.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/google_meet.dart';
 import 'package:theo_tutoring_backend/header_tutor.dart';
 import 'package:theo_tutoring_backend/tutor_application_status.dart';
 import '../../lib/tutorlanding_session.dart';
@@ -83,7 +84,7 @@ Future<Response> onRequest(RequestContext context) async {
   // same clock as CURDATE()/CURTIME(); 0 or less means the session is on now.
   final schedule = await conn.execute(
     'SELECT b.Booking_id, b.SubjectID, sj.subjectName AS Subject, '
-    'b.StartTime, b.EndTime, b.Note, b.Link, '
+    'b.StartTime, b.EndTime, b.Note, $tutorMeetLinkSql, '
     'u.Name AS StudentName, u.ProfilePhoto AS StudentPhoto, '
     'TIMESTAMPDIFF(MINUTE, NOW(), TIMESTAMP(b.`Date`, b.StartTime)) '
     'AS MinutesUntilStart '

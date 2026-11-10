@@ -1,6 +1,7 @@
 import 'package:mysql_client/mysql_client.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
+import 'package:theo_tutoring_backend/google_meet.dart';
 
 // ---------------------------------------------------------------------------
 // TUTOR BOOKING DETAILS PAGE: BACKEND
@@ -179,7 +180,7 @@ Future<Map<String, dynamic>?> getBookingDetail(
 ) async {
   final result = await conn.execute(
     'SELECT b.Booking_id, b.Status, b.`Date`, b.StartTime, b.EndTime, '
-    'b.Note, b.Link, b.SubjectID, sj.subjectName AS Subject, '
+    'b.Note, $tutorMeetLinkSql, b.SubjectID, sj.subjectName AS Subject, '
     'TIME_TO_SEC(TIMEDIFF(b.EndTime, b.StartTime)) DIV 60 AS DurationMinutes, '
     // 180 -> "Received 3h ago"
     'TIMESTAMPDIFF(MINUTE, b.Created_at, NOW()) AS ReceivedMinutesAgo, '

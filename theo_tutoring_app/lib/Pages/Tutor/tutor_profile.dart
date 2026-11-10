@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../services/google_meet_connect.dart';
 import '../cloudinary_upload.dart';
+import '../help_center.dart';
 import '../login_page.dart';
 import '../privacy_policy.dart';
 import '../terms_and_conditions.dart';
@@ -1312,7 +1313,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         _row(
           icon: Icons.help_outline_rounded,
           title: 'Help Center',
-          onTap: () => _comingSoon('The Help Center'),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const HelpCenterPage()),
+          ),
         ),
         _row(
           icon: Icons.outlined_flag_rounded,

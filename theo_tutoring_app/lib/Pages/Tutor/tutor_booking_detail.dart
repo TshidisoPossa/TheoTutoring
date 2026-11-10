@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'tutor_api.dart';
 import 'tutor_format.dart';
@@ -42,6 +43,13 @@ class BookingDetail {
 
   final String? tutorName;
   final String? tutorPhotoUrl;
+
+  /// Same rule as the Schedule page: the tutor's Meet room opens in one tap
+  /// for a lesson that is going ahead.
+  bool get canJoin =>
+      sessionLink != null &&
+      sessionLink!.isNotEmpty &&
+      (status == 'Confirmed' || status == 'Postponed');
 
   const BookingDetail({
     required this.bookingId,
@@ -555,6 +563,8 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
                     style: TextStyle(color: _text3, fontSize: 14)),
             ],
           ),
+          const SizedBox(height: 14),
+          _buildJoinButton(b),
           // The note the student wrote when booking, as on the Schedule page
           ...[
             const SizedBox(height: 16),
@@ -604,6 +614,52 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
         ],
       ),
     );
+  }
+
+  // ── Join session: opens the tutor's own Google Meet room ─────────────────
+
+  Widget _buildJoinButton(BookingDetail b) {
+    final hasLink = b.sessionLink != null && b.sessionLink!.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: b.canJoin ? () => _joinSession(b.sessionLink!) : null,
+            icon: const Icon(Icons.videocam_outlined, size: 18),
+            label: const Text('Join session',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _blue,
+              foregroundColor: _white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+        if (!hasLink) ...[
+          const SizedBox(height: 6),
+          Text('Session link not added yet',
+              style: TextStyle(color: _text3, fontSize: 12)),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _joinSession(String link) async {
+    final opened = await launchUrl(
+      Uri.parse(link),
+      mode: LaunchMode.externalApplication,
+      webOnlyWindowName: '_blank',
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Google Meet could not be opened.')),
+      );
+    }
   }
 
   // ── Student: photo with a verified tick, name, year, major & focus ───────

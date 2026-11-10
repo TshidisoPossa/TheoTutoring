@@ -218,7 +218,7 @@ void main() {
       expect(pageSql, contains('AS ReviewCount'));
       expect(pageSql, contains('WHERE ps.SettingsID = 1'));
       expect(pageSql, contains('SELECT AVG(r.Rating)'));
-      expect(pageSql, contains('SELECT COUNT(*) FROM Reviews'));
+      expect(pageSql, contains('SELECT COUNT(*) FROM reviews'));
     });
   });
 }

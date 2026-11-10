@@ -10,6 +10,9 @@ const upcomingLessonStatuses = [
   'Confirmed',
 ];
 
+/// How early a student can join a lesson: 15 minutes before it starts.
+const joinWindowSeconds = 15 * 60;
+
 /// Loads the student's Lessons tab (My Schedule) from MySQL.
 class MySqlStudentLessonsRepository {
   /// Creates a repository using the supplied MySQL connection.
@@ -49,7 +52,7 @@ class MySqlStudentLessonsRepository {
         DATE_FORMAT(b.Date, '%Y-%m-%d') AS SessionDate,
         TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime,
         TIME_FORMAT(b.EndTime, '%H:%i') AS EndTime,
-        b.Link, b.CancellationReason
+        b.CancellationReason
       FROM Booking b
       INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
       INNER JOIN `User` tu ON tu.UserId = tp.UserID
@@ -82,7 +85,8 @@ class MySqlStudentLessonsRepository {
         'date': row.colByName('SessionDate'),
         'startTime': row.colByName('StartTime'),
         'endTime': row.colByName('EndTime'),
-        'link': row.colByName('Link'),
+        // No 'link' here: students only get the Meet link from the join
+        // route (POST /students/lessons/<id>/join), at lesson time.
         'cancellationReason': row.colByName('CancellationReason'),
       };
       (status == 'Cancelled' ? cancelled : upcoming).add(lesson);
@@ -145,33 +149,18 @@ class MySqlStudentLessonsRepository {
         );
       }
 
-      // What the student paid for this lesson, if anything: a direct
-      // Payment, or this lesson's price in a paid package.
-      final purchaseId = row.colByName('PurchaseID');
-      final paid = purchaseId == null
-          ? await tx.execute(
-              '''
-              SELECT Amount FROM Payment
-              WHERE BookingId = :bookingId AND PaymentStatus = 'Successful'
-              ''',
-              {'bookingId': bookingId},
-            )
-          : await tx.execute(
-              '''
-              SELECT :price AS Amount FROM PurchasePayment
-              WHERE PurchaseID = :purchaseId
-              ''',
-              {
-                'purchaseId': purchaseId,
-                'price': row.colByName('LessonPriceAtPurchase'),
-              },
-            );
+      final paidAmount = await _paidAmount(
+        tx,
+        bookingId: bookingId,
+        purchaseId: row.colByName('PurchaseID'),
+        lessonPrice: row.colByName('LessonPriceAtPurchase'),
+      );
 
       int? refundPercent;
       String? refundAmount;
-      if (paid.rows.isNotEmpty) {
+      if (paidAmount != null) {
         refundPercent = refundPercentFor(minutesBefore);
-        final paidCents = _cents(paid.rows.first.colByName('Amount')!);
+        final paidCents = _cents(paidAmount);
         refundAmount = _rands(paidCents * refundPercent ~/ 100);
         await tx.execute(
           '''
@@ -207,6 +196,109 @@ class MySqlStudentLessonsRepository {
         refundAmount: refundAmount,
       );
     });
+  }
+
+  /// Returns the Google Meet link for one of the student's own lessons, once
+  /// the join rules allow it (Google Meet design, section 3):
+  ///
+  /// * the lesson belongs to this student (404 otherwise);
+  /// * it is Confirmed or Postponed, and a Postponed lesson was paid for
+  ///   (tutors can also postpone Pending lessons);
+  /// * it starts in 15 minutes or less and has not ended;
+  /// * the tutor has a link.
+  ///
+  /// Every other failure is a 409 with the message shown to the student.
+  Future<String> joinLink(String firebaseUid, int bookingId) async {
+    final studentId = await _studentId(firebaseUid);
+    // Times are South African, as everywhere else in this file. SECOND (not
+    // MINUTE) so the window opens at exactly 15:00 before the start:
+    // TIMESTAMPDIFF(MINUTE, ...) would round 15:59 down to 15.
+    final booking = await connection.execute(
+      '''
+      SELECT b.Status, b.PurchaseID, b.LessonPriceAtPurchase,
+        COALESCE(b.Link, tp.MeetLink) AS Link,
+        TIMESTAMPDIFF(
+          SECOND,
+          UTC_TIMESTAMP() + INTERVAL 2 HOUR,
+          TIMESTAMP(b.Date, b.StartTime)
+        ) AS SecondsToStart,
+        TIMESTAMPDIFF(
+          SECOND,
+          UTC_TIMESTAMP() + INTERVAL 2 HOUR,
+          TIMESTAMP(b.Date, b.EndTime)
+        ) AS SecondsToEnd
+      FROM Booking b
+      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
+      WHERE b.Booking_id = :bookingId AND b.StudentID = :studentId
+      ''',
+      {'bookingId': bookingId, 'studentId': studentId},
+    );
+    if (booking.rows.isEmpty) {
+      throw const LessonActionException(404, 'Lesson not found.');
+    }
+    final row = booking.rows.first;
+
+    const cannotJoin = LessonActionException(
+      409,
+      "This lesson can't be joined.",
+    );
+    final status = row.colByName('Status');
+    if (status != 'Confirmed' && status != 'Postponed') throw cannotJoin;
+    if (status == 'Postponed') {
+      final paidAmount = await _paidAmount(
+        connection,
+        bookingId: bookingId,
+        purchaseId: row.colByName('PurchaseID'),
+        lessonPrice: row.colByName('LessonPriceAtPurchase'),
+      );
+      if (paidAmount == null) throw cannotJoin;
+    }
+
+    if (int.parse(row.colByName('SecondsToStart')!) > joinWindowSeconds) {
+      throw const LessonActionException(
+        409,
+        'This session opens 15 minutes before it starts.',
+      );
+    }
+    if (int.parse(row.colByName('SecondsToEnd')!) <= 0) {
+      throw const LessonActionException(409, 'This session has ended.');
+    }
+
+    final link = row.colByName('Link')?.trim();
+    if (link == null || link.isEmpty) {
+      throw const LessonActionException(
+        409,
+        "Your tutor hasn't connected Google Meet yet.",
+      );
+    }
+    return link;
+  }
+
+  /// What the student paid for this lesson, or null if nothing was paid: a
+  /// successful direct Payment, or this lesson's price in a paid package.
+  /// Used by [cancel] for the refund and by [joinLink] for Postponed lessons.
+  static Future<String?> _paidAmount(
+    MySQLConnection db, {
+    required int bookingId,
+    required String? purchaseId,
+    required String? lessonPrice,
+  }) async {
+    final paid = purchaseId == null
+        ? await db.execute(
+            '''
+            SELECT Amount FROM Payment
+            WHERE BookingId = :bookingId AND PaymentStatus = 'Successful'
+            ''',
+            {'bookingId': bookingId},
+          )
+        : await db.execute(
+            '''
+            SELECT :price AS Amount FROM PurchasePayment
+            WHERE PurchaseID = :purchaseId
+            ''',
+            {'purchaseId': purchaseId, 'price': lessonPrice},
+          );
+    return paid.rows.isEmpty ? null : paid.rows.first.colByName('Amount');
   }
 
   // "250.00" -> 25000
@@ -269,7 +361,7 @@ class LessonCancellation {
   final String? refundAmount;
 }
 
-/// A cancel or report request the student is not allowed to make.
+/// A cancel, report or join request the student is not allowed to make.
 class LessonActionException implements Exception {
   /// Creates the exception with the HTTP status to return.
   const LessonActionException(this.statusCode, this.message);

@@ -73,4 +73,73 @@ void main() {
     // A booking without a note still says so
     expect(find.text('No note from the student.'), findsOneWidget);
   });
+
+  group('Join session', () {
+    Map<String, dynamic> session(int id, {String? link, String? status}) => {
+      ..._session(id, 'Student $id', null),
+      'link': link,
+      'status': status ?? 'Confirmed',
+    };
+
+    test('canJoin needs a link and a Confirmed or Postponed lesson', () {
+      ScheduleSession s(String? link, String status) =>
+          ScheduleSession.fromJson(session(1, link: link, status: status));
+      const meet = 'https://meet.google.com/abc';
+      expect(s(meet, 'Confirmed').canJoin, isTrue);
+      expect(s(meet, 'Postponed').canJoin, isTrue);
+      expect(s(null, 'Confirmed').canJoin, isFalse);
+      expect(s('', 'Confirmed').canJoin, isFalse);
+      expect(s(meet, 'Cancelled').canJoin, isFalse);
+      expect(s(meet, 'Pending').canJoin, isFalse);
+      expect(s(meet, 'Completed').canJoin, isFalse);
+    });
+
+    testWidgets('replaces Session link, and is disabled with no link or on a '
+        'cancelled lesson', (tester) async {
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final page = {
+        ..._page,
+        'days': [
+          {
+            'date': '2026-10-24',
+            'daysFromToday': 0,
+            'sessions': [
+              session(1, link: 'https://meet.google.com/abc'),
+              session(2),
+              session(3, link: 'https://meet.google.com/abc',
+                  status: 'Cancelled'),
+            ],
+          },
+        ],
+      };
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TutorScheduleScreen(
+            loadSchedule: ({
+              String tab = 'upcoming',
+              String date = 'all',
+              List<int> subjectIds = const [],
+            }) async => page,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Session link'), findsNothing);
+      final buttons = find.ancestor(
+        of: find.text('Join session'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      );
+      expect(buttons, findsNWidgets(3));
+      final enabled = [
+        for (final element in buttons.evaluate())
+          (element.widget as ButtonStyleButton).enabled,
+      ];
+      expect(enabled, [true, false, false]);
+      // The card without a link still says so
+      expect(find.text('Session link not added yet'), findsOneWidget);
+    });
+  });
 }

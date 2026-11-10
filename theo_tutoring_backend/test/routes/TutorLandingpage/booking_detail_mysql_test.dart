@@ -21,14 +21,18 @@ import '../../../routes/TutorLandingpage/bookings/[id]/postpone.dart'
 // .env, as one tutor. Opt in, so a normal `dart test` never touches it:
 //   BOOKING_MYSQL_TEST_TUTOR_ID=1 dart test test/routes/TutorLandingpage/booking_detail_mysql_test.dart
 // It adds sample bookings and availability for that tutor and deletes them
-// afterwards. The Firebase login check (middleware) is skipped and Firestore
-// is faked, so no real notification is sent.
+// afterwards. The link test sets the tutor's MeetLink and puts it back. The
+// Firebase login check (middleware) is skipped and Firestore is faked, so no
+// real notification is sent.
 
 class _MockRequestContext extends Mock implements RequestContext {}
 
 final _tutorId = int.tryParse(
   Platform.environment['BOOKING_MYSQL_TEST_TUTOR_ID'] ?? '',
 );
+
+const _meetLink = 'https://meet.google.com/aaa-bbbb-ccc';
+const _ownLink = 'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
 
 void main() {
   if (_tutorId == null) {
@@ -317,6 +321,37 @@ void main() {
       '999999999',
     );
     expect(response.statusCode, 404);
+  });
+
+  test("details: link is the tutor's Meet room, unless the booking has its "
+      'own', () async {
+    final saved = await conn.execute(
+      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      {'t': _tutorId},
+    );
+    final savedMeetLink = saved.rows.first.colByName('MeetLink');
+    try {
+      await conn.execute(
+        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        {'link': _meetLink, 't': _tutorId},
+      );
+      await conn.execute(
+        'UPDATE Booking SET Link = :link WHERE Booking_id = :id',
+        {'link': _ownLink, 'id': ids['week2']},
+      );
+      Future<Object?> linkOf(String name) async {
+        final (_, body) = await detail(name);
+        return (body['booking'] as Map<String, dynamic>)['link'];
+      }
+
+      expect(await linkOf('week1'), _meetLink);
+      expect(await linkOf('week2'), _ownLink);
+    } finally {
+      await conn.execute(
+        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        {'link': savedMeetLink, 't': _tutorId},
+      );
+    }
   });
 
   test('postpone: refuses sessions that cannot move', () async {

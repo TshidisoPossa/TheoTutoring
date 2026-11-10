@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'student_lessons_api.dart';
 
@@ -27,7 +28,6 @@ class Lesson {
   final DateTime end;
   final String status;
   final String? avatarUrl;
-  final String? link;
   final String? cancellationReason;
 
   const Lesson({
@@ -38,7 +38,6 @@ class Lesson {
     required this.end,
     required this.status,
     this.avatarUrl,
-    this.link,
     this.cancellationReason,
   });
 
@@ -62,12 +61,15 @@ class Lesson {
       end: end,
       status: optional(json['status']) ?? 'Pending',
       avatarUrl: optional(json['tutorPhoto']),
-      link: optional(json['link']),
       cancellationReason: optional(json['cancellationReason']),
     );
   }
 
   bool get isConfirmed => status == 'Confirmed';
+
+  /// Start session is enabled for paid lessons the student can join. The
+  /// server still checks the time window and payment when it is tapped.
+  bool get canStart => status == 'Confirmed' || status == 'Postponed';
 
   /// e.g. "2 hrs", "1 hr", "1 hr 30 min".
   String get duration {
@@ -105,7 +107,10 @@ class Lesson {
 /// The student's Lessons tab ("My Schedule"), shown inside the dashboard's
 /// Scaffold so the menu button opens the dashboard drawer.
 class StudentLessonsPage extends StatefulWidget {
-  const StudentLessonsPage({super.key});
+  const StudentLessonsPage({super.key, this.api});
+
+  /// Tests pass a fake; the app uses the real backend.
+  final StudentLessonsApi? api;
 
   @override
   State<StudentLessonsPage> createState() => _StudentLessonsPageState();
@@ -114,7 +119,8 @@ class StudentLessonsPage extends StatefulWidget {
 class _StudentLessonsPageState extends State<StudentLessonsPage> {
   int _tabIndex = 0; // 0 = Upcoming, 1 = Cancelled
 
-  final StudentLessonsApi _api = StudentLessonsApi();
+  late final StudentLessonsApi _api = widget.api ?? StudentLessonsApi();
+  bool _joining = false; // waiting for the join route; ignores double taps
   List<Lesson> _upcoming = [];
   List<Lesson> _cancelled = [];
   bool _loading = true;
@@ -229,25 +235,64 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
     ).showSnackBar(SnackBar(content: Text('$feature will be connected soon.')));
   }
 
-  void _startSession(Lesson lesson) {
-    final link = lesson.link;
-    if (link == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Your tutor has not added a session link yet.'),
+  // Two taps (Google Meet design, section 6): this first tap asks the server
+  // for the link, which checks the lesson and the 15-minute window. Meet
+  // then opens from a fresh tap on Open Google Meet, because Safari can
+  // block a tab opened after waiting for the server.
+  Future<void> _startSession(Lesson lesson) async {
+    if (_joining) return;
+    _joining = true;
+    final messenger = ScaffoldMessenger.of(context);
+    String link;
+    try {
+      link = await _api.join(lesson.bookingId);
+    } catch (error) {
+      // The server's message (e.g. "This session opens 15 minutes before it
+      // starts."), or a plain one for a timeout or no connection.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            error is StudentLessonsException
+                ? error.message
+                : 'Could not reach the server. Please try again.',
+          ),
         ),
       );
       return;
+    } finally {
+      _joining = false;
     }
-    showDialog<void>(
+    if (!mounted) return;
+    await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Session link'),
-        content: SelectableText(link),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Your session is ready'),
+        content: Text(
+          'Open Google Meet and ask to join. ${lesson.tutorName} will let '
+          'you in.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final opened = await launchUrl(
+                Uri.parse(link),
+                mode: LaunchMode.externalApplication,
+                webOnlyWindowName: '_blank',
+              );
+              if (!opened) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Google Meet could not be opened.'),
+                  ),
+                );
+              }
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: const Text('Open Google Meet'),
           ),
         ],
       ),
@@ -306,7 +351,7 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
             // TODO: connect rescheduling to the backend
             onReschedule: () => _showSoon('Rescheduling'),
             onReport: () => _reportLesson(lesson),
-            onStart: lesson.isConfirmed ? () => _startSession(lesson) : null,
+            onStart: lesson.canStart ? () => _startSession(lesson) : null,
           ),
         ),
     ];
@@ -417,7 +462,8 @@ class LessonCard extends StatelessWidget {
   final VoidCallback onReschedule;
   final VoidCallback onReport;
 
-  /// Null until the lesson is Confirmed (paid), which disables the button.
+  /// Null unless the lesson is Confirmed or Postponed ([Lesson.canStart]),
+  /// which disables the button. The server checks the rest when tapped.
   final VoidCallback? onStart;
 
   const LessonCard({

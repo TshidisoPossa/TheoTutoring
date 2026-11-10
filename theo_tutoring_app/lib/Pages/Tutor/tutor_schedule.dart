@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'tutor_api.dart';
 import 'tutor_booking_detail.dart';
@@ -81,6 +81,14 @@ class ScheduleSession {
 
   IconData get platformIcon =>
       platform == 'none' ? Icons.link_off : Icons.videocam_outlined;
+
+  /// Join session opens the tutor's own Meet room straight away, with no
+  /// time limit (Google Meet design, section 3), for a lesson that is going
+  /// ahead.
+  bool get canJoin =>
+      link != null &&
+      link!.isNotEmpty &&
+      (status == 'Confirmed' || status == 'Postponed');
 }
 
 /// One day heading with its sessions ("Today, 30 Sep  2 sessions").
@@ -217,12 +225,17 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
     if (changed == true) _load(); // postponed: it moved to another day
   }
 
-  Future<void> _copyLink(ScheduleSession s) async {
-    await Clipboard.setData(ClipboardData(text: s.link!));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Session link copied')),
+  Future<void> _joinSession(ScheduleSession s) async {
+    final opened = await launchUrl(
+      Uri.parse(s.link!),
+      mode: LaunchMode.externalApplication,
+      webOnlyWindowName: '_blank',
     );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Google Meet could not be opened.')),
+      );
+    }
   }
 
   Future<void> _pickSubjects() async {
@@ -792,9 +805,9 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
           Row(
             children: [
               OutlinedButton.icon(
-                onPressed: s.link == null ? null : () => _copyLink(s),
-                icon: const Icon(Icons.link, size: 13),
-                label: const Text('Session link',
+                onPressed: s.canJoin ? () => _joinSession(s) : null,
+                icon: const Icon(Icons.videocam_outlined, size: 13),
+                label: const Text('Join session',
                     style: TextStyle(fontSize: 12)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _blue,

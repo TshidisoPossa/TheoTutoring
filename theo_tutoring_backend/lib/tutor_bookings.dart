@@ -1,4 +1,5 @@
 import 'package:mysql_client/mysql_client.dart';
+import 'package:theo_tutoring_backend/google_meet.dart';
 
 /// Booking.Status values from schema.sql.
 const tutorBookingStatuses = {
@@ -79,7 +80,7 @@ class MySqlTutorBookingsRepository implements TutorBookingsRepository {
   // the dashboard's request count. Legacy bookings (no purchase) show all.
   static const listSql = '''
     SELECT b.Booking_id, b.Status, b.`Date`, b.StartTime, b.EndTime,
-           b.SubjectID, sj.subjectName AS Subject, b.Note, b.Link,
+           b.SubjectID, sj.subjectName AS Subject, b.Note, $tutorMeetLinkSql,
            b.PurchaseID, b.LessonNumber, b.Created_at,
            u.Name AS StudentName
     FROM Booking b

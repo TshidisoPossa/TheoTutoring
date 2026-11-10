@@ -9,12 +9,15 @@ Map<String, dynamic> _detail({
   double? rating,
   int reviewCount = 0,
   Map<String, dynamic>? recurring,
+  String? link,
+  String status = 'Confirmed',
 }) => {
   'tutor': {'name': 'Amahle Tshabalala'},
   'booking': {
     'bookingId': 41,
     'reference': 'REQ-41',
-    'status': 'Confirmed',
+    'status': status,
+    'link': link,
     'subject': 'Calculus',
     'date': '2026-10-27',
     'startTime': '16:00',
@@ -99,5 +102,50 @@ void main() {
       find.text('There are no recurring bookings currently.'),
       findsOneWidget,
     );
+  });
+
+  group('Join session', () {
+    bool joinEnabled(WidgetTester tester) {
+      final button = find.ancestor(
+        of: find.text('Join session'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      );
+      expect(button, findsOneWidget);
+      return tester.widget<ButtonStyleButton>(button).enabled;
+    }
+
+    testWidgets('is enabled for a Confirmed lesson with a link', (
+      tester,
+    ) async {
+      await _pump(tester, _detail(link: 'https://meet.google.com/abc'));
+      expect(joinEnabled(tester), isTrue);
+      expect(find.text('Session link not added yet'), findsNothing);
+    });
+
+    testWidgets('is enabled for a Postponed lesson with a link', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _detail(link: 'https://meet.google.com/abc', status: 'Postponed'),
+      );
+      expect(joinEnabled(tester), isTrue);
+    });
+
+    testWidgets('is disabled, and says so, when there is no link', (
+      tester,
+    ) async {
+      await _pump(tester, _detail());
+      expect(joinEnabled(tester), isFalse);
+      expect(find.text('Session link not added yet'), findsOneWidget);
+    });
+
+    testWidgets('is disabled on a cancelled lesson', (tester) async {
+      await _pump(
+        tester,
+        _detail(link: 'https://meet.google.com/abc', status: 'Cancelled'),
+      );
+      expect(joinEnabled(tester), isFalse);
+    });
   });
 }

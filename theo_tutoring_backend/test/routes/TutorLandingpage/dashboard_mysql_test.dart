@@ -15,13 +15,17 @@ import '../../../routes/TutorLandingpage/LandingPageScreen.dart'
 // Active tutor. Opt in, so a normal `dart test` never touches the database:
 //   DASHBOARD_MYSQL_TEST_TUTOR_ID=1 dart test test/routes/TutorLandingpage/dashboard_mysql_test.dart
 // It adds sample bookings for that tutor and deletes them afterwards. The
-// Firebase login check (middleware) is skipped.
+// link test sets the tutor's MeetLink and puts it back. The Firebase login
+// check (middleware) is skipped.
 
 class _MockRequestContext extends Mock implements RequestContext {}
 
 final _tutorId = int.tryParse(
   Platform.environment['DASHBOARD_MYSQL_TEST_TUTOR_ID'] ?? '',
 );
+
+const _meetLink = 'https://meet.google.com/aaa-bbbb-ccc';
+const _ownLink = 'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
 
 void main() {
   if (_tutorId == null) {
@@ -175,5 +179,40 @@ void main() {
     expect(row['StartTime'], isNotNull);
     expect(row['EndTime'], isNotNull);
     expect(int.parse('${row['MinutesUntilStart']}'), inInclusiveRange(28, 31));
+  });
+
+  test("Today's Schedule link is the tutor's Meet room, unless the booking "
+      'has its own', () async {
+    final saved = await conn.execute(
+      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      {'t': _tutorId},
+    );
+    final savedMeetLink = saved.rows.first.colByName('MeetLink');
+    Future<Object?> link() async {
+      final body = await dashboard();
+      return (body['todaysSchedule'] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((r) => '${r['Booking_id']}' == '${ids['later today']}')
+          ['Link'];
+    }
+
+    try {
+      await conn.execute(
+        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        {'link': _meetLink, 't': _tutorId},
+      );
+      expect(await link(), _meetLink);
+
+      await conn.execute(
+        'UPDATE Booking SET Link = :link WHERE Booking_id = :id',
+        {'link': _ownLink, 'id': ids['later today']},
+      );
+      expect(await link(), _ownLink);
+    } finally {
+      await conn.execute(
+        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        {'link': savedMeetLink, 't': _tutorId},
+      );
+    }
   });
 }

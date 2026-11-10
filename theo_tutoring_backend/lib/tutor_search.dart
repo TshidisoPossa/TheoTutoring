@@ -103,7 +103,7 @@ class MySqlTutorSearchRepository implements TutorSearchRepository {
     }
     final subjectResult = await connection.execute(
       'SELECT ts.TutorID, s.subjectId, s.subjectName '
-      'FROM TutorSubjects ts INNER JOIN Subjects s '
+      'FROM tutorsubjects ts INNER JOIN subjects s '
       'ON s.subjectId = ts.SubjectID '
       'WHERE ts.TutorID IN (${subjectSlots.join(', ')}) '
       'ORDER BY s.subjectName ASC',
@@ -130,22 +130,22 @@ class TutorSearchFilter {
 }
 
 String buildTutorSearchCountSql(TutorSearchFilter filter) =>
-    'SELECT COUNT(*) AS total FROM TutorProfile tp '
-    'INNER JOIN `User` u ON u.UserId = tp.UserID ${filter.sql}';
+    'SELECT COUNT(*) AS total FROM tutorprofile tp '
+    'INNER JOIN `user` u ON u.UserId = tp.UserID ${filter.sql}';
 
 String buildTutorSearchPageSql(TutorSearchFilter filter) =>
     '''
   SELECT tp.TutorID, u.Name, u.ProfilePhoto, tp.Bio, tp.Experience,
-    (SELECT q.Degree FROM Qualification q
+    (SELECT q.Degree FROM qualification q
      WHERE q.TutorID = tp.TutorID
      ORDER BY q.QualificationID DESC LIMIT 1) AS Qualification,
     $currentSessionRateSubquery AS HourlyRate,
-    (SELECT AVG(r.Rating) FROM Reviews r
+    (SELECT AVG(r.Rating) FROM reviews r
      WHERE r.TutorID = tp.TutorID) AS AverageRating,
-    (SELECT COUNT(*) FROM Reviews r
+    (SELECT COUNT(*) FROM reviews r
      WHERE r.TutorID = tp.TutorID) AS ReviewCount
-  FROM TutorProfile tp
-  INNER JOIN `User` u ON u.UserId = tp.UserID
+  FROM tutorprofile tp
+  INNER JOIN `user` u ON u.UserId = tp.UserID
   ${filter.sql}
   ORDER BY u.Name ASC, tp.TutorID ASC
   LIMIT :limit OFFSET :offset
@@ -158,7 +158,7 @@ TutorSearchFilter buildTutorSearchFilter(TutorSearchOptions options) {
     "tp.VerificationStat = 'Approved'",
     '''
     EXISTS (
-      SELECT 1 FROM TutorApplication ta
+      SELECT 1 FROM tutorapplication ta
       WHERE ta.TutorID = tp.TutorID AND ta.Status = 'Approved'
     )
     ''',
@@ -168,7 +168,7 @@ TutorSearchFilter buildTutorSearchFilter(TutorSearchOptions options) {
   if (options.subjectId != null) {
     clauses.add('''
       EXISTS (
-        SELECT 1 FROM TutorSubjects filter_ts
+        SELECT 1 FROM tutorsubjects filter_ts
         WHERE filter_ts.TutorID = tp.TutorID
           AND filter_ts.SubjectID = :subjectId
       )
@@ -182,8 +182,8 @@ TutorSearchFilter buildTutorSearchFilter(TutorSearchOptions options) {
         LOWER(u.Name) LIKE :searchName ESCAPE '!'
         OR LOWER(COALESCE(tp.Bio, '')) LIKE :searchBio ESCAPE '!'
         OR EXISTS (
-          SELECT 1 FROM TutorSubjects search_ts
-          INNER JOIN Subjects search_s ON search_s.subjectId = search_ts.SubjectID
+          SELECT 1 FROM tutorsubjects search_ts
+          INNER JOIN subjects search_s ON search_s.subjectId = search_ts.SubjectID
           WHERE search_ts.TutorID = tp.TutorID
             AND LOWER(search_s.subjectName) LIKE :searchSubject ESCAPE '!'
         )

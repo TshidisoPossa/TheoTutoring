@@ -32,8 +32,7 @@ class MySqlStudentDashboardRepository {
         tu.ProfilePhoto AS TutorPhoto,
         DATE_FORMAT(b.Date, '%Y-%m-%d') AS SessionDate,
         TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime,
-        TIME_FORMAT(b.EndTime, '%H:%i') AS EndTime,
-        b.Link
+        TIME_FORMAT(b.EndTime, '%H:%i') AS EndTime
       FROM Booking b
       INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
       INNER JOIN `User` tu ON tu.UserId = tp.UserID
@@ -57,7 +56,7 @@ class MySqlStudentDashboardRepository {
           'date': row.colByName('SessionDate'),
           'startTime': row.colByName('StartTime'),
           'endTime': row.colByName('EndTime'),
-          'link': row.colByName('Link'),
+          // The Meet link only comes from the join route, at lesson time.
         },
     ];
 

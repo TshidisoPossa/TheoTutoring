@@ -16,7 +16,7 @@ Future<Response> onRequest(RequestContext context) async {
   try {
     final connection = await getConnection();
     final result = await connection.execute(
-      'SELECT subjectId, subjectName FROM Subjects ORDER BY subjectName',
+      'SELECT subjectId, subjectName FROM subjects ORDER BY subjectName',
     );
     return Response.json(
       body: {
@@ -29,8 +29,10 @@ Future<Response> onRequest(RequestContext context) async {
         ],
       },
     );
-  } catch (_) {
-    stderr.writeln('Subject catalogue lookup failed.');
+  } catch (error, stackTrace) {
+    stderr
+      ..writeln('Subject catalogue lookup failed: $error')
+      ..writeln(stackTrace);
     return Response.json(
       statusCode: 500,
       body: {'error': 'Subjects are temporarily unavailable.'},

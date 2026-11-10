@@ -14,13 +14,17 @@ import '../../../routes/TutorLandingpage/schedule/index.dart' as schedule_route;
 // Opt in, so a normal `dart test` never touches the database:
 //   SCHEDULE_MYSQL_TEST_TUTOR_ID=1 dart test test/routes/TutorLandingpage/schedule_mysql_test.dart
 // It adds sample bookings (and one payment) for that tutor and deletes them
-// afterwards. The Firebase login check (middleware) is skipped.
+// afterwards. The link test sets the tutor's MeetLink and puts it back. The
+// Firebase login check (middleware) is skipped.
 
 class _MockRequestContext extends Mock implements RequestContext {}
 
 final _tutorId = int.tryParse(
   Platform.environment['SCHEDULE_MYSQL_TEST_TUTOR_ID'] ?? '',
 );
+
+const _meetLink = 'https://meet.google.com/aaa-bbbb-ccc';
+const _ownLink = 'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
 
 void main() {
   if (_tutorId == null) {
@@ -297,5 +301,34 @@ void main() {
         .firstWhere((d) => d['daysFromToday'] == 0);
     expect(todayGroup['date'], day(0));
     expect(todayGroup['count'], (todayGroup['sessions'] as List).length);
+  });
+
+  test("link: the tutor's Meet room, unless the booking has its own",
+      () async {
+    final saved = await conn.execute(
+      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      {'t': _tutorId},
+    );
+    final savedMeetLink = saved.rows.first.colByName('MeetLink');
+    try {
+      await conn.execute(
+        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        {'link': _meetLink, 't': _tutorId},
+      );
+      await conn.execute(
+        'UPDATE Booking SET Link = :link WHERE Booking_id = :id',
+        {'link': _ownLink, 'id': ids['tomorrow']},
+      );
+      final sessions = ours(await schedule('?tab=upcoming'));
+      Object? linkOf(String name) =>
+          sessions.firstWhere((s) => s['bookingId'] == ids[name])['link'];
+      expect(linkOf('today'), _meetLink);
+      expect(linkOf('tomorrow'), _ownLink);
+    } finally {
+      await conn.execute(
+        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        {'link': savedMeetLink, 't': _tutorId},
+      );
+    }
   });
 }

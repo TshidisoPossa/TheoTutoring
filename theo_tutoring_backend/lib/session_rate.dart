@@ -12,7 +12,7 @@ import 'package:mysql_client/mysql_client.dart';
 /// e.g. `SELECT ..., $currentSessionRateSubquery AS HourlyRate FROM ...`.
 /// Gives NULL when no rate has been set yet.
 const currentSessionRateSubquery =
-    '(SELECT ps.TutoringRate FROM PlatformSettings ps '
+    '(SELECT ps.TutoringRate FROM platformsettings ps '
     'WHERE ps.SettingsID = 1)';
 
 /// The current rate exactly as MySQL returns it, e.g. "250.00",
