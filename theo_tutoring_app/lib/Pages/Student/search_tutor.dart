@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../Booking/booking_flow_context.dart';
 import '../Booking/booking_select_lesson.dart';
+import '../Tutor/tutor_theme.dart';
 import '../../models/tutor.dart';
 import '../../services/tutor_search_api.dart';
 import 'student_bottom_nav.dart';
@@ -24,15 +25,22 @@ class SearchTutorPage extends StatefulWidget {
 }
 
 class _SearchTutorPageState extends State<SearchTutorPage> {
-  static const Color _brandBlue = Color(0xFF0B4FC8);
+  static const Color _brandBlue = Color(0xFF0B4FC8); // buttons
   static const Color _darkBlue = Color(0xFF173B8F);
-  static const Color _background = Color(0xFFF7F8FC);
-  static const Color _fieldFill = Color(0xFFEEF1FA);
-  static const Color _textDark = Color(0xFF17233D);
-  static const Color _textMuted = Color(0xFF6B7385);
-  static const Color _tagFill = Color(0xFFE8ECF6);
-  static const Color _tagText = Color(0xFF4A5470);
   static const Color _star = Color(0xFFF5B301);
+
+  // Light colours, or the dark ones while dark mode is on
+  bool get _dk => context.tutorDark;
+  Color get _background => _dk ? TutorDark.background : const Color(0xFFF7F8FC);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _fieldFill => _dk ? TutorDark.cardAlt : const Color(0xFFEEF1FA);
+  Color get _textDark => _dk ? TutorDark.text : const Color(0xFF17233D);
+  Color get _textMuted => _dk ? TutorDark.textMuted : const Color(0xFF6B7385);
+  Color get _tagFill => _dk ? TutorDark.cardAlt : const Color(0xFFE8ECF6);
+  Color get _tagText => _dk ? TutorDark.textSecondary : const Color(0xFF4A5470);
+  Color get _blueText => _dk ? TutorDark.blueText : _brandBlue; // blue text
+  Color get _blueTint => _dk ? TutorDark.blueTint : const Color(0xFFE4ECFF);
+  Color get _initialsText => _dk ? TutorDark.blueText : _darkBlue;
 
   final _searchController = TextEditingController();
   final _api = TutorSearchApi();
@@ -132,7 +140,7 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
   Future<void> _chooseSubject(Tutor tutor) async {
     final subject = await showModalBottomSheet<TutorSubject>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: _surface,
       builder: (context) => SafeArea(
         child: ListView(
           shrinkWrap: true,
@@ -211,8 +219,8 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
 
   Widget _buildTopBar() {
     return AppBar(
-      backgroundColor: Colors.white,
-      surfaceTintColor: Colors.white,
+      backgroundColor: _surface,
+      surfaceTintColor: _surface,
       elevation: 0,
       scrolledUnderElevation: 0,
       automaticallyImplyLeading: false,
@@ -244,7 +252,7 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
               'Find a Tutor',
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.poppins(
-                color: _brandBlue,
+                color: _blueText,
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
               ),
@@ -265,7 +273,7 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
     final fallback = Text(
       _initials(widget.studentName),
       style: GoogleFonts.poppins(
-        color: _brandBlue,
+        color: _blueText,
         fontSize: 13,
         fontWeight: FontWeight.w700,
       ),
@@ -273,7 +281,7 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
     final photo = widget.studentPhoto;
     return CircleAvatar(
       radius: 20,
-      backgroundColor: const Color(0xFFE4ECFF),
+      backgroundColor: _blueTint,
       child: photo == null
           ? fallback
           : ClipOval(
@@ -298,11 +306,18 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
             controller: _searchController,
             onChanged: _searchChanged,
             textInputAction: TextInputAction.search,
+            // The keyboard's Search key closes it and searches straight away
+            onSubmitted: (_) {
+              if (_debounce?.isActive ?? false) {
+                _debounce!.cancel();
+                unawaited(_load());
+              }
+            },
             style: GoogleFonts.poppins(color: _textDark, fontSize: 14),
             decoration: InputDecoration(
               hintText: 'Search tutors...',
               hintStyle: GoogleFonts.poppins(color: _textMuted, fontSize: 14),
-              prefixIcon: const Icon(Icons.search_rounded, color: _textDark),
+              prefixIcon: Icon(Icons.search_rounded, color: _textDark),
               suffixIcon: _searchController.text.isEmpty
                   ? null
                   : IconButton(
@@ -323,7 +338,7 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: _brandBlue, width: 1.5),
+                borderSide: BorderSide(color: _blueText, width: 1.5),
               ),
             ),
           ),
@@ -440,7 +455,7 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -457,12 +472,12 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
             children: [
               CircleAvatar(
                 radius: 32,
-                backgroundColor: const Color(0xFFE4ECFF),
+                backgroundColor: _blueTint,
                 child: tutor.profilePhoto == null
                     ? Text(
                         initials,
                         style: GoogleFonts.poppins(
-                          color: _darkBlue,
+                          color: _initialsText,
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
@@ -476,7 +491,7 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
                           errorBuilder: (context, error, stackTrace) => Text(
                             initials,
                             style: GoogleFonts.poppins(
-                              color: _darkBlue,
+                              color: _initialsText,
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
                             ),
@@ -594,12 +609,12 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
             const SizedBox(height: 12),
             Row(
               children: [
-                const Icon(Icons.sell_outlined, size: 16, color: _brandBlue),
+                Icon(Icons.sell_outlined, size: 16, color: _blueText),
                 const SizedBox(width: 6),
                 Text(
                   'R${tutor.hourlyRate!.toStringAsFixed(2)} per session',
                   style: GoogleFonts.poppins(
-                    color: _brandBlue,
+                    color: _blueText,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -620,9 +635,15 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
                     icon: const Icon(Icons.account_circle_outlined, size: 19),
                     label: const Text('View Profile'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: _brandBlue,
-                      backgroundColor: const Color(0xFFE6EDFF),
-                      side: const BorderSide(color: Color(0xFFC3D4FF)),
+                      foregroundColor: _blueText,
+                      backgroundColor: _dk
+                          ? TutorDark.blueTint
+                          : const Color(0xFFE6EDFF),
+                      side: BorderSide(
+                        color: _dk
+                            ? TutorDark.border
+                            : const Color(0xFFC3D4FF),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       textStyle: GoogleFonts.poppins(
                         fontSize: 14,
@@ -688,9 +709,9 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(
+        Icon(
           Icons.person_search_rounded,
-          color: Color(0xFF9BAAC5),
+          color: _dk ? TutorDark.textFaint : const Color(0xFF9BAAC5),
           size: 54,
         ),
         const SizedBox(height: 12),

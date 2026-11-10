@@ -226,7 +226,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
         builder: (_) => TutorBookingDetailScreen(bookingId: session.bookingId),
       ),
     );
-    if (changed == true) _load(); // postponed: it may have left today
+    if (changed == true) _load(); // cancelled or rescheduled
   }
 
   // Bottom bar and shortcuts. Tutors who are not Active may open the

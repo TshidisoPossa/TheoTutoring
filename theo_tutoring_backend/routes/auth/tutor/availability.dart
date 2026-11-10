@@ -73,7 +73,7 @@ Future<Response> handleTutorAvailability(
                WHERE ts.TutorID = tp.TutorID) AS SubjectCount,
              (SELECT COUNT(*) FROM Qualification q
                WHERE q.TutorID = tp.TutorID) AS QualificationCount
-      FROM TutorProfile tp
+      FROM tutorProfile tp
       INNER JOIN User u ON tp.UserId = u.UserId
       WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'
       ''',
@@ -121,10 +121,10 @@ Future<Response> handleTutorAvailability(
     final submitted = await db.transactional((conn) async {
       await conn.execute(
         '''
-        SELECT TutApplication
-        FROM TutorApplication
+        SELECT tutApplication
+        FROM tutorApplication
         WHERE TutorID = :tutorId
-        ORDER BY TutApplication ASC
+        ORDER BY tutApplication ASC
         FOR UPDATE
         ''',
         {'tutorId': tutorId},
@@ -143,9 +143,9 @@ Future<Response> handleTutorAvailability(
       final latest = await conn.execute(
         '''
         SELECT Status
-        FROM TutorApplication
+        FROM tutorApplication
         WHERE TutorID = :tutorId
-        ORDER BY SubmittedAt DESC, TutApplication DESC
+        ORDER BY SubmittedAt DESC, tutApplication DESC
         LIMIT 1
         FOR UPDATE
         ''',
@@ -153,8 +153,8 @@ Future<Response> handleTutorAvailability(
       );
       final pendingApplications = await conn.execute(
         '''
-        SELECT TutApplication
-        FROM TutorApplication
+        SELECT tutApplication
+        FROM tutorApplication
         WHERE TutorID = :tutorId AND Status = 'Pending'
         FOR UPDATE
         ''',
@@ -181,7 +181,7 @@ Future<Response> handleTutorAvailability(
       for (final slot in slots) {
         await conn.execute(
           '''
-          INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time)
+          INSERT INTO tutAvailability (TutorID, Day, StartTime, end_Time)
           VALUES (:tutorId, :day, :startTime, :endTime)
           ''',
           {
@@ -202,7 +202,7 @@ Future<Response> handleTutorAvailability(
       );
       await conn.execute(
         '''
-        UPDATE TutorProfile
+        UPDATE tutorProfile
         SET VerificationStat = 'Pending'
         WHERE TutorID = :tutorId
         ''',
@@ -210,7 +210,7 @@ Future<Response> handleTutorAvailability(
       );
       await conn.execute(
         '''
-        INSERT INTO TutorApplication (TutorID, Status, SubmittedAt)
+        INSERT INTO tutorApplication (TutorID, Status, SubmittedAt)
         VALUES (:tutorId, 'Pending', NOW())
         ''',
         {'tutorId': tutorId},

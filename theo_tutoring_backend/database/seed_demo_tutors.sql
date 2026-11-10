@@ -1,5 +1,10 @@
--- Demo tutors for the LOCAL test database (theotutoring_test). Do not run it
--- on a shared or live database.
+-- Demo tutors for a LOCAL database. Do not run it on a shared or live
+-- database.
+--
+-- It runs on whichever database you select, e.g.
+--   mysql -u theo_app -p theotutoring < database/seed_demo_tutors.sql
+-- (or pick the schema in MySQL Workbench first). Subjects are matched by
+-- name, so it works whatever subject IDs your database has.
 --
 -- Seeds six approved tutors whose Firebase accounts already exist. Firebase
 -- handles their sign-in; no passwords or secrets are stored here.
@@ -19,12 +24,14 @@
 -- to another account, or their existing account is a student or admin.
 -- The session rate is platform-wide (PlatformSettings.TutoringRate) and is
 -- not changed here.
-USE theotutoring_test;
-
+-- Weekly availability (TutAvailability) covers Monday to Saturday. It is only
+-- added on days a tutor has no hours yet, so hours a tutor sets in the app
+-- are never overwritten.
 DROP TEMPORARY TABLE IF EXISTS demo_tutor_seed;
 DROP TEMPORARY TABLE IF EXISTS demo_tutor_qualification;
 DROP TEMPORARY TABLE IF EXISTS demo_tutor_retired_qualification;
 DROP TEMPORARY TABLE IF EXISTS demo_tutor_subject;
+DROP TEMPORARY TABLE IF EXISTS demo_tutor_availability;
 
 CREATE TEMPORARY TABLE demo_tutor_seed (
     FirebaseUid VARCHAR(128) NOT NULL PRIMARY KEY,
@@ -55,8 +62,19 @@ CREATE TEMPORARY TABLE demo_tutor_retired_qualification (
 
 CREATE TEMPORARY TABLE demo_tutor_subject (
     FirebaseUid VARCHAR(128) NOT NULL,
-    SubjectID INT NOT NULL,
-    PRIMARY KEY (FirebaseUid, SubjectID)
+    SubjectName VARCHAR(100) NOT NULL,
+    PRIMARY KEY (FirebaseUid, SubjectName)
+);
+
+-- Weekly hours, following the app's rules (routes/auth/tutor/availability.dart):
+-- Monday to Saturday only, start before end, no overlaps on the same day.
+CREATE TEMPORARY TABLE demo_tutor_availability (
+    FirebaseUid VARCHAR(128) NOT NULL,
+    Day ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
+             'Saturday') NOT NULL,
+    StartTime TIME NOT NULL,
+    EndTime TIME NOT NULL,
+    PRIMARY KEY (FirebaseUid, Day, StartTime)
 );
 
 -- Experience uses the registration options: '0-1', '1-2', '3-5', '5+'.
@@ -151,26 +169,75 @@ VALUES
 -- Kabelo: Database Management Systems, SQL and Database Design, Data Science
 -- Naledi: Web Development, Mobile App Development, Software Engineering
 -- Sipho:  Computer Networks, Operating Systems, Cybersecurity
-INSERT INTO demo_tutor_subject (FirebaseUid, SubjectID)
+INSERT INTO demo_tutor_subject (FirebaseUid, SubjectName)
 VALUES
-    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 7),
-    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 6),
-    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 9),
-    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 12),
-    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 13),
-    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 15),
-    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 5),
-    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 8),
-    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 10),
-    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 17),
-    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 18),
-    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 25),
-    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 19),
-    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 20),
-    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 21),
-    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 22),
-    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 23),
-    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 24);
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Mathematics'),
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Statistics'),
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Physics'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Python Programming'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Java Programming'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Object-Oriented Programming'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Accounting'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Economics'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Finance'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'Database Management Systems'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'SQL and Database Design'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'Data Science'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Web Development'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Mobile App Development'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Software Engineering'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Computer Networks'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Operating Systems'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Cybersecurity');
+
+-- Every tutor works all six bookable days (Monday to Saturday), so students
+-- can pick any day of the month. Sunday is not allowed by the app.
+-- Lerato: weekday afternoons, Saturday morning
+-- Thabo:  weekday evenings after work, Saturday late morning
+-- Ayesha: Mon/Wed/Fri mornings, Tue/Thu mornings and afternoons, Saturday
+-- Kabelo: weekday early evenings, Saturday morning
+-- Naledi: weekday late afternoons, Saturday morning
+-- Sipho:  weekday mornings, Saturday midday
+INSERT INTO demo_tutor_availability (FirebaseUid, Day, StartTime, EndTime)
+VALUES
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Monday',    '14:00', '18:00'),
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Tuesday',   '14:00', '18:00'),
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Wednesday', '14:00', '18:00'),
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Thursday',  '14:00', '18:00'),
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Friday',    '14:00', '18:00'),
+    ('8qLmuE1jOwWUGKK04pIS5syqX7f2', 'Saturday',  '09:00', '13:00'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Monday',    '17:00', '20:00'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Tuesday',   '17:00', '20:00'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Wednesday', '17:00', '20:00'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Thursday',  '17:00', '20:00'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Friday',    '17:00', '20:00'),
+    ('tnBSg5ZqiARAfQIENZMQ9yK21cg2', 'Saturday',  '10:00', '14:00'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Monday',    '09:00', '13:00'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Tuesday',   '09:00', '12:00'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Tuesday',   '14:00', '17:00'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Wednesday', '09:00', '13:00'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Thursday',  '09:00', '12:00'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Thursday',  '14:00', '17:00'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Friday',    '09:00', '13:00'),
+    ('ummBeaeGRtaerMb3zj7WzhCtyN13', 'Saturday',  '08:00', '12:00'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'Monday',    '17:00', '20:00'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'Tuesday',   '17:00', '20:00'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'Wednesday', '17:00', '20:00'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'Thursday',  '17:00', '20:00'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'Friday',    '17:00', '20:00'),
+    ('7BG1C5g0zWZDVcwJA81ZC101IVo2', 'Saturday',  '09:00', '12:00'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Monday',    '16:00', '19:00'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Tuesday',   '16:00', '19:00'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Wednesday', '16:00', '19:00'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Thursday',  '16:00', '19:00'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Friday',    '16:00', '19:00'),
+    ('i0jAsxyg3weKCoyrt6scBk2GEDB3', 'Saturday',  '09:00', '13:00'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Monday',    '08:00', '12:00'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Tuesday',   '08:00', '12:00'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Wednesday', '08:00', '12:00'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Thursday',  '08:00', '12:00'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Friday',    '08:00', '12:00'),
+    ('UhVclfz48tNFMIR4Ax73XPd6TqY2', 'Saturday',  '10:00', '15:00');
 
 -- ── Conflicts: every write below skips a tutor with a SkipReason ───────────
 UPDATE demo_tutor_seed s
@@ -207,10 +274,10 @@ SELECT s.Name, s.Email, s.SkipReason
 FROM demo_tutor_seed s
 WHERE s.SkipReason IS NOT NULL;
 
--- A subject ID that does not exist. That subject link is skipped.
-SELECT ds.FirebaseUid, ds.SubjectID AS MissingSubjectID
+-- A subject name that is not in Subjects. That subject link is skipped.
+SELECT ds.FirebaseUid, ds.SubjectName AS MissingSubject
 FROM demo_tutor_subject ds
-LEFT JOIN Subjects sj ON sj.subjectId = ds.SubjectID
+LEFT JOIN Subjects sj ON sj.subjectName = ds.SubjectName
 WHERE sj.subjectId IS NULL;
 
 START TRANSACTION;
@@ -288,19 +355,36 @@ ORDER BY tp.TutorID, dq.SortOrder;
 
 -- ── 4. TutorSubjects ───────────────────────────────────────────────────────
 INSERT INTO TutorSubjects (TutorID, SubjectID)
-SELECT tp.TutorID, ds.SubjectID
+SELECT tp.TutorID, sj.subjectId
 FROM demo_tutor_subject ds
 JOIN demo_tutor_seed s
     ON s.FirebaseUid = ds.FirebaseUid AND s.SkipReason IS NULL
-JOIN Subjects sj ON sj.subjectId = ds.SubjectID
+JOIN Subjects sj ON sj.subjectName = ds.SubjectName
 JOIN `User` u ON u.FirebaseUid = s.FirebaseUid
 JOIN TutorProfile tp ON tp.UserID = u.UserId
 WHERE NOT EXISTS (
     SELECT 1 FROM TutorSubjects ts
-    WHERE ts.TutorID = tp.TutorID AND ts.SubjectID = ds.SubjectID
+    WHERE ts.TutorID = tp.TutorID AND ts.SubjectID = sj.subjectId
 );
 
--- ── 5. TutorApplication ────────────────────────────────────────────────────
+-- ── 5. TutAvailability ─────────────────────────────────────────────────────
+-- Only fills days the tutor has no hours on yet. A day that already has
+-- hours (set by the tutor in the app, or by an earlier run) is left as it
+-- is, so nothing overlaps and nothing is duplicated.
+INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time)
+SELECT tp.TutorID, da.Day, da.StartTime, da.EndTime
+FROM demo_tutor_availability da
+JOIN demo_tutor_seed s
+    ON s.FirebaseUid = da.FirebaseUid AND s.SkipReason IS NULL
+JOIN `User` u ON u.FirebaseUid = s.FirebaseUid
+JOIN TutorProfile tp ON tp.UserID = u.UserId
+WHERE NOT EXISTS (
+    SELECT 1 FROM TutAvailability ta
+    WHERE ta.TutorID = tp.TutorID AND ta.Day = da.Day
+)
+ORDER BY tp.TutorID, da.Day, da.StartTime;
+
+-- ── 6. TutorApplication ────────────────────────────────────────────────────
 -- One application per tutor. If a tutor already has applications, the
 -- latest one is approved instead of adding another.
 INSERT INTO TutorApplication
@@ -347,6 +431,12 @@ SELECT s.Name, s.Email, s.SkipReason, tp.TutorID, u.Role, u.AccountStatus,
        (SELECT GROUP_CONCAT(sj.subjectName ORDER BY sj.subjectName SEPARATOR ', ')
         FROM TutorSubjects ts JOIN Subjects sj ON sj.subjectId = ts.SubjectID
         WHERE ts.TutorID = tp.TutorID) AS Subjects,
+       (SELECT GROUP_CONCAT(
+            CONCAT(LEFT(av.Day, 3), ' ', TIME_FORMAT(av.StartTime, '%H:%i'),
+                   '-', TIME_FORMAT(av.end_Time, '%H:%i'))
+            ORDER BY av.Day, av.StartTime SEPARATOR ', ')
+        FROM TutAvailability av
+        WHERE av.TutorID = tp.TutorID) AS WeeklyHours,
        (SELECT ps.TutoringRate FROM PlatformSettings ps
         WHERE ps.SettingsID = 1) AS PlatformRate
 FROM demo_tutor_seed s
@@ -359,3 +449,4 @@ DROP TEMPORARY TABLE IF EXISTS demo_tutor_seed;
 DROP TEMPORARY TABLE IF EXISTS demo_tutor_qualification;
 DROP TEMPORARY TABLE IF EXISTS demo_tutor_retired_qualification;
 DROP TEMPORARY TABLE IF EXISTS demo_tutor_subject;
+DROP TEMPORARY TABLE IF EXISTS demo_tutor_availability;

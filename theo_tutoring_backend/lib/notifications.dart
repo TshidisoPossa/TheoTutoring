@@ -6,7 +6,8 @@ import 'package:theo_tutoring_backend/firestore_endpoint.dart';
 
 // In-app notifications live in Firestore, not MySQL (project documentation
 // 11.2 / 11.4): notifications/{firebaseUid}/items, one document per
-// notification, with the fields type, title, body, bookingId, read, createdAt.
+// notification, with the fields type, title, body, bookingId, read, createdAt
+// (and tutorId/subjectId on "please book again" cards).
 // The app reads them through these backend routes; only the backend writes.
 
 /// Notification types, one per event in project documentation 4.8.
@@ -29,6 +30,10 @@ abstract final class NotificationType {
   /// The tutor moved a booking to a new time (to the student, who must
   /// confirm it).
   static const bookingPostponed = 'BookingPostponed';
+
+  /// The tutor cancelled a booking and asked the student to book a new
+  /// time (to the student; the card links to that tutor's booking page).
+  static const bookingRescheduled = 'BookingRescheduled';
 
   /// A payment went through.
   static const paymentReceived = 'PaymentReceived';
@@ -66,6 +71,7 @@ abstract final class NotificationType {
     bookingConfirmed,
     bookingCancelled,
     bookingPostponed,
+    bookingRescheduled,
     paymentReceived,
     paymentFailed,
     newMessage,
@@ -165,6 +171,8 @@ class AppNotification {
     required this.read,
     required this.createdAt,
     this.bookingId,
+    this.tutorId,
+    this.subjectId,
   });
 
   /// Builds a notification from a Firestore REST document.
@@ -177,6 +185,8 @@ class AppNotification {
       title: _string(fields['title']) ?? '',
       body: _string(fields['body']) ?? '',
       bookingId: int.tryParse(_string(fields['bookingId']) ?? ''),
+      tutorId: int.tryParse(_string(fields['tutorId']) ?? ''),
+      subjectId: int.tryParse(_string(fields['subjectId']) ?? ''),
       read: _bool(fields['read']) ?? false,
       createdAt:
           DateTime.tryParse(_string(fields['createdAt']) ?? '') ??
@@ -200,6 +210,12 @@ class AppNotification {
   /// MySQL Booking_id this is about, if any ("View scheduled lesson").
   final int? bookingId;
 
+  /// Tutor to book again with ("Book a new time"), if any.
+  final int? tutorId;
+
+  /// Subject to book again, if any.
+  final int? subjectId;
+
   /// Whether the user has read it (unread cards show a blue dot).
   final bool read;
 
@@ -216,6 +232,8 @@ class AppNotification {
       'title': title,
       'body': body,
       'bookingId': bookingId,
+      if (tutorId != null) 'tutorId': tutorId,
+      if (subjectId != null) 'subjectId': subjectId,
       'read': read,
       'createdAt': createdAt.toUtc().toIso8601String(),
       'minutesAgo': minutesAgo < 0 ? 0 : minutesAgo, // "2 min ago"
@@ -244,6 +262,8 @@ class AppNotification {
     'bookingId': bookingId == null
         ? {'nullValue': null}
         : {'integerValue': '$bookingId'},
+    if (tutorId != null) 'tutorId': {'integerValue': '$tutorId'},
+    if (subjectId != null) 'subjectId': {'integerValue': '$subjectId'},
     'read': {'booleanValue': read},
     'createdAt': {'timestampValue': createdAt.toUtc().toIso8601String()},
   };
@@ -474,8 +494,18 @@ class NotificationStore {
     required String title,
     required String body,
     int? bookingId,
+    int? tutorId,
+    int? subjectId,
   }) async {
-    final draft = _draft(type, title, body, bookingId, null);
+    final draft = _draft(
+      type,
+      title,
+      body,
+      bookingId,
+      null,
+      tutorId: tutorId,
+      subjectId: subjectId,
+    );
     final doc = await _send('POST', _url('${_parent(uid)}/items'), {
       'fields': draft.toFirestoreFields(),
     });
@@ -517,8 +547,10 @@ class NotificationStore {
     String title,
     String body,
     int? bookingId,
-    DateTime? createdAt,
-  ) {
+    DateTime? createdAt, {
+    int? tutorId,
+    int? subjectId,
+  }) {
     if (!NotificationType.all.contains(type)) {
       throw ArgumentError.value(type, 'type', 'Unknown notification type');
     }
@@ -531,6 +563,8 @@ class NotificationStore {
       title: title.trim(),
       body: body.trim(),
       bookingId: bookingId,
+      tutorId: tutorId,
+      subjectId: subjectId,
       read: false,
       createdAt: (createdAt ?? DateTime.now()).toUtc(),
     );

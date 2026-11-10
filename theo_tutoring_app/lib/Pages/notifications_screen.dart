@@ -22,6 +22,8 @@ class NotificationItem {
     required this.section,
     required this.minutesAgo,
     this.bookingId,
+    this.tutorId,
+    this.subjectId,
     this.createdAt,
   });
 
@@ -33,6 +35,8 @@ class NotificationItem {
   final String section;    // today | yesterday | earlier
   final int minutesAgo;
   final int? bookingId;    // the lesson the card is about, if any
+  final int? tutorId;      // "Book a new time" with this tutor...
+  final int? subjectId;    // ...for this subject (rescheduled lessons)
   final String? createdAt; // ISO time
 
   factory NotificationItem.fromJson(Map<String, dynamic> j) {
@@ -45,6 +49,8 @@ class NotificationItem {
       section: j['section']?.toString() ?? 'earlier',
       minutesAgo: (j['minutesAgo'] as num?)?.toInt() ?? 0,
       bookingId: (j['bookingId'] as num?)?.toInt(),
+      tutorId: (j['tutorId'] as num?)?.toInt(),
+      subjectId: (j['subjectId'] as num?)?.toInt(),
       createdAt: j['createdAt']?.toString(),
     );
   }
@@ -58,6 +64,8 @@ class NotificationItem {
         section: section,
         minutesAgo: minutesAgo,
         bookingId: bookingId,
+        tutorId: tutorId,
+        subjectId: subjectId,
         createdAt: createdAt,
       );
 }
@@ -118,7 +126,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _markingAll = false;
   String? _error;
 
-  // Light colours, or the tutor's dark ones (students are always light)
+  // Light colours, or the dark ones while dark mode is on
   bool get _dk => context.tutorDark;
   Color get _bg => _dk ? TutorDark.background : const Color(0xFFF2F4F8);
   Color get _surface => _dk ? TutorDark.card : Colors.white;
@@ -356,6 +364,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         'BookingConfirmed' => Icons.event_available_outlined,
         'BookingCancelled' => Icons.event_busy_outlined,
         'BookingPostponed' => Icons.update_rounded,
+        'BookingRescheduled' => Icons.event_repeat_rounded,
         'PaymentReceived' => Icons.check_circle_outline_rounded,
         'PaymentFailed' => Icons.error_outline_rounded,
         'RefundApproved' => Icons.currency_exchange_rounded,

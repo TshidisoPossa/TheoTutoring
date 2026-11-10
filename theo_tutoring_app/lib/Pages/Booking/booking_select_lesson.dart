@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../Tutor/tutor_theme.dart';
 import 'booking_flow_context.dart';
 import 'booking_schedule.dart';
 import 'booking_api.dart';
@@ -21,7 +22,9 @@ class _BookingSelectLessonPageState extends State<BookingSelectLessonPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFFAF8FF),
+    backgroundColor: context.tutorDark
+        ? TutorDark.background
+        : const Color(0xFFFAF8FF),
     appBar: AppBar(title: const Text('Lesson')),
     body: ListView(
       padding: const EdgeInsets.all(16),

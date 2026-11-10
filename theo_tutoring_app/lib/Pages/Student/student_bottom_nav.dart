@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../Tutor/tutor_theme.dart';
+
 /// Persistent bottom navigation shared by the student screens.
 class StudentBottomNav extends StatelessWidget {
   const StudentBottomNav({
@@ -9,8 +11,6 @@ class StudentBottomNav extends StatelessWidget {
     super.key,
   });
 
-  static const Color _primaryBlue = Color(0xFF356AE6);
-  static const Color _textMuted = Color(0xFF7B8498);
 
   static const List<({IconData icon, String label})> items = [
     (icon: Icons.home_rounded, label: 'Home'),
@@ -24,10 +24,18 @@ class StudentBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Light colours, or the dark ones while dark mode is on
+    final dark = context.tutorDark;
+    final selectedColor = dark ? TutorDark.blueText : const Color(0xFF356AE6);
+    final muted = dark ? TutorDark.textMuted : const Color(0xFF7B8498);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: const Border(top: BorderSide(color: Color(0xFFEDF0F7))),
+        color: dark ? TutorDark.card : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: dark ? TutorDark.border : const Color(0xFFEDF0F7),
+          ),
+        ),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF23365D).withValues(alpha: 0.035),
@@ -56,14 +64,14 @@ class StudentBottomNav extends StatelessWidget {
                       children: [
                         Icon(
                           item.icon,
-                          color: selected ? _primaryBlue : _textMuted,
+                          color: selected ? selectedColor : muted,
                           size: 22,
                         ),
                         const SizedBox(height: 5),
                         Text(
                           item.label,
                           style: GoogleFonts.poppins(
-                            color: selected ? _primaryBlue : _textMuted,
+                            color: selected ? selectedColor : muted,
                             fontSize: 10,
                             fontWeight: selected
                                 ? FontWeight.w700

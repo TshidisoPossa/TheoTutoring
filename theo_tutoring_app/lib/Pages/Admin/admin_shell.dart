@@ -85,19 +85,23 @@ class AdminShell extends StatelessWidget {
     return Scaffold(
       backgroundColor: AdminColors.background,
       drawer: wide ? null : Drawer(child: _Sidebar(currentRoute: currentRoute)),
-      body: Row(
-        children: [
-          if (wide)
-            SizedBox(width: 240, child: _Sidebar(currentRoute: currentRoute)),
-          Expanded(
-            child: Column(
-              children: [
-                _TopBar(adminName: adminName, showMenu: !wide),
-                Expanded(child: child),
-              ],
+      // Keeps the top bar below the iPhone notch / status bar and the page
+      // above the home bar when the app runs full screen
+      body: SafeArea(
+        child: Row(
+          children: [
+            if (wide)
+              SizedBox(width: 240, child: _Sidebar(currentRoute: currentRoute)),
+            Expanded(
+              child: Column(
+                children: [
+                  _TopBar(adminName: adminName, showMenu: !wide),
+                  Expanded(child: child),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

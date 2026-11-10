@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_notifications.dart';
+import 'package:theo_tutoring_app/Pages/notifications_screen.dart';
 
 // Shape from GET /students/notifications
 Map<String, dynamic> _card(
@@ -12,8 +13,12 @@ Map<String, dynamic> _card(
   String section = 'today',
   int minutesAgo = 5,
   int? bookingId,
+  int? tutorId,
+  int? subjectId,
 }) => {
   'id': id,
+  'tutorId': ?tutorId,
+  'subjectId': ?subjectId,
   'type': type,
   'title': title,
   'body': body,
@@ -42,7 +47,11 @@ final _page = {
 
 // Opens the bell page on top of a button, like the dashboard does, and
 // records the tab it pops with.
-Future<List<int?>> _open(WidgetTester tester) async {
+Future<List<int?>> _open(
+  WidgetTester tester, {
+  Map<String, dynamic>? page,
+  Widget Function(NotificationItem n)? rebookPage,
+}) async {
   final popped = <int?>[];
   tester.view.physicalSize = const Size(400, 1000);
   tester.view.devicePixelRatio = 1;
@@ -56,7 +65,8 @@ Future<List<int?>> _open(WidgetTester tester) async {
               context,
               MaterialPageRoute(
                 builder: (_) => StudentNotificationsScreen(
-                  loadNotifications: () async => _page,
+                  loadNotifications: () async => page ?? _page,
+                  rebookPage: rebookPage,
                 ),
               ),
             ),
@@ -97,5 +107,43 @@ void main() {
     await tester.tap(find.text('Profile'));
     await tester.pumpAndSettle();
     expect(popped, [3]);
+  });
+
+  final tutorChanges = {
+    'unreadCount': 2,
+    'notifications': [
+      _card('n1', 'BookingRescheduled', 'Session rescheduled',
+          'Thabo needs to reschedule your Calculus session on Tue 17 Nov, '
+          '13:00. Please book again at a time that suits you.',
+          bookingId: 110, tutorId: 3, subjectId: 7),
+      _card('n2', 'BookingCancelled', 'Session cancelled',
+          'Thabo cancelled your Physics session on Wed 18 Nov, 10:00.',
+          bookingId: 111),
+    ],
+  };
+
+  testWidgets('a rescheduled lesson links to booking a new time', (
+    tester,
+  ) async {
+    NotificationItem? opened;
+    final popped = await _open(
+      tester,
+      page: tutorChanges,
+      rebookPage: (n) {
+        opened = n;
+        return const Scaffold(body: Text('booking page'));
+      },
+    );
+    expect(find.text('Session rescheduled'), findsOneWidget);
+    expect(find.text('Session cancelled'), findsOneWidget);
+    // the cancelled card links to the lessons, the rescheduled one to booking
+    expect(find.text('View my lessons'), findsOneWidget);
+
+    await tester.tap(find.text('Book a new time'));
+    await tester.pumpAndSettle();
+    expect(find.text('booking page'), findsOneWidget);
+    expect(opened?.tutorId, 3);
+    expect(opened?.subjectId, 7);
+    expect(popped, isEmpty); // the bell page stays underneath
   });
 }

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../Tutor/tutor_theme.dart';
 import 'booking_flow_context.dart';
 
 const Color _primaryBlue = Color(0xFF356AE6);
+
+/// Blue text and icons: lighter while dark mode is on.
+Color _blueText(BuildContext context) =>
+    context.tutorDark ? TutorDark.blueText : _primaryBlue;
 
 /// The booking pages' top bar: logo, page title and the student's photo
 /// (or initials), like the dashboard and tutor search.
@@ -11,9 +16,17 @@ PreferredSizeWidget bookingTopBar({
   required String title,
   required BookingFlowContext flow,
 }) {
+  return PreferredSize(
+    preferredSize: const Size.fromHeight(kToolbarHeight),
+    child: Builder(builder: (context) => _topBar(context, title, flow)),
+  );
+}
+
+AppBar _topBar(BuildContext context, String title, BookingFlowContext flow) {
+  final surface = context.tutorDark ? TutorDark.card : Colors.white;
   return AppBar(
-    backgroundColor: Colors.white,
-    surfaceTintColor: Colors.white,
+    backgroundColor: surface,
+    surfaceTintColor: surface,
     elevation: 0,
     scrolledUnderElevation: 0,
     automaticallyImplyLeading: false,
@@ -45,7 +58,7 @@ PreferredSizeWidget bookingTopBar({
             title,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.poppins(
-              color: _primaryBlue,
+              color: _blueText(context),
               fontSize: 22,
               fontWeight: FontWeight.w700,
             ),
@@ -80,11 +93,11 @@ class _StudentAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final initials = _initials;
     final fallback = initials.isEmpty
-        ? const Icon(Icons.person_rounded, color: _primaryBlue, size: 22)
+        ? Icon(Icons.person_rounded, color: _blueText(context), size: 22)
         : Text(
             initials,
             style: GoogleFonts.poppins(
-              color: _primaryBlue,
+              color: _blueText(context),
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
@@ -92,7 +105,9 @@ class _StudentAvatar extends StatelessWidget {
     final photo = this.photo;
     return CircleAvatar(
       radius: 20,
-      backgroundColor: const Color(0xFFE4ECFF),
+      backgroundColor: context.tutorDark
+          ? TutorDark.blueTint
+          : const Color(0xFFE4ECFF),
       child: photo == null || photo.isEmpty
           ? fallback
           : ClipOval(

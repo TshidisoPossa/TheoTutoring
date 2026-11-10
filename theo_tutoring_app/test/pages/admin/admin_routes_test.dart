@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:theo_tutoring_app/Pages/Admin/Services/admin_access_service.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_access_guard.dart';
+import 'package:theo_tutoring_app/Pages/Admin/admin_reviews.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_shell.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_students.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_tutors.dart';
@@ -11,7 +12,6 @@ import 'package:theo_tutoring_app/main.dart';
 
 const _sections = {
   AdminRoutes.subjects: 'Subjects',
-  AdminRoutes.reviews: 'Reviews',
   AdminRoutes.payouts: 'Payouts',
   AdminRoutes.reports: 'Reports',
 };
@@ -57,18 +57,16 @@ void main() {
     expect(unavailableAdminSections, _sections);
   });
 
-  testWidgets('Students opens the guarded Student Roster page', (
-    tester,
-  ) async {
+  testWidgets('Students opens the guarded Student Roster page', (tester) async {
     final navigator = await _pumpApp(tester);
     final built = appRoutes[AdminRoutes.students]!(navigator.context);
 
     expect(built, isA<AdminAccessGuard>());
     expect((built as AdminAccessGuard).child, isA<AdminStudentsScreen>());
-    expect(
-      built.requiredPermissions,
-      {'admin.students.read', 'admin.students.manage'},
-    );
+    expect(built.requiredPermissions, {
+      'admin.students.read',
+      'admin.students.manage',
+    });
   });
 
   testWidgets('Tutors opens the guarded Tutor Roster page', (tester) async {
@@ -77,23 +75,31 @@ void main() {
 
     expect(built, isA<AdminAccessGuard>());
     expect((built as AdminAccessGuard).child, isA<AdminTutorsScreen>());
-    expect(
-      built.requiredPermissions,
-      {'admin.tutors.read', 'admin.tutors.manage'},
-    );
+    expect(built.requiredPermissions, {
+      'admin.tutors.read',
+      'admin.tutors.manage',
+    });
   });
 
-  testWidgets('Users route requires admin.users.manage', (
+  testWidgets('Reviews opens the guarded read-only Reviews page', (
     tester,
   ) async {
+    final navigator = await _pumpApp(tester);
+    final built = appRoutes[AdminRoutes.reviews]!(navigator.context);
+
+    expect(built, isA<AdminAccessGuard>());
+    expect((built as AdminAccessGuard).child, isA<AdminReviewsScreen>());
+    expect(built.requiredPermissions, {'admin.reviews.read'});
+  });
+
+  testWidgets('Users route requires admin.users.manage', (tester) async {
     final navigator = await _pumpApp(tester);
     final built = appRoutes[AdminRoutes.users]!(navigator.context);
 
     expect(built, isA<AdminAccessGuard>());
-    expect(
-      (built as AdminAccessGuard).requiredPermissions,
-      {'admin.users.manage'},
-    );
+    expect((built as AdminAccessGuard).requiredPermissions, {
+      'admin.users.manage',
+    });
     expect(built.child, isA<AdminUsersScreen>());
   });
 

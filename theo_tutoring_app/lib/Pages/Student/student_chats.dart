@@ -2,14 +2,29 @@ import 'package:flutter/material.dart';
 
 import '../../services/student_chat_models.dart';
 import '../../services/student_chat_service.dart';
+import '../Tutor/tutor_theme.dart';
 
+/// The conversation's colours: light, or dark while dark mode is on.
 class AppColors {
-  static const primary = Color(0xFF2B6CB8);
-  static const chatBackground = Color(0xFFF1F4FA);
-  static const receivedBubble = Color(0xFFE3E8F1);
-  static const textDark = Color(0xFF1B2433);
-  static const textGrey = Color(0xFF8A94A6);
-  static const inputBackground = Color(0xFFE9EDF5);
+  const AppColors._(this._dk);
+
+  factory AppColors.of(BuildContext context) => AppColors._(context.tutorDark);
+
+  final bool _dk;
+
+  static const primary = Color(0xFF2B6CB8); // my bubbles, send button
+
+  Color get chatBackground =>
+      _dk ? TutorDark.background : const Color(0xFFF1F4FA);
+  Color get receivedBubble =>
+      _dk ? TutorDark.cardAlt : const Color(0xFFE3E8F1);
+  Color get textDark => _dk ? TutorDark.text : const Color(0xFF1B2433);
+  Color get textGrey => _dk ? TutorDark.textMuted : const Color(0xFF8A94A6);
+  Color get inputBackground =>
+      _dk ? TutorDark.cardAlt : const Color(0xFFE9EDF5);
+  Color get surface => _dk ? TutorDark.card : Colors.white;
+  Color get line => _dk ? TutorDark.border : const Color(0xFFE5E8EF);
+  Color get accent => _dk ? TutorDark.blueText : primary; // blue text
 }
 
 class Message {
@@ -236,23 +251,28 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  // Light or dark colours (dark mode is switched on the Profile tab)
+  AppColors get _colors => AppColors.of(context);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _colors.surface,
       appBar: _buildAppBar(),
       body: Column(
         children: [
           Expanded(
             child: Container(
-              color: AppColors.chatBackground,
+              color: _colors.chatBackground,
               child: _buildMessages(),
             ),
           ),
           _buildInputBar(),
-          _buildBottomNav(),
         ],
       ),
+      // As the Scaffold's bar it stays behind the phone keyboard, so the
+      // message box sits right above the keyboard instead of the nav bar
+      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
@@ -263,9 +283,9 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Could not load messages.',
-              style: TextStyle(color: AppColors.textGrey),
+              style: TextStyle(color: _colors.textGrey),
             ),
             TextButton(onPressed: _load, child: const Text('Try again')),
           ],
@@ -301,12 +321,12 @@ class _ChatScreenState extends State<ChatScreen> {
   PreferredSizeWidget _buildAppBar() {
     final photoUrl = widget.contact.profilePhotoUrl;
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: _colors.surface,
       elevation: 0,
       scrolledUnderElevation: 0,
       titleSpacing: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
+        icon: Icon(Icons.arrow_back, color: _colors.textDark),
         onPressed: () => Navigator.maybePop(context),
       ),
       title: Row(
@@ -325,10 +345,10 @@ class _ChatScreenState extends State<ChatScreen> {
               widget.contact.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textDark,
+                color: _colors.textDark,
               ),
             ),
           ),
@@ -339,7 +359,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildInputBar() {
     return Container(
-      color: Colors.white,
+      color: _colors.surface,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: Row(
         children: [
@@ -348,7 +368,7 @@ class _ChatScreenState extends State<ChatScreen> {
               height: 44,
               padding: const EdgeInsets.only(left: 14, right: 6),
               decoration: BoxDecoration(
-                color: AppColors.inputBackground,
+                color: _colors.inputBackground,
                 borderRadius: BorderRadius.circular(22),
               ),
               child: Row(
@@ -358,10 +378,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       controller: _controller,
                       onSubmitted: (_) => _send(),
                       style: const TextStyle(fontSize: 14),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Type a message...',
                         hintStyle: TextStyle(
-                          color: AppColors.textGrey,
+                          color: _colors.textGrey,
                           fontSize: 14,
                         ),
                         border: InputBorder.none,
@@ -372,9 +392,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   IconButton(
                     icon: Transform.rotate(
                       angle: 0.8,
-                      child: const Icon(
+                      child: Icon(
                         Icons.attach_file,
-                        color: AppColors.textGrey,
+                        color: _colors.textGrey,
                         size: 20,
                       ),
                     ),
@@ -411,9 +431,9 @@ class _ChatScreenState extends State<ChatScreen> {
     ];
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE5E8EF))),
+      decoration: BoxDecoration(
+        color: _colors.surface,
+        border: Border(top: BorderSide(color: _colors.line)),
       ),
       child: SafeArea(
         top: false,
@@ -423,7 +443,7 @@ class _ChatScreenState extends State<ChatScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: List.generate(items.length, (i) {
               final selected = i == _navIndex;
-              final color = selected ? AppColors.primary : AppColors.textGrey;
+              final color = selected ? _colors.accent : _colors.textGrey;
               return InkWell(
                 onTap: () => setState(() => _navIndex = i),
                 child: Padding(
@@ -469,6 +489,7 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMe = message.isMe;
+    final colors = AppColors.of(context);
     final maxWidth = MediaQuery.of(context).size.width * 0.72;
 
     return Align(
@@ -482,7 +503,7 @@ class MessageBubble extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
             decoration: BoxDecoration(
-              color: isMe ? AppColors.primary : AppColors.receivedBubble,
+              color: isMe ? AppColors.primary : colors.receivedBubble,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -494,7 +515,7 @@ class MessageBubble extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14.5,
                     height: 1.35,
-                    color: isMe ? Colors.white : AppColors.textDark,
+                    color: isMe ? Colors.white : colors.textDark,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -504,7 +525,7 @@ class MessageBubble extends StatelessWidget {
                     message.time,
                     style: TextStyle(
                       fontSize: 10.5,
-                      color: isMe ? Colors.white70 : AppColors.textGrey,
+                      color: isMe ? Colors.white70 : colors.textGrey,
                     ),
                   ),
                 ),

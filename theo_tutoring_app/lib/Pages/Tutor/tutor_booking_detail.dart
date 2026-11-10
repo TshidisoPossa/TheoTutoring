@@ -13,7 +13,7 @@ class BookingDetail {
   final String requestId;
   final String receivedAgo;
   final String subject;
-  final String rawDate; // "2026-10-24", used by the postpone date picker
+  final String rawDate; // "2026-10-24"
   final String date;
   final String startTime;
   final String endTime;
@@ -22,7 +22,7 @@ class BookingDetail {
   final String status;
   final String? studentNote;
   final String? sessionLink;
-  final bool canPostpone; // shows the Decline button
+  final bool canCancel; // shows the Cancel and Reschedule buttons
 
   final String studentName;
   final String? studentPhotoUrl;
@@ -57,7 +57,7 @@ class BookingDetail {
     required this.status,
     this.studentNote,
     this.sessionLink,
-    required this.canPostpone,
+    required this.canCancel,
     required this.studentName,
     this.studentPhotoUrl,
     this.studentYear,
@@ -102,7 +102,7 @@ class BookingDetail {
       status: b['status']?.toString() ?? '',
       studentNote: b['note']?.toString(),
       sessionLink: b['link']?.toString(),
-      canPostpone: b['canPostpone'] == true,
+      canCancel: b['canCancel'] == true,
       studentName: s['name']?.toString() ?? '',
       studentPhotoUrl: s['profilePhotoUrl']?.toString(),
       studentYear: _yearLabel(s['year']?.toString()),
@@ -164,10 +164,16 @@ class TutorBookingDetailScreen extends StatefulWidget {
   /// Loads the booking; tests pass their own.
   final Future<Map<String, dynamic>> Function(int bookingId) loadBooking;
 
+  /// The Cancel and Reschedule buttons' requests; tests pass their own.
+  final Future<Map<String, dynamic>> Function(int bookingId) cancelBooking;
+  final Future<Map<String, dynamic>> Function(int bookingId) rescheduleBooking;
+
   const TutorBookingDetailScreen({
     super.key,
     required this.bookingId,
     this.loadBooking = fetchTutorBooking,
+    this.cancelBooking = cancelTutorBooking,
+    this.rescheduleBooking = rescheduleTutorBooking,
   });
 
   @override
@@ -179,7 +185,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   BookingDetail? _booking;
   bool _loading = true;
   String? _error;
-  bool _declining = false;
+  bool _sending = false; // a Cancel or Reschedule request is on its way
 
   // Light palette matching screenshot
   static const _white  = Colors.white; // text and icons on blue
@@ -217,88 +223,73 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     }
   }
 
-  // The Cancel button. The backend does not delete the session (that would
-  // need the refund rules in documentation 4.6): it moves it. The tutor
-  // picks a new date and start time (same length as before) and the student
-  // must confirm it.
-  Future<void> _decline() async {
-    final b = _booking!;
+  // The Cancel button: "Are you sure?", then the session is cancelled and
+  // the student gets a "Session cancelled" notification.
+  Future<void> _cancel() => _confirmAndSend(
+        title: 'Cancel this session?',
+        message: 'Are you sure you want to cancel the meeting with '
+            '${_booking!.studentName}? The student will be notified.',
+        noLabel: 'No, keep it',
+        yesLabel: 'Yes, cancel',
+        yesColor: _red,
+        send: widget.cancelBooking,
+        done: 'Session cancelled. The student has been notified.',
+      );
+
+  // The Reschedule button: the session is cancelled and the student is
+  // asked to book a new time with this tutor.
+  Future<void> _reschedule() => _confirmAndSend(
+        title: 'Reschedule this session?',
+        message: 'Pressing this button will allow the student to book '
+            'another session.',
+        noLabel: 'Not now',
+        yesLabel: 'Reschedule',
+        yesColor: _blue,
+        send: widget.rescheduleBooking,
+        done: 'The student has been asked to book a new time.',
+      );
+
+  Future<void> _confirmAndSend({
+    required String title,
+    required String message,
+    required String noLabel,
+    required String yesLabel,
+    required Color yesColor,
+    required Future<Map<String, dynamic>> Function(int bookingId) send,
+    required String done,
+  }) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Cancel this session time?',
-            style: TextStyle(color: _text1)),
-        content: Text(
-            'The session will be moved to a new time that you choose. The '
-            'student will be asked to confirm it.',
-            style: TextStyle(color: _text3)),
+        backgroundColor: _surface,
+        title: Text(title, style: TextStyle(color: _text1)),
+        content: Text(message, style: TextStyle(color: _text3, height: 1.4)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Keep session', style: TextStyle(color: _text3)),
+            child: Text(noLabel, style: TextStyle(color: _text3)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Pick a new time',
-                style: TextStyle(color: _red, fontWeight: FontWeight.w700)),
+            child: Text(yesLabel,
+                style: TextStyle(
+                    color: _dk && yesColor == _red ? _redText : yesColor,
+                    fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
     if (confirm != true || !mounted) return;
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final current = DateTime.tryParse(b.rawDate);
-    final day = await showDatePicker(
-      context: context,
-      initialDate:
-          current == null || current.isBefore(today) ? today : current,
-      firstDate: today,
-      lastDate: today.add(const Duration(days: 90)),
-      helpText: 'New session date',
-    );
-    if (day == null || !mounted) return;
-
-    final parts = b.startTime.split(':');
-    final start = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(
-        hour: int.tryParse(parts.first) ?? 9,
-        minute: parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
-      ),
-      helpText: 'New start time',
-    );
-    if (start == null || !mounted) return;
-
-    final length = b.durationMinutes > 0 ? b.durationMinutes : 60;
-    final startMinutes = start.hour * 60 + start.minute;
-    final endMinutes = startMinutes + length;
-    if (endMinutes >= 24 * 60) {
-      _showMessage('The session must end before midnight.', error: true);
-      return;
-    }
-
-    String two(int n) => n.toString().padLeft(2, '0');
-    String clock(int m) => '${two(m ~/ 60)}:${two(m % 60)}';
-    final date = '${day.year}-${two(day.month)}-${two(day.day)}';
-
-    setState(() => _declining = true);
+    setState(() => _sending = true);
     try {
-      await postponeTutorBooking(
-        b.bookingId,
-        date: date,
-        startTime: clock(startMinutes),
-        endTime: clock(endMinutes),
-      );
+      await send(_booking!.bookingId);
       if (!mounted) return;
-      _showMessage(
-          'Session moved to ${formatLongDate(date)}, ${clock(startMinutes)}. '
-          'The student has been asked to confirm.');
+      _showMessage(done);
       Navigator.pop(context, true); // the Schedule page reloads
     } catch (e) {
       if (!mounted) return;
-      setState(() => _declining = false);
+      setState(() => _sending = false);
       _showMessage(e.toString(), error: true);
     }
   }
@@ -331,10 +322,10 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           ],
         ),
       ),
-      // the Cancel button stays at the bottom of the screen
+      // Reschedule and Cancel stay at the bottom of the screen
       bottomNavigationBar:
-          b != null && b.canPostpone && !_loading && _error == null
-              ? _buildCancelBar()
+          b != null && b.canCancel && !_loading && _error == null
+              ? _buildActionBar()
               : null,
     );
   }
@@ -907,46 +898,80 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     );
   }
 
-  // ── Cancel button, pinned to the bottom ──────────────────────────────────
+  // ── Reschedule and Cancel buttons, pinned to the bottom ───────────────
 
-  Widget _buildCancelBar() {
+  Widget _buildActionBar() {
     return Container(
       color: _surface,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            onPressed: _declining ? null : _decline,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _redText,
-              backgroundColor: _redBg,
-              side: BorderSide(color: _dk ? TutorDark.border : const Color(0xFFFECACA)),
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: _declining
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child:
-                        CircularProgressIndicator(color: _red, strokeWidth: 2))
-                : const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.close_rounded, size: 18, color: _red),
-                      SizedBox(width: 8),
-                      Text('Cancel',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: _red)),
-                    ],
+        child: _sending
+            ? const SizedBox(
+                height: 50,
+                child: Center(
+                  child: SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                        color: _blue, strokeWidth: 2.5),
                   ),
-          ),
-        ),
+                ),
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: _actionButton(
+                      key: const Key('booking-reschedule'),
+                      label: 'Reschedule',
+                      icon: Icons.event_repeat_rounded,
+                      color: _dk ? TutorDark.blueText : _blue,
+                      background: _blueBg,
+                      border: _dk ? TutorDark.border : const Color(0xFFC7D7FE),
+                      onPressed: _reschedule,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _actionButton(
+                      key: const Key('booking-cancel'),
+                      label: 'Cancel',
+                      icon: Icons.close_rounded,
+                      color: _redText,
+                      background: _redBg,
+                      border: _dk ? TutorDark.border : const Color(0xFFFECACA),
+                      onPressed: _cancel,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required Key key,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required Color background,
+    required Color border,
+    required VoidCallback onPressed,
+  }) {
+    return OutlinedButton.icon(
+      key: key,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label,
+          style: TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w600, color: color)),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        backgroundColor: background,
+        side: BorderSide(color: border),
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

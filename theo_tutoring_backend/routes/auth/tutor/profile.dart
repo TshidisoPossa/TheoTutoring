@@ -166,7 +166,7 @@ Future<Response> onRequest(RequestContext context) async {
     await db.transactional((conn) async {
       await conn.execute(
         '''
-        UPDATE TutorProfile
+        UPDATE tutorProfile
         SET Bio = :bio,
             Experience = :experience,
             Certificate = :certificate,
@@ -189,13 +189,13 @@ Future<Response> onRequest(RequestContext context) async {
       );
 
       await conn.execute(
-        'DELETE FROM TutorSubjects WHERE TutorID = :tutorId',
+        'DELETE FROM tutorSubjects WHERE TutorID = :tutorId',
         {'tutorId': tutorId},
       );
       for (final subjectId in subjectIds) {
         await conn.execute(
           '''
-          INSERT INTO TutorSubjects (TutorID, SubjectID)
+          INSERT INTO tutorSubjects (TutorID, SubjectID)
           VALUES (:tutorId, :subjectId)
           ''',
           {'tutorId': tutorId, 'subjectId': subjectId},
@@ -203,13 +203,13 @@ Future<Response> onRequest(RequestContext context) async {
       }
 
       await conn.execute(
-        'DELETE FROM Qualification WHERE TutorID = :tutorId',
+        'DELETE FROM qualification WHERE TutorID = :tutorId',
         {'tutorId': tutorId},
       );
       for (final q in qualifications) {
         await conn.execute(
           '''
-          INSERT INTO Qualification (TutorID, Degree, Institution)
+          INSERT INTO qualification (TutorID, Degree, Institution)
           VALUES (:tutorId, :degree, :institution)
           ''',
           {

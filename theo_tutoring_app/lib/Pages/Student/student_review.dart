@@ -1,60 +1,90 @@
-///import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
-/*
-class AppColors {
-  static const background = Color(0xFFF7F8FE);
-  static const card = Colors.white;
-  static const primary = Color(0xFF1A6FE8);
-  static const chip = Color(0xFFDDE3FA);
-  static const chipIdle = Color(0xFFEEF0FB);
-  static const ink = Color(0xFF0F172A);
-  static const muted = Color(0xFF5B6275);
-  static const star = Color(0xFFFFB347);
-  static const starOff = Color(0xFFE3E6F0);
+import '../Tutor/tutor_theme.dart';
+import 'student_lesson.dart' show Lesson, ReasonDialog;
+import 'student_lessons_api.dart';
+
+/// The badges under "What made this session great?". Saved with the review
+/// and shown only to the admin. Keep in sync with the backend's
+/// reviewHighlights (lib/student_reviews.dart).
+const reviewHighlights = <(String, IconData)>[
+  ('Clear explanations', Icons.lightbulb_outline_rounded),
+  ('Punctual & prepared', Icons.schedule_rounded),
+  ('Patient with questions', Icons.forum_outlined),
+  ('Great practice problems', Icons.edit_note_rounded),
+  ('Encouraging atmosphere', Icons.rocket_launch_outlined),
+  ('Helpful whiteboard notes', Icons.draw_outlined),
+];
+
+/// What the student filled in on the page.
+class ReviewDraft {
+  const ReviewDraft({
+    required this.rating,
+    this.comment,
+    this.highlights = const [],
+    this.privateNote,
+  });
+
+  final int rating;
+  final String? comment; // public, on the tutor's profile
+  final List<String> highlights; // admin only
+  final String? privateNote; // admin only
 }
 
-class ReviewApp extends StatelessWidget {
-  const ReviewApp({super.key});
+/// Saves a review. Tests pass a fake.
+typedef SubmitReview = Future<void> Function(int bookingId, ReviewDraft draft);
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Leave A Review',
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: AppColors.background,
-        colorSchemeSeed: AppColors.primary,
-      ),
-      home: const LeaveReviewScreen(),
-    );
-  }
+/// Sends "Need help with this session?" to the admin. Tests pass a fake.
+typedef ReportLesson = Future<void> Function(int bookingId, String reason);
+
+/// The reviewing student, for the "Lerato Dube (Year 2)" line.
+class ReviewStudent {
+  const ReviewStudent({this.name, this.year, this.institution});
+
+  factory ReviewStudent.fromJson(Map<String, dynamic> json) => ReviewStudent(
+    name: json['name'] as String?,
+    year: json['year'] as String?,
+    institution: json['institution'] as String?,
+  );
+
+  final String? name;
+  final String? year; // "2" from registration, or older free text
+  final String? institution;
 }
 
-
-
+/// "Leave a review" for a completed lesson (documentation 4.9). Stars are
+/// required; the public review, the badges and the private note are
+/// optional. Saved with `POST /students/lessons/{id}/review`; pops true once
+/// it is saved, false on "Skip for now".
 class LeaveReviewScreen extends StatefulWidget {
-  const LeaveReviewScreen({super.key});
+  const LeaveReviewScreen({
+    super.key,
+    required this.lesson,
+    this.student,
+    this.submit,
+    this.report,
+    this.now,
+  });
+
+  final Lesson lesson;
+  final ReviewStudent? student;
+
+  /// Null uses [StudentLessonsApi.review].
+  final SubmitReview? submit;
+
+  /// Null uses [StudentLessonsApi.report].
+  final ReportLesson? report;
+
+  /// "Today" / "Yesterday" in the date line; tests fix it.
+  final DateTime Function()? now;
 
   @override
   State<LeaveReviewScreen> createState() => _LeaveReviewScreenState();
 }
 
 class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
-  static const int maxChars = 500;
-
-  int _rating = 5;
-  final Set<String> _selected = {
-    'Clear Explanations',
-    'Punctual & Prepared',
-    'Patient with Questions',
-    'Great Practice Problems',
-  };
-  final _reviewController = TextEditingController();
-  final _noteController = TextEditingController();
-  bool _noteOpen = false;
-
-  static const _ratingLabels = {
+  static const _maxLength = 500;
+  static const _labels = {
     1: 'Poor',
     2: 'Fair',
     3: 'Good',
@@ -62,108 +92,219 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
     5: 'Outstanding!',
   };
 
-  static const _badges = <String>[
-    ('Clear Explanations'),
-    ('Punctual & Prepared'),
-    ('Patient with Questions'),
-    ('Great Practice Problems'),
-    ('Encouraging Atmosphere'),
-    ('Helpful Whiteboard Notes'),
-  ];
+  final _comment = TextEditingController();
+  final _note = TextEditingController();
+  StudentLessonsApi? _api;
+  int _rating = 0;
+  final _highlights = <String>{};
+  bool _noteOpen = false;
+  bool _saving = false;
+
+  StudentLessonsApi get _client => _api ??= StudentLessonsApi();
+
+  @override
+  void initState() {
+    super.initState();
+    _comment.addListener(() => setState(() {})); // the "154 / 500" counter
+  }
 
   @override
   void dispose() {
-    _reviewController.dispose();
-    _noteController.dispose();
+    _comment.dispose();
+    _note.dispose();
+    _api?.close();
     super.dispose();
   }
 
-  void _submit() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Review submitted: $_rating★, ${_selected.length} highlights',
-        ),
+  /// "Dr. Elena Rostova" -> "Elena"; "Thabo Mokoena" -> "Thabo".
+  String get _firstName {
+    final parts = widget.lesson.tutorName.trim().split(RegExp(r'\s+'));
+    if (parts.length > 1 && parts.first.endsWith('.')) return parts[1];
+    return parts.first;
+  }
+
+  Future<void> _save() async {
+    if (_rating == 0 || _saving) return;
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    String? text(TextEditingController c) =>
+        c.text.trim().isEmpty ? null : c.text.trim();
+    final draft = ReviewDraft(
+      rating: _rating,
+      comment: text(_comment),
+      highlights: [
+        for (final (label, _) in reviewHighlights)
+          if (_highlights.contains(label)) label,
+      ],
+      privateNote: text(_note),
+    );
+    try {
+      final submit = widget.submit;
+      if (submit != null) {
+        await submit(widget.lesson.bookingId, draft);
+      } else {
+        await _client.review(
+          widget.lesson.bookingId,
+          rating: draft.rating,
+          comment: draft.comment,
+          highlights: draft.highlights,
+          privateNote: draft.privateNote,
+        );
+      }
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Thank you! Your review was posted.')),
+      );
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  // "Need help with this session?": the same report as on the lesson card
+  Future<void> _needHelp() async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => ReasonDialog(
+        title: 'Need help with this session?',
+        message:
+            'Tell the TheoTutoring team what went wrong. An administrator '
+            'will look into it.',
+        label: 'What happened?',
+        dismissLabel: 'Close',
+        submitLabel: 'Send',
       ),
     );
+    if (reason == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final report = widget.report;
+      if (report != null) {
+        await report(widget.lesson.bookingId, reason);
+      } else {
+        await _client.report(widget.lesson.bookingId, reason);
+      }
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Sent. An administrator will look into it.'),
+        ),
+      );
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final c = _ReviewColors(context.tutorDark);
     return Scaffold(
-      body: SafeArea(
-        child: Column(
+      backgroundColor: c.background,
+      appBar: AppBar(
+        backgroundColor: c.surface,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: c.text,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        titleSpacing: 16,
+        title: Row(
           children: [
-            const _TopBar(),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                children: [
-                  const _SessionCard(),
-                  const SizedBox(height: 16),
-                  _RatingCard(
-                    rating: _rating,
-                    label: _ratingLabels[_rating]!,
-                    onChanged: (v) => setState(() => _rating = v),
-                  ),
-                  const SizedBox(height: 16),
-                  _HighlightsCard(
-                    selected: _selected,
-                    onToggle: (name) => setState(() {
-                      _selected.contains(name)
-                          ? _selected.remove(name)
-                          : _selected.add(name);
-                    }),
-                  ),
-                  const SizedBox(height: 16),
-                  _ReviewCard(
-                    reviewController: _reviewController,
-                    noteController: _noteController,
-                    maxChars: maxChars,
-                    noteOpen: _noteOpen,
-                    onToggleNote: () => setState(() => _noteOpen = !_noteOpen),
-                    onChanged: () => setState(() {}),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    height: 56,
-                    child: FilledButton.icon(
-                      onPressed: _submit,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        shape: const StadiumBorder(),
-                        textStyle: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      iconAlignment: IconAlignment.end,
-                      icon: const Icon(Icons.send_outlined, size: 22),
-                      label: const Text('Submit Review'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      TextButton(
-                        onPressed: () {},
-                        child: const Text('Skip for now',
-                            style: _linkStyle),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Icon(Icons.circle,
-                            size: 5, color: Color(0xFFC3C8D6)),
-                      ),
-                      TextButton(
-                        onPressed: () {},
-                        child: const Text('Need help with this session?',
-                            style: _linkStyle),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: c.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.school_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Leave A Review',
+              style: TextStyle(
+                color: c.text,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: c.text,
+              child: Text(
+                _initials(widget.student?.name ?? ''),
+                style: TextStyle(
+                  color: c.surface,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sessionCard(c),
+                    const SizedBox(height: 14),
+                    _ratingCard(c),
+                    const SizedBox(height: 14),
+                    _highlightsCard(c),
+                    const SizedBox(height: 14),
+                    _commentCard(c),
+                    const SizedBox(height: 20),
+                    _submitButton(c),
+                    if (_rating == 0) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Choose a star rating to submit.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: c.muted, fontSize: 12),
                       ),
                     ],
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: _saving
+                              ? null
+                              : () => Navigator.of(context).pop(false),
+                          child: Text(
+                            'Skip for now',
+                            style: TextStyle(color: c.muted, fontSize: 13),
+                          ),
+                        ),
+                        Flexible(
+                          child: TextButton(
+                            onPressed: _saving ? null : _needHelp,
+                            child: Text(
+                              'Need help with this session?',
+                              textAlign: TextAlign.end,
+                              style: TextStyle(color: c.muted, fontSize: 13),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -171,124 +312,61 @@ class _LeaveReviewScreenState extends State<LeaveReviewScreen> {
       ),
     );
   }
-}
 
-const _linkStyle = TextStyle(
-  color: AppColors.muted,
-  fontSize: 15,
-  fontWeight: FontWeight.w400,
-);
+  Widget _card(_ReviewColors c, {required Widget child}) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: c.surface,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: c.border),
+    ),
+    child: child,
+  );
 
-class _Card extends StatelessWidget {
-  final Widget child;
-  final EdgeInsets padding;
-  const _Card({required this.child, this.padding = const EdgeInsets.all(20)});
+  // ── Session ────────────────────────────────────────────────────────────
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0F1A2A6C),
-            blurRadius: 18,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      color: AppColors.background,
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.school, color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Leave A Review',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: AppColors.ink,
-              ),
-            ),
-          ),
-          Container(
-            width: 44,
-            height: 44,
-            decoration: const BoxDecoration(
-              color: AppColors.ink,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.person_outline,
-                color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: 12),
-          IconButton(
-            onPressed: () => Navigator.maybePop(context),
-            icon: const Icon(Icons.close, color: AppColors.ink, size: 28),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SessionCard extends StatelessWidget {
-  const _SessionCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return _Card(
-      padding: const EdgeInsets.all(16),
+  Widget _sessionCard(_ReviewColors c) {
+    final lesson = widget.lesson;
+    final student = widget.student;
+    final studentLine = student?.name == null
+        ? null
+        : student!.year == null || student.year!.trim().isEmpty
+        ? student.name!
+        : '${student.name} (${_yearLabel(student.year!)})';
+    return _card(
+      c,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Expanded(
+              Flexible(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.chip,
-                    borderRadius: BorderRadius.circular(30),
+                    horizontal: 10,
+                    vertical: 6,
                   ),
-                  child: const Row(
+                  decoration: BoxDecoration(
+                    color: c.tint,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle,
-                          size: 22, color: AppColors.ink),
-                      SizedBox(width: 8),
-                      Expanded(
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 15,
+                        color: c.accent,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
                         child: Text(
-                          '',
+                          'Completed Session • ${lesson.subject}',
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink,
-                            height: 1.1,
+                            color: c.accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -296,80 +374,69 @@ class _SessionCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              const Icon(Icons.schedule, size: 20, color: AppColors.muted),
+              const SizedBox(width: 8),
+              Icon(Icons.timer_outlined, size: 15, color: c.muted),
               const SizedBox(width: 4),
-              const Text('60 mins',
-                  style: TextStyle(fontSize: 16, color: AppColors.muted)),
+              Text(
+                '${lesson.end.difference(lesson.start).inMinutes} mins',
+                style: TextStyle(color: c.muted, fontSize: 12),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppColors.chipIdle,
-              borderRadius: BorderRadius.circular(24),
+              color: c.field,
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               children: [
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const CircleAvatar(
-                      radius: 32,
-                      backgroundColor: Color(0xFFC9D2F2),
-                      
-                      child: Icon(Icons.person,
-                          size: 36, color: Colors.white),
-                    ),
-                    Positioned(
-                      right: -4,
-                      bottom: -4,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.verified,
-                            size: 22, color: AppColors.primary),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 18),
-                const Expanded(
+                _tutorPhoto(c),
+                const SizedBox(width: 14),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Dr. Elena Rostova',
+                        lesson.tutorName,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 24,
+                          color: c.text,
+                          fontSize: 17,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.ink,
                         ),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Senior Math & Physics Mentor',
-                        style:
-                            TextStyle(fontSize: 16, color: AppColors.muted),
-                      ),
-                      SizedBox(height: 4),
+                      if (lesson.tutorSubjects != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '${lesson.tutorSubjects} tutor',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: c.muted, fontSize: 12),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.star, size: 18, color: AppColors.star),
-                          SizedBox(width: 4),
-                          Text('4.9',
+                          Icon(Icons.star_rounded, size: 16, color: c.star),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              lesson.tutorReviewCount == 0 ||
+                                      lesson.tutorRating == null
+                                  ? 'New tutor'
+                                  : '${lesson.tutorRating!.toStringAsFixed(1)} '
+                                        '(${lesson.tutorReviewCount} '
+                                        '${lesson.tutorReviewCount == 1 ? 'review' : 'reviews'})',
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.muted)),
-                          SizedBox(width: 6),
-                          Text('(142 reviews)',
-                              style: TextStyle(
-                                  fontSize: 16, color: AppColors.muted)),
+                                color: c.text,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -378,363 +445,481 @@ class _SessionCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          const Row(
-            children: [
-              Icon(Icons.calendar_today_outlined,
-                  size: 20, color: AppColors.ink),
-              SizedBox(width: 6),
-              Text('Today, 3:00 PM - 5:00 PM',
-                  style: TextStyle(fontSize: 16, color: AppColors.ink)),
-              Spacer(),
-              Text('..........',
-                  style: TextStyle(fontSize: 16, color: AppColors.muted)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------- Star rating ----------
-class _RatingCard extends StatelessWidget {
-  final int rating;
-  final String label;
-  final ValueChanged<int> onChanged;
-
-  const _RatingCard({
-    required this.rating,
-    required this.label,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _Card(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-      child: Column(
-        children: [
-          const Text(
-            'How was your session?',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 30,
-              height: 1.2,
-              fontWeight: FontWeight.w700,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Your feedback helps tutors grow and guides fellow students.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 20, height: 1.3, color: AppColors.muted),
-          ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 12),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: List.generate(5, (i) {
-              final filled = i < rating;
-              return GestureDetector(
-                onTap: () => onChanged(i + 1),
-                child: AnimatedScale(
-                  scale: filled ? 1 : 0.92,
-                  duration: const Duration(milliseconds: 150),
-                  child: Icon(
-                    Icons.star_rounded,
-                    size: 58,
-                    color: filled ? AppColors.star : AppColors.starOff,
-                  ),
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.chipIdle,
-              borderRadius: BorderRadius.circular(30),
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: AppColors.ink,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
-class _HighlightsCard extends StatelessWidget {
-  final List<(String, String)> badges;
-  final Set<String> selected;
-  final ValueChanged<String> onToggle;
-
-  const _HighlightsCard({
-    required this.badges,
-    required this.selected,
-    required this.onToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Icon(Icons.calendar_today_outlined, size: 14, color: c.muted),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'What made this session great?',
-                  style: TextStyle(
-                    fontSize: 26,
-                    height: 1.2,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.ink,
-                  ),
+                  _when(lesson),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.muted, fontSize: 12),
                 ),
               ),
-              SizedBox(width: 16),
-              Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Text(
-                  'Multi-\nselect',
-                  style: TextStyle(
-                    fontSize: 16,
-                    height: 1.2,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
+              if (studentLine != null) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    studentLine,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(color: c.muted, fontSize: 12),
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            "Tap highlight badges that applied to today's calculus lesson:",
-            style: TextStyle(fontSize: 18, height: 1.3, color: AppColors.muted),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 10,
-            runSpacing: 12,
-            children: [
-              for (final (emoji, name) in badges)
-                _BadgeChip(
-                  label: name,
-                  selected: selected.contains(name),
-                  onTap: () => onToggle(name),
-                ),
+              ],
             ],
           ),
         ],
       ),
     );
   }
-}
 
-class _BadgeChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _BadgeChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.chip : AppColors.chipIdle,
-          borderRadius: BorderRadius.circular(30),
+  Widget _tutorPhoto(_ReviewColors c) {
+    final photo = widget.lesson.avatarUrl;
+    final fallback = Text(
+      _initials(widget.lesson.tutorName),
+      style: TextStyle(
+        color: c.accent,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+    return Stack(
+      children: [
+        CircleAvatar(
+          radius: 30,
+          backgroundColor: c.tint,
+          child: photo == null
+              ? fallback
+              : ClipOval(
+                  child: Image.network(
+                    photo,
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Center(child: fallback),
+                  ),
+                ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (selected) ...[
-              const Icon(Icons.check, size: 20, color: AppColors.ink),
-              const SizedBox(width: 8),
+        if (widget.lesson.tutorVerified)
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Tooltip(
+              message: 'Verified tutor',
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: c.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: c.field, width: 2),
+                ),
+                child: const Icon(
+                  Icons.check_rounded,
+                  size: 11,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// "Today, 4:00 PM - 5:00 PM", "Yesterday, ..." or "Mon 17 Nov, ...".
+  String _when(Lesson lesson) {
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    String time(DateTime t) {
+      final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
+      final minute = t.minute.toString().padLeft(2, '0');
+      return '$hour:$minute ${t.hour < 12 ? 'AM' : 'PM'}';
+    }
+
+    final now = (widget.now ?? DateTime.now)();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(
+      lesson.start.year,
+      lesson.start.month,
+      lesson.start.day,
+    );
+    final daysAgo = today.difference(day).inDays;
+    final dayLabel = daysAgo == 0
+        ? 'Today'
+        : daysAgo == 1
+        ? 'Yesterday'
+        : '${weekdays[day.weekday - 1]} ${day.day} ${months[day.month - 1]}';
+    return '$dayLabel, ${time(lesson.start)} - ${time(lesson.end)}';
+  }
+
+  // ── Stars ──────────────────────────────────────────────────────────────
+
+  Widget _ratingCard(_ReviewColors c) => _card(
+    c,
+    child: Column(
+      children: [
+        Text(
+          'How was your session with $_firstName?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: c.text,
+            fontSize: 19,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Your feedback helps tutors grow and guides fellow students.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: c.muted, fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        // Shrinks on very narrow phones instead of overflowing
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var star = 1; star <= 5; star++)
+                IconButton(
+                  key: ValueKey('review-star-$star'),
+                  tooltip: '$star ${star == 1 ? 'star' : 'stars'}',
+                  iconSize: 40,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _saving
+                      ? null
+                      : () => setState(() => _rating = star),
+                  icon: Icon(
+                    star <= _rating
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    color: star <= _rating ? c.star : c.starOff,
+                  ),
+                ),
             ],
-            Text(
-              '$label',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w600,
-                color: selected ? AppColors.ink : AppColors.muted,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: _rating == 0 ? c.field : c.tint,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            _labels[_rating] ?? 'Tap a star',
+            style: TextStyle(
+              color: _rating == 0 ? c.muted : c.accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  // ── Badges ─────────────────────────────────────────────────────────────
+
+  Widget _highlightsCard(_ReviewColors c) => _card(
+    c,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                _rating > 0 && _rating <= 3
+                    ? 'What went well?'
+                    : 'What made this session great?',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text(
+                'Multi-select',
+                style: TextStyle(
+                  color: c.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
         ),
+        const SizedBox(height: 4),
+        Text(
+          'Tap the badges that applied to this '
+          '${widget.lesson.subject} lesson.',
+          style: TextStyle(color: c.muted, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (label, icon) in reviewHighlights)
+              _badge(c, label, icon),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _badge(_ReviewColors c, String label, IconData icon) {
+    final selected = _highlights.contains(label);
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected ? c.tint : c.field,
+        shape: StadiumBorder(
+          side: BorderSide(color: selected ? c.accent : c.border),
+        ),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          // Reads the current state, so two quick taps always toggle twice
+          onTap: _saving
+              ? null
+              : () => setState(
+                  () => _highlights.remove(label) || _highlights.add(label),
+                ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  selected ? Icons.check_rounded : icon,
+                  size: 16,
+                  color: selected ? c.accent : c.muted,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: selected ? c.accent : c.text,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
-}
 
-class _ReviewCard extends StatelessWidget {
-  final TextEditingController reviewController;
-  final TextEditingController noteController;
-  final int maxChars;
-  final bool noteOpen;
-  final VoidCallback onToggleNote;
-  final VoidCallback onChanged;
+  // ── Public review + private note ───────────────────────────────────────
 
-  const _ReviewCard({
-    required this.reviewController,
-    required this.noteController,
-    required this.maxChars,
-    required this.noteOpen,
-    required this.onToggleNote,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Public Review for tutor',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.ink,
-                  ),
-                ),
-              ),
-              Icon(Icons.public, size: 28, color: AppColors.muted),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            "This review will be visible on tutor's public tutor profile.",
-            style: TextStyle(fontSize: 17, color: AppColors.muted),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: reviewController,
-            maxLines: 5,
-            minLines: 5,
-            maxLength: maxChars,
-            onChanged: (_) => onChanged(),
-            style: const TextStyle(fontSize: 18, color: AppColors.ink),
-            buildCounter: (context,
-                    {required currentLength,
-                    required isFocused,
-                    required maxLength}) =>
-                Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  '$currentLength / $maxLength',
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
-                  ),
+  Widget _commentCard(_ReviewColors c) => _card(
+    c,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Public Review for $_firstName',
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-            decoration: InputDecoration(
-              hintText: 'Share what stood out in the session…',
-              hintStyle: const TextStyle(color: Color(0xFF9AA1B5)),
-              filled: true,
-              fillColor: AppColors.chipIdle,
-              contentPadding: const EdgeInsets.all(16),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: onToggleNote,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-              decoration: BoxDecoration(
-                color: AppColors.chipIdle,
-                borderRadius: BorderRadius.circular(20),
-              ),
+            Icon(Icons.public_rounded, size: 20, color: c.muted),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'This review will be visible on $_firstName\'s public tutor '
+          'profile.',
+          style: TextStyle(color: c.muted, fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          key: const ValueKey('review-public'),
+          controller: _comment,
+          enabled: !_saving,
+          minLines: 4,
+          maxLines: 8,
+          maxLength: _maxLength,
+          textCapitalization: TextCapitalization.sentences,
+          style: TextStyle(color: c.text, fontSize: 14),
+          buildCounter:
+              (_, {required currentLength, required isFocused, maxLength}) =>
+                  Text(
+                    '$currentLength / $maxLength',
+                    style: TextStyle(color: c.muted, fontSize: 12),
+                  ),
+          decoration: _fieldDecoration(c, 'What stood out in the session?'),
+        ),
+        const SizedBox(height: 8),
+        // Private note: folded away until tapped
+        Material(
+          color: c.field,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => _noteOpen = !_noteOpen),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               child: Row(
                 children: [
-                  const Icon(Icons.lock_outline,
-                      size: 24, color: AppColors.ink),
-                  const SizedBox(width: 12),
-                  const Expanded(
+                  Icon(Icons.lock_outline_rounded, size: 18, color: c.muted),
+                  const SizedBox(width: 8),
+                  Expanded(
                     child: Text(
-                      'Private note for tutor or platform support',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      'Private note for platform support',
                       style: TextStyle(
-                        fontSize: 18,
+                        color: c.text,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.ink,
                       ),
                     ),
                   ),
-                  AnimatedRotation(
-                    turns: noteOpen ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: const Icon(Icons.keyboard_arrow_down,
-                        color: AppColors.ink),
+                  Icon(
+                    _noteOpen
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    color: c.muted,
                   ),
                 ],
               ),
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: noteOpen
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: TextField(
-                      controller: noteController,
-                      maxLines: 3,
-                      style: const TextStyle(
-                          fontSize: 17, color: AppColors.ink),
-                      decoration: InputDecoration(
-                        hintText: 'Only the tutor and support team can see this',
-                        hintStyle:
-                            const TextStyle(color: Color(0xFF9AA1B5)),
-                        filled: true,
-                        fillColor: AppColors.chipIdle,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  )
-                : const SizedBox(width: double.infinity),
+        ),
+        if (_noteOpen) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Only the TheoTutoring team reads this. $_firstName never sees '
+            'it.',
+            style: TextStyle(color: c.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('review-private'),
+            controller: _note,
+            enabled: !_saving,
+            minLines: 3,
+            maxLines: 6,
+            maxLength: _maxLength,
+            textCapitalization: TextCapitalization.sentences,
+            style: TextStyle(color: c.text, fontSize: 14),
+            decoration: _fieldDecoration(
+              c,
+              'Anything the team should know about this lesson?',
+            ),
           ),
         ],
+      ],
+    ),
+  );
+
+  InputDecoration _fieldDecoration(_ReviewColors c, String hint) =>
+      InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: c.muted, fontSize: 13),
+        filled: true,
+        fillColor: c.field,
+        counterStyle: TextStyle(color: c.muted),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c.accent, width: 1.5),
+        ),
+      );
+
+  Widget _submitButton(_ReviewColors c) => SizedBox(
+    height: 52,
+    child: FilledButton(
+      onPressed: _rating == 0 || _saving ? null : _save,
+      style: FilledButton.styleFrom(
+        backgroundColor: c.primary,
+        disabledBackgroundColor: c.primary.withValues(alpha: 0.4),
+        foregroundColor: Colors.white,
+        disabledForegroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
       ),
-    );
+      child: _saving
+          ? const SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: Colors.white,
+              ),
+            )
+          : const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Submit Review',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                SizedBox(width: 8),
+                Icon(Icons.send_rounded, size: 18),
+              ],
+            ),
+    ),
+  );
+
+  // "Lerato Dube" -> "LD"
+  static String _initials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty && !p.endsWith('.'))
+        .take(2);
+    final letters = parts.map((p) => p[0].toUpperCase()).join();
+    return letters.isEmpty ? '?' : letters;
   }
+
+  // "2" -> "Year 2"; older free text ("2nd Year") as it is
+  static String _yearLabel(String year) {
+    final trimmed = year.trim();
+    return int.tryParse(trimmed) != null ? 'Year $trimmed' : trimmed;
+  }
+}
+
+/// Light colours, or the dark ones while dark mode is on.
+class _ReviewColors {
+  const _ReviewColors(this.dark);
+
+  final bool dark;
+
+  Color get background => dark ? TutorDark.background : const Color(0xFFF0F4FA);
+  Color get surface => dark ? TutorDark.card : Colors.white;
+  Color get field => dark ? TutorDark.cardAlt : const Color(0xFFF3F6FB);
+  Color get border => dark ? TutorDark.border : const Color(0xFFE2E8F0);
+  Color get text => dark ? TutorDark.text : const Color(0xFF1E293B);
+  Color get muted => dark ? TutorDark.textMuted : const Color(0xFF64748B);
+  Color get primary => const Color(0xFF2F6FE0);
+  Color get accent => dark ? TutorDark.blueText : const Color(0xFF2A5FC4);
+  Color get tint => dark ? TutorDark.blueTint : const Color(0xFFE3ECFD);
+  Color get star => const Color(0xFFFFB020);
+  Color get starOff => dark ? TutorDark.border : const Color(0xFFD5DAE5);
 }

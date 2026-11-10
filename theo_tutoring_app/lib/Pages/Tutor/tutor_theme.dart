@@ -1,67 +1,81 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Dark mode for the tutor screens, switched on the tutor Profile page.
+/// Dark mode for the tutor and student screens, switched on their Profile
+/// page.
 ///
-/// The choice is kept on this device, and it only applies while a tutor is
-/// signed in: the login, student and admin screens always stay light.
-/// MaterialApp listens to [mode].
+/// Each role's choice is kept on this device separately, and it only applies
+/// while a tutor or student is signed in: the login and admin screens always
+/// stay light. MaterialApp listens to [mode].
 class TutorTheme {
   TutorTheme._();
 
-  static const _prefsKey = 'tutor_dark_mode';
+  static const _roles = ['tutor', 'student'];
+  static String _prefsKey(String role) => '${role}_dark_mode';
 
-  static bool _darkChosen = false;
-  static bool _tutorSignedIn = false;
+  static final Map<String, bool> _darkChosen = {
+    for (final role in _roles) role: false,
+  };
+
+  /// Who is signed in ('tutor' or 'student'), or null.
+  static String? _signedInRole;
+
+  /// The last role signed in, so the switch still knows whose choice it is.
+  static String _role = 'tutor';
 
   /// The ThemeMode MaterialApp uses.
   static final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.light);
 
-  /// What the Dark Mode switch shows.
-  static bool get darkChosen => _darkChosen;
+  /// What the Dark Mode switch shows (for the signed-in role).
+  static bool get darkChosen => _darkChosen[_role] ?? false;
 
-  /// Reads the saved choice. Called once in main().
+  /// Reads the saved choices. Called once in main().
   static Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _darkChosen = prefs.getBool(_prefsKey) ?? false;
+      for (final role in _roles) {
+        _darkChosen[role] = prefs.getBool(_prefsKey(role)) ?? false;
+      }
     } catch (_) {
       // No saved choice (e.g. storage blocked): stay light.
     }
     _apply();
   }
 
-  /// A tutor has signed in: use their choice.
-  static void signedIn() {
-    _tutorSignedIn = true;
+  /// A tutor or student has signed in: use their choice.
+  static void signedIn([String role = 'tutor']) {
+    _role = _roles.contains(role) ? role : 'tutor';
+    _signedInRole = _role;
     _apply();
   }
 
-  /// The tutor signed out: back to light for the login screen.
+  /// They signed out: back to light for the login screen.
   static void signedOut() {
-    _tutorSignedIn = false;
+    _signedInRole = null;
     _apply();
   }
 
   /// The Dark Mode switch on the Profile page.
   static Future<void> setDark(bool on) async {
-    _darkChosen = on;
+    final role = _role;
+    _darkChosen[role] = on;
     _apply();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_prefsKey, on);
+      await prefs.setBool(_prefsKey(role), on);
     } catch (_) {
       // Still dark for this session, just not remembered.
     }
   }
 
   static void _apply() {
-    mode.value = _tutorSignedIn && _darkChosen
+    final role = _signedInRole;
+    mode.value = role != null && (_darkChosen[role] ?? false)
         ? ThemeMode.dark
         : ThemeMode.light;
   }
 
-  /// The app theme while a tutor has dark mode on.
+  /// The app theme while dark mode is on.
   static final ThemeData darkTheme = () {
     final scheme = ColorScheme.fromSeed(
       seedColor: const Color(0xFF246BFE),
@@ -89,8 +103,8 @@ class TutorTheme {
   }();
 }
 
-/// The dark-mode colours of the tutor screens. In light mode every screen
-/// keeps its own colours; in dark mode it uses these.
+/// The dark-mode colours of the tutor and student screens. In light mode
+/// every screen keeps its own colours; in dark mode it uses these.
 abstract final class TutorDark {
   static const background = Color(0xFF0F141C); // page
   static const card = Color(0xFF1A212C); // cards, bars, sheets
@@ -110,7 +124,7 @@ abstract final class TutorDark {
   static const redText = Color(0xFFFCA5A5);
 }
 
-/// True when the tutor screens are dark.
+/// True when the tutor or student screens are dark.
 extension TutorThemeContext on BuildContext {
   bool get tutorDark => Theme.of(this).brightness == Brightness.dark;
 }

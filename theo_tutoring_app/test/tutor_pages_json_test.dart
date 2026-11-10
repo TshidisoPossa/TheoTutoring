@@ -110,7 +110,7 @@ void main() {
         'link': null,
         'receivedMinutesAgo': 180,
         'hasStarted': false,
-        'canPostpone': true,
+        'canCancel': true,
       },
       'student': {
         'name': 'Lerato Dube',
@@ -136,7 +136,7 @@ void main() {
     expect(b.receivedAgo, '3h ago');
     expect(b.date, 'Tue, 27 Oct 2026');
     expect(b.durationLabel, '1 hr');
-    expect(b.canPostpone, isTrue);
+    expect(b.canCancel, isTrue);
     expect(b.studentVerified, isTrue);
     expect(b.studentMajor, 'BSc Computer Science');
     expect(b.isRecurring, isTrue);
@@ -147,12 +147,12 @@ void main() {
 
   test('one-off booking has no recurring card', () {
     final b = BookingDetail.fromJson({
-      'booking': {'bookingId': 5, 'status': 'Pending', 'canPostpone': false},
+      'booking': {'bookingId': 5, 'status': 'Pending', 'canCancel': false},
       'student': {'name': 'Sipho'},
       'recurring': null,
     });
     expect(b.isRecurring, isFalse);
-    expect(b.canPostpone, isFalse);
+    expect(b.canCancel, isFalse);
   });
 
   test('labels', () {

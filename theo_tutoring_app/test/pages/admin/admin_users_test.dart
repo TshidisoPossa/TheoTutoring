@@ -73,19 +73,20 @@ const _rolePermissions = {
   'monitor_admin': ['admin.dashboard.read', 'admin.monitor.read'],
 };
 
-Map<String, dynamic> _admin(int id, String name, String email, String role) =>
-    {
-      'adminId': id,
-      'name': name,
-      'email': email,
-      'role': role,
-      'accountStatus': 'Active',
-      'createdAt': '2026-10-20 10:00:00',
-    };
+Map<String, dynamic> _admin(int id, String name, String email, String role) => {
+  'adminId': id,
+  'name': name,
+  'email': email,
+  'role': role,
+  'accountStatus': 'Active',
+  'createdAt': '2026-10-20 10:00:00',
+};
 
 /// Simulates GET/POST /admin/users with an in-memory admin list.
 class _Backend {
-  final admins = [_admin(1, 'Admin Tester', 'admin@example.com', 'super_admin')];
+  final admins = [
+    _admin(1, 'Admin Tester', 'admin@example.com', 'super_admin'),
+  ];
   final posts = <Map<String, dynamic>>[];
   http.Response? nextPostResponse;
   bool failGet = false;

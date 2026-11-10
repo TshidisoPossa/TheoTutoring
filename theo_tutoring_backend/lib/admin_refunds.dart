@@ -31,6 +31,7 @@ const _permissionKeys = <String>{
   'admin.refunds.read',
   'admin.reports.read',
   'admin.reports.resolve',
+  'admin.reviews.read',
   'admin.roles.manage',
   'admin.settings.rate.read',
   'admin.settings.rate.write',
@@ -56,6 +57,7 @@ const Map<String, Set<String>> adminRolePermissions = {
     'admin.refunds.read',
     'admin.reports.read',
     'admin.reports.resolve',
+    'admin.reviews.read',
     'admin.settings.rate.read',
     'admin.settings.rate.write',
   },
@@ -79,6 +81,7 @@ const Map<String, Set<String>> adminRolePermissions = {
     'admin.refunds.read',
     'admin.reports.read',
     'admin.reports.resolve',
+    'admin.reviews.read',
   },
   'monitor_admin': {'admin.dashboard.read', 'admin.monitor.read'},
 };
@@ -378,10 +381,15 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     final result = await connection.execute('''
       SELECT
         report.ReportID,
-        report.ReportStatus,
+        report.Status AS ReportStatus,
+        report.Category,
         report.Reason,
-        report.Description,
-        report.CreatedAtUtc,
+        -- Created_at is server (South African) time; the page wants UTC
+        TIMESTAMPADD(
+          SECOND,
+          TIMESTAMPDIFF(SECOND, NOW(), UTC_TIMESTAMP()),
+          report.Created_at
+        ) AS CreatedAtUtc,
         report.ResolvedAtUtc,
         report.ResolutionNote,
         reporter.Role AS ReporterRole,
@@ -410,9 +418,10 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
           CAST(attempt.PaymentAttemptID AS CHAR)
         ) AS TransactionID,
         adminUser.Name AS DecidedBy
-      FROM UserReport report
-      INNER JOIN `User` reporter ON reporter.UserId = report.ReporterUserID
-      INNER JOIN `User` reported ON reported.UserId = report.ReportedUserID
+      FROM Report report
+      INNER JOIN `User` reporter ON reporter.UserId = report.ReporterID
+      -- empty for Payments & Payouts / Other (not about another user)
+      LEFT JOIN `User` reported ON reported.UserId = report.ReportedUserID
       LEFT JOIN Booking booking ON booking.Booking_id = report.BookingID
       LEFT JOIN Subjects subject ON subject.subjectId = booking.SubjectID
       LEFT JOIN Payment payment ON payment.BookingId = booking.Booking_id
@@ -421,9 +430,9 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
         ON purchasePayment.PurchaseID = booking.PurchaseID
       LEFT JOIN PaymentAttempt attempt
         ON attempt.PaymentAttemptID = purchasePayment.PaymentAttemptID
-      LEFT JOIN Admin admin ON admin.AdminID = report.ResolvedByAdminID
+      LEFT JOIN Admin admin ON admin.AdminID = report.AdminID
       LEFT JOIN `User` adminUser ON adminUser.UserId = admin.UserId
-      ORDER BY report.CreatedAtUtc DESC, report.ReportID DESC
+      ORDER BY report.Created_at DESC, report.ReportID DESC
     ''');
     return result.rows.map(_reportJson).toList();
   }
@@ -432,10 +441,13 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     final rawStatus = row.colByName('ReportStatus')?.toLowerCase();
     final status = switch (rawStatus) {
       'resolved' => 'resolved',
-      'underreview' || 'under_review' => 'under_review',
+      'under review' || 'underreview' || 'under_review' => 'under_review',
       _ => 'open',
     };
     final sessionDate = row.colByName('Date');
+    // Tutors' Report a Problem has a category; students' reports do not
+    final category = row.colByName('Category');
+    final description = row.colByName('Reason');
     return {
       'id': 'report-${row.colByName('ReportID')}',
       'type': 'report',
@@ -451,7 +463,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
       'cancelledAt': null,
       'createdAt': _johannesburgIso(row.colByName('CreatedAtUtc')),
       'reportedBy': row.colByName('ReporterRole'),
-      'reason': '${row.colByName('Reason')}: ${row.colByName('Description')}',
+      'reason': category == null ? description : '$category: $description',
       'amountPaid': _double(row.colByName('AmountPaid')),
       'paymentMethod': row.colByName('PaymentMethod'),
       'refundPercentage': null,
@@ -533,21 +545,21 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     try {
       await connection.transactional((transaction) async {
         final current = await transaction.execute(
-          'SELECT ReportStatus FROM UserReport WHERE ReportID = :id FOR UPDATE',
+          'SELECT Status FROM Report WHERE ReportID = :id FOR UPDATE',
           {'id': reportId},
         );
         if (current.rows.isEmpty) throw const AdminRefundNotFound();
-        if (current.rows.first.colByName('ReportStatus') == 'Resolved') {
+        if (current.rows.first.colByName('Status') == 'Resolved') {
           throw const AdminRefundConflict('This report is already resolved.');
         }
         final update = await transaction.execute(
           '''
-          UPDATE UserReport
-          SET ReportStatus = 'Resolved',
+          UPDATE Report
+          SET Status = 'Resolved',
               ResolutionNote = :note,
-              ResolvedByAdminID = :adminId,
+              AdminID = :adminId,
               ResolvedAtUtc = UTC_TIMESTAMP(6)
-          WHERE ReportID = :id AND ReportStatus <> 'Resolved'
+          WHERE ReportID = :id AND Status <> 'Resolved'
           ''',
           {'note': note, 'adminId': admin.id, 'id': reportId},
         );

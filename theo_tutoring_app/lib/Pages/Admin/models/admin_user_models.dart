@@ -45,22 +45,21 @@ class AdminUsersResult {
     this.rolePermissions = const {},
   });
 
-  factory AdminUsersResult.fromJson(Map<String, dynamic> j) =>
-      AdminUsersResult(
-        adminName: (j['adminName'] ?? '').toString(),
-        roles: ((j['roles'] as List<dynamic>?) ?? const [])
-            .map((e) => e.toString())
-            .toList(),
-        rolePermissions: {
-          for (final MapEntry(:key, :value)
-              in ((j['rolePermissions'] as Map<String, dynamic>?) ?? const {})
-                  .entries)
-            key: (value as List<dynamic>).map((e) => e.toString()).toList(),
-        },
-        admins: ((j['admins'] as List<dynamic>?) ?? const [])
-            .map((e) => AdminAccount.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+  factory AdminUsersResult.fromJson(Map<String, dynamic> j) => AdminUsersResult(
+    adminName: (j['adminName'] ?? '').toString(),
+    roles: ((j['roles'] as List<dynamic>?) ?? const [])
+        .map((e) => e.toString())
+        .toList(),
+    rolePermissions: {
+      for (final MapEntry(:key, :value)
+          in ((j['rolePermissions'] as Map<String, dynamic>?) ?? const {})
+              .entries)
+        key: (value as List<dynamic>).map((e) => e.toString()).toList(),
+    },
+    admins: ((j['admins'] as List<dynamic>?) ?? const [])
+        .map((e) => AdminAccount.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 }
 
 /// Plain-language names for the backend's permission keys, in display order.
@@ -72,6 +71,7 @@ const _permissionLabels = {
   'admin.refunds.decide': 'decide refunds',
   'admin.reports.read': 'view user reports',
   'admin.reports.resolve': 'resolve user reports',
+  'admin.reviews.read': 'view reviews',
   'admin.finance.read': 'view finances',
   'admin.payouts.manage': 'manage payouts',
   'admin.settings.rate.read': 'view the session rate',

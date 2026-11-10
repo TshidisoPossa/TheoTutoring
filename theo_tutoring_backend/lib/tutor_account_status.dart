@@ -29,7 +29,10 @@ bool canAccessTutorRoute(String? status, Uri uri) {
       path == '/TutorLandingpage/notifications' ||
       path.startsWith('/TutorLandingpage/notifications/') ||
       path == '/TutorLandingpage/Profile' ||
-      path.startsWith('/TutorLandingpage/Profile/');
+      path.startsWith('/TutorLandingpage/Profile/') ||
+      // Report a Problem is on the Profile page
+      path == '/TutorLandingpage/reports' ||
+      path.startsWith('/TutorLandingpage/reports/');
   if (status?.trim().toLowerCase() == 'pending' && pendingOnlyPath) {
     return true;
   }

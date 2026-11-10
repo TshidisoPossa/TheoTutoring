@@ -1,15 +1,16 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/tutor.dart';
-import '../login_page.dart';
+import '../Tutor/tutor_theme.dart';
+import '../auth_gate.dart';
 import 'search_tutor.dart';
 import 'student_chatlist.dart' show ChatsScreen;
 import 'student_dashboard_api.dart';
 import 'student_lesson.dart';
 import 'student_notifications.dart';
 import 'student_notifications_api.dart';
+import 'student_profile.dart';
 import 'student_tutor_profile.dart';
 
 class StudentDashboard extends StatefulWidget {
@@ -37,11 +38,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
   int _unread = 0; // the number on the bell
 
   // Background colours for tutor initials, picked by tutor ID.
-  static const _avatarColors = [
-    Color(0xFFE4ECFF),
-    Color(0xFFFFE9DD),
-    Color(0xFFE2F5EC),
-  ];
+  List<Color> get _avatarColors => _dk
+      ? const [TutorDark.blueTint, TutorDark.amberTint, TutorDark.greenTint]
+      : const [Color(0xFFE4ECFF), Color(0xFFFFE9DD), Color(0xFFE2F5EC)];
 
   // The name from the dashboard, or the one login passed in while it loads.
   String? get _studentName {
@@ -61,11 +60,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
   Widget _studentAvatar({required double radius}) {
     final name = _studentName;
     final fallback = name == null || name.isEmpty
-        ? Icon(Icons.person_rounded, color: _primaryBlue, size: radius * 1.2)
+        ? Icon(Icons.person_rounded, color: _accent, size: radius * 1.2)
         : Text(
             _initials(name),
             style: GoogleFonts.poppins(
-              color: _primaryBlue,
+              color: _accent,
               fontSize: radius * 0.65,
               fontWeight: FontWeight.w700,
             ),
@@ -73,7 +72,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
     final photo = _studentPhoto;
     return CircleAvatar(
       radius: radius,
-      backgroundColor: const Color(0xFFE4ECFF),
+      backgroundColor: _blueTint,
       child: photo == null
           ? fallback
           : ClipOval(
@@ -149,7 +148,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.cloud_off_rounded, size: 42, color: _textMuted),
+          Icon(Icons.cloud_off_rounded, size: 42, color: _textMuted),
           const SizedBox(height: 12),
           Text(
             _dashboardError ?? 'Dashboard could not be loaded.',
@@ -186,16 +185,18 @@ class _StudentDashboardState extends State<StudentDashboard> {
     _goToTab(tab);
   }
 
-  // A page opened on top (search, notifications) popped with a bottom-nav tab
+  // The side-menu item that matches each bottom-nav tab: Home, Schedule,
+  // Messages; the Profile tab has no side-menu item (-1: none highlighted)
+  static const _drawerIndexForTab = [0, 2, 3, -1];
+
+  // A bottom-nav tab or side-menu item was tapped, or a page opened on top
+  // (search, notifications) popped with a tab
   void _goToTab(int tab) {
-    if (tab <= 1) {
-      setState(() {
-        _currentIndex = tab;
-        _selectedDrawerIndex = tab * 2;
-      });
-    } else {
-      _showMessage('${tab == 2 ? 'Chat' : 'Profile'} will be connected soon.');
-    }
+    if (tab < 0 || tab > 3) return;
+    setState(() {
+      _currentIndex = tab;
+      _selectedDrawerIndex = _drawerIndexForTab[tab];
+    });
   }
 
   // The bell badge is extra: if it cannot load, the bell just shows no number.
@@ -210,7 +211,10 @@ class _StudentDashboardState extends State<StudentDashboard> {
     final tab = await Navigator.push<int>(
       context,
       MaterialPageRoute<int>(
-        builder: (_) => const StudentNotificationsScreen(),
+        builder: (_) => StudentNotificationsScreen(
+          studentName: _studentName,
+          studentPhoto: _studentPhoto,
+        ),
       ),
     );
     if (!mounted) return;
@@ -231,15 +235,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  Future<void> _logOut() async {
-    await FirebaseAuth.instance.signOut();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute<void>(builder: (_) => const LoginPage()),
-      (_) => false,
-    );
-  }
+  Future<void> _logOut() => signOutToStart(context);
 
   final List<String> _drawerItems = [
     'Home',
@@ -247,7 +243,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
     'Schedule',
     'Messages',
     'Session History',
-    'Settings',
   ];
 
   final List<IconData> _drawerIcons = [
@@ -256,22 +251,31 @@ class _StudentDashboardState extends State<StudentDashboard> {
     Icons.calendar_month_rounded,
     Icons.chat_bubble_outline_rounded,
     Icons.history_rounded,
-    Icons.settings_outlined,
   ];
 
-  static const Color _primaryBlue = Color(0xFF356AE6);
+  static const Color _primaryBlue = Color(0xFF356AE6); // buttons, gradients
   static const Color _darkBlue = Color(0xFF173B8F);
-  static const Color _background = Color(0xFFF7F9FE);
-  static const Color _textDark = Color(0xFF17233D);
-  static const Color _textMuted = Color(0xFF7B8498);
+
+  // Light colours, or the dark ones while dark mode is on (Profile tab)
+  bool get _dk => context.tutorDark;
+  Color get _background =>
+      _dk ? TutorDark.background : const Color(0xFFF7F9FE);
+  Color get _surface => _dk ? TutorDark.card : Colors.white;
+  Color get _fill => _dk ? TutorDark.cardAlt : const Color(0xFFF7F9FE);
+  Color get _line => _dk ? TutorDark.border : const Color(0xFFEDF0F7);
+  Color get _textDark => _dk ? TutorDark.text : const Color(0xFF17233D);
+  Color get _textMuted => _dk ? TutorDark.textMuted : const Color(0xFF7B8498);
+  Color get _textFaint => _dk ? TutorDark.textFaint : const Color(0xFFADB5C5);
+  Color get _accent => _dk ? TutorDark.blueText : _primaryBlue; // blue text
+  Color get _blueTint => _dk ? TutorDark.blueTint : const Color(0xFFEDF2FF);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _background,
       drawer: _buildSideDrawer(),
-      // The Lessons and Chat tabs have their own headers
-      appBar: _currentIndex == 1 || _currentIndex == 2
+      // The Lessons, Chat and Profile tabs have their own headers
+      appBar: _currentIndex != 0
           ? null
           : PreferredSize(
               preferredSize: const Size.fromHeight(76),
@@ -281,6 +285,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ? const StudentLessonsPage()
           : _currentIndex == 2
           ? const ChatsScreen()
+          : _currentIndex == 3
+          ? StudentProfileTab(
+              name: _studentName,
+              email: _dashboard?['studentEmail'] as String?,
+              institution: _dashboard?['studentInstitution'] as String?,
+              photo: _studentPhoto,
+              // New name or photo: refresh the dashboard's header too
+              onChanged: _loadDashboard,
+            )
           : SafeArea(
               top: false,
               child: _loadingDashboard && _dashboard == null
@@ -329,7 +342,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   Widget _buildTopBar() {
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: _surface,
       elevation: 0,
       scrolledUnderElevation: 0,
       automaticallyImplyLeading: false,
@@ -355,7 +368,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 height: 42,
                 width: 42,
                 decoration: BoxDecoration(
-                  color: _primaryBlue,
+                  color: _accent,
                   borderRadius: BorderRadius.circular(13),
                 ),
                 child: const Icon(
@@ -405,7 +418,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   Widget _buildSideDrawer() {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: _surface,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -484,10 +497,10 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         borderRadius: BorderRadius.circular(13),
                       ),
                       selected: selected,
-                      selectedTileColor: const Color(0xFFEDF2FF),
+                      selectedTileColor: _blueTint,
                       leading: Icon(
                         _drawerIcons[index],
-                        color: selected ? _primaryBlue : _textMuted,
+                        color: selected ? _accent : _textMuted,
                       ),
                       title: Text(
                         _drawerItems[index],
@@ -496,14 +509,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
                           fontWeight: selected
                               ? FontWeight.w600
                               : FontWeight.w500,
-                          color: selected ? _primaryBlue : _textDark,
+                          color: selected ? _accent : _textDark,
                         ),
                       ),
                       trailing: selected
-                          ? const Icon(
+                          ? Icon(
                               Icons.circle,
                               size: 7,
-                              color: _primaryBlue,
+                              color: _accent,
                             )
                           : null,
                       onTap: () {
@@ -513,13 +526,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         Navigator.pop(context);
 
                         if (index == 0) {
-                          setState(() => _currentIndex = 0);
+                          _goToTab(0);
                         } else if (index == 1) {
                           // Subjects: the tutor search filters by subject
                           _openTutorSearch();
                         } else if (index == 2) {
-                          // Schedule: the Lessons tab
-                          setState(() => _currentIndex = 1);
+                          _goToTab(1); // Schedule: the Lessons tab
+                        } else if (index == 3) {
+                          _goToTab(2); // Messages: the Chat tab
                         } else {
                           _showMessage(
                             '${_drawerItems[index]} will be connected soon.',
@@ -585,7 +599,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   : 'Welcome back, $name! 👋',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                color: _primaryBlue,
+                color: _accent,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -600,7 +614,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   ),
                   TextSpan(
                     text: 'pass with confidence.',
-                    style: TextStyle(color: _primaryBlue),
+                    style: TextStyle(color: _accent),
                   ),
                 ],
               ),
@@ -841,9 +855,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
       width: double.infinity,
       padding: const EdgeInsets.all(19),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFEDF0F7)),
+        border: Border.all(color: _line),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF23365D).withValues(alpha: 0.035),
@@ -867,7 +881,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         fontSize: 10,
                         letterSpacing: 1.5,
                         fontWeight: FontWeight.w700,
-                        color: _primaryBlue,
+                        color: _accent,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -915,15 +929,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: _background,
+              color: _fill,
               borderRadius: BorderRadius.circular(11),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.calendar_today_rounded,
                   size: 15,
-                  color: _primaryBlue,
+                  color: _accent,
                 ),
                 const SizedBox(width: 9),
                 Text(
@@ -942,7 +956,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE5EDFF),
+                      color: _blueTint,
                       borderRadius: BorderRadius.circular(7),
                     ),
                     child: Text(
@@ -950,7 +964,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       style: GoogleFonts.poppins(
                         fontSize: 8,
                         fontWeight: FontWeight.w700,
-                        color: _primaryBlue,
+                        color: _accent,
                       ),
                     ),
                   ),
@@ -1022,7 +1036,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                           color: selected ? _primaryBlue : Colors.transparent,
                           borderRadius: BorderRadius.circular(11),
                           border: !selected && isToday
-                              ? Border.all(color: _primaryBlue, width: 1.3)
+                              ? Border.all(color: _accent, width: 1.3)
                               : null,
                         ),
                         child: Column(
@@ -1044,7 +1058,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                                 width: 3,
                                 margin: const EdgeInsets.only(top: 2),
                                 decoration: BoxDecoration(
-                                  color: selected ? Colors.white : _primaryBlue,
+                                  color: selected ? Colors.white : _accent,
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -1058,7 +1072,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
             );
           }),
           const SizedBox(height: 12),
-          const Divider(color: Color(0xFFEDF0F7)),
+          Divider(color: _line),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -1066,12 +1080,12 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 height: 38,
                 width: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF0FF),
+                  color: _blueTint,
                   borderRadius: BorderRadius.circular(11),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.event_note_rounded,
-                  color: _primaryBlue,
+                  color: _accent,
                   size: 19,
                 ),
               ),
@@ -1110,7 +1124,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 child: Text(
                   'Today',
                   style: GoogleFonts.poppins(
-                    color: _primaryBlue,
+                    color: _accent,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1129,7 +1143,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: enabled ? _background : const Color(0xFFF4F5F8),
+      color: enabled ? _fill : _line,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: enabled ? onTap : null,
@@ -1139,7 +1153,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
           width: 38,
           child: Icon(
             icon,
-            color: enabled ? _textDark : const Color(0xFFB8BECA),
+            color: enabled ? _textDark : _textFaint,
             size: 22,
           ),
         ),
@@ -1200,7 +1214,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
               child: Text(
                 'Explore',
                 style: GoogleFonts.poppins(
-                  color: _primaryBlue,
+                  color: _accent,
                   fontWeight: FontWeight.w600,
                   fontSize: 11,
                 ),
@@ -1221,8 +1235,10 @@ class _StudentDashboardState extends State<StudentDashboard> {
           child: OutlinedButton(
             onPressed: _openTutorSearch,
             style: OutlinedButton.styleFrom(
-              foregroundColor: _primaryBlue,
-              side: const BorderSide(color: Color(0xFFD9E3FF)),
+              foregroundColor: _accent,
+              side: BorderSide(
+                color: _dk ? TutorDark.border : const Color(0xFFD9E3FF),
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(13),
               ),
@@ -1253,9 +1269,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
       margin: const EdgeInsets.only(bottom: 13),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _surface,
         borderRadius: BorderRadius.circular(19),
-        border: Border.all(color: const Color(0xFFEDF0F7)),
+        border: Border.all(color: _line),
       ),
       child: Column(
         children: [
@@ -1282,9 +1298,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
         margin: const EdgeInsets.only(bottom: 13),
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _surface,
           borderRadius: BorderRadius.circular(19),
-          border: Border.all(color: const Color(0xFFEDF0F7)),
+          border: Border.all(color: _line),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFF23365D).withValues(alpha: 0.025),
@@ -1367,9 +1383,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
                     ],
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.arrow_forward_ios_rounded,
-                  color: Color(0xFFADB5C5),
+                  color: _textFaint,
                   size: 15,
                 ),
               ],
@@ -1385,13 +1401,13 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0F4FF),
+                      color: _blueTint,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       tag,
                       style: GoogleFonts.poppins(
-                        color: _primaryBlue,
+                        color: _accent,
                         fontSize: 9,
                         fontWeight: FontWeight.w500,
                       ),
@@ -1421,7 +1437,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
       child: Text(
         _initials(tutor.name),
         style: GoogleFonts.poppins(
-          color: _darkBlue,
+          color: _dk ? TutorDark.blueText : _darkBlue,
           fontSize: 16,
           fontWeight: FontWeight.w700,
         ),
@@ -1450,8 +1466,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: const Border(top: BorderSide(color: Color(0xFFEDF0F7))),
+        color: _surface,
+        border: Border(top: BorderSide(color: _line)),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF23365D).withValues(alpha: 0.035),
@@ -1471,17 +1487,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
               return Expanded(
                 child: InkWell(
-                  onTap: () {
-                    setState(() {
-                      _currentIndex = index;
-                      // Home and Lessons match the drawer's Home and Schedule
-                      if (index <= 1) _selectedDrawerIndex = index * 2;
-                    });
-
-                    if (index > 2) {
-                      _showMessage('${item.label} will be connected soon.');
-                    }
-                  },
+                  onTap: () => _goToTab(index),
                   borderRadius: BorderRadius.circular(13),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 5),
@@ -1490,14 +1496,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
                       children: [
                         Icon(
                           item.icon,
-                          color: selected ? _primaryBlue : _textMuted,
+                          color: selected ? _accent : _textMuted,
                           size: 22,
                         ),
                         const SizedBox(height: 5),
                         Text(
                           item.label,
                           style: GoogleFonts.poppins(
-                            color: selected ? _primaryBlue : _textMuted,
+                            color: selected ? _accent : _textMuted,
                             fontSize: 10,
                             fontWeight: selected
                                 ? FontWeight.w700
@@ -1527,7 +1533,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
         SnackBar(
           content: Text(message, style: GoogleFonts.poppins(fontSize: 12)),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: _textDark,
+          backgroundColor: _dk ? TutorDark.cardAlt : _textDark,
           duration: const Duration(seconds: 2),
         ),
       );
@@ -1634,7 +1640,9 @@ class _OrganisationLogoCarouselState extends State<_OrganisationLogoCarousel>
         Text(
           'Students we help at',
           style: GoogleFonts.poppins(
-            color: _StudentDashboardState._textDark,
+            color: context.tutorDark
+                ? TutorDark.text
+                : const Color(0xFF17233D),
             fontSize: 17,
             fontWeight: FontWeight.w700,
           ),
@@ -1710,7 +1718,9 @@ class _OrganisationLogoCarouselState extends State<_OrganisationLogoCarousel>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: const Color(0xFFEDF0F7)),
+        border: Border.all(
+          color: context.tutorDark ? TutorDark.border : const Color(0xFFEDF0F7),
+        ),
       ),
       child: image,
     );

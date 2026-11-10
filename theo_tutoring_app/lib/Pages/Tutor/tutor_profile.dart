@@ -1,18 +1,17 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../services/google_meet_connect.dart';
 import '../cloudinary_upload.dart';
-import '../login_page.dart';
+import '../auth_gate.dart';
 import '../privacy_policy.dart';
 import '../terms_and_conditions.dart';
 import 'tutor_api.dart';
 import 'tutor_availability_calendar.dart';
 import 'tutor_format.dart';
 import 'tutor_nav.dart';
-import 'tutor_presence.dart';
+import 'tutor_report_problem.dart';
 import 'tutor_theme.dart';
 
 class TutorProfileScreen extends StatefulWidget {
@@ -279,17 +278,8 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     }
   }
 
-  Future<void> _logOut() async {
-    await TutorPresence.instance.stop(); // offline for students straight away
-    await FirebaseAuth.instance.signOut();
-    TutorTheme.signedOut(); // the login screen is always light
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute<void>(builder: (_) => const LoginPage()),
-      (_) => false,
-    );
-  }
+  // Also stops "Available Now" and switches back to the light theme.
+  Future<void> _logOut() => signOutToStart(context);
 
   // ✏️ on About Me: edit the bio in a sheet, saved straight away
   Future<void> _editAbout() async {
@@ -329,7 +319,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             return Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20,
                   MediaQuery.of(sheetContext).viewInsets.bottom + 20),
-              child: Column(
+              // Scrolls when the phone keyboard leaves too little room, so
+              // Save is never pushed off screen
+              child: SingleChildScrollView(
+               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -391,6 +384,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                     ],
                   ),
                 ],
+               ),
               ),
             );
           },
@@ -444,11 +438,20 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
               for (final s in options)
                 if (s.name.toLowerCase().contains(query.toLowerCase())) s,
             ];
+            // 60% of the screen, but never taller than the room left above
+            // the phone keyboard (or the search box is pushed off the top)
+            final media = MediaQuery.of(sheetContext);
+            final room = media.size.height -
+                media.viewInsets.bottom -
+                media.padding.top -
+                96; // drag handle and margins
+            final height =
+                (media.size.height * 0.6).clamp(0.0, room < 160 ? 160.0 : room);
             return Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16,
-                  MediaQuery.of(sheetContext).viewInsets.bottom + 16),
+                  media.viewInsets.bottom + 16),
               child: SizedBox(
-                height: MediaQuery.of(sheetContext).size.height * 0.6,
+                height: height,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -456,6 +459,8 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       autofocus: true,
+                      // Filters as you type; Search just closes the keyboard
+                      textInputAction: TextInputAction.search,
                       decoration: const InputDecoration(
                         hintText: 'Search subjects',
                         prefixIcon: Icon(Icons.search),
@@ -553,6 +558,15 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
 
   void _comingSoon(String feature) =>
       _showMessage('$feature will be available soon.');
+
+  // Support → Report a Problem; the page pops with its confirmation message
+  Future<void> _openReportProblem() async {
+    final sent = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const TutorReportProblemPage()),
+    );
+    if (sent != null && mounted) _showMessage(sent);
+  }
 
   void _showMessage(String message, {bool error = false}) {
     ScaffoldMessenger.of(context)
@@ -1317,7 +1331,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         _row(
           icon: Icons.outlined_flag_rounded,
           title: 'Report a Problem',
-          onTap: () => _comingSoon('Reporting a problem'),
+          onTap: _openReportProblem,
         ),
         _row(
           icon: Icons.description_outlined,

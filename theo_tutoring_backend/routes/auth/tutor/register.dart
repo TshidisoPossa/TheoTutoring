@@ -23,7 +23,10 @@ Future<Response> onRequest(RequestContext context) async {
     return jsonError(401, error.message);
   } on StateError catch (error) {
     stderr.writeln('Firebase configuration error: $error');
-    return jsonError(500, 'Authentication service is not configured correctly.');
+    return jsonError(
+      500,
+      'Authentication service is not configured correctly.',
+    );
   } catch (error) {
     stderr.writeln('Firebase authentication error: $error');
     return jsonError(503, 'Authentication service is temporarily unavailable.');
@@ -58,7 +61,7 @@ Future<Response> onRequest(RequestContext context) async {
       try {
         final userResult = await db.execute(
           '''
-          INSERT INTO `User`
+          INSERT INTO `user`
             (Name, Email, FirebaseUid, PhoneNum, Role, AccountStatus)
           VALUES
             (:name, :email, :uid, :phone, 'tutor', 'Incomplete')

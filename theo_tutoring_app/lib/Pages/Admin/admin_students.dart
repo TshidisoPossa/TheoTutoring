@@ -491,6 +491,9 @@ class _FilterCard extends StatelessWidget {
         TextField(
           controller: search,
           onChanged: onSearchChanged,
+          // The keyboard's Search key closes it (the search still runs)
+          textInputAction: TextInputAction.search,
+          onSubmitted: onSearchChanged,
           style: const TextStyle(fontSize: 13),
           decoration: InputDecoration(
             hintText: 'Search by name or email...',
