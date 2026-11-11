@@ -168,8 +168,8 @@ class MySqlAdminUsersRepository implements AdminUsersRepository {
       final result = await connection.execute('''
         SELECT a.AdminID, a.RoleKey, u.Name, u.Email, u.AccountStatus,
                u.Created_at
-        FROM Admin a
-        INNER JOIN `User` u ON u.UserId = a.UserId
+        FROM admin a
+        INNER JOIN `user` u ON u.UserId = a.UserId
         ORDER BY u.Name, a.AdminID
       ''');
       return [
@@ -193,7 +193,7 @@ class MySqlAdminUsersRepository implements AdminUsersRepository {
     final connection = await _connectionFactory();
     try {
       final result = await connection.execute(
-        'SELECT 1 FROM `User` WHERE Email = :email LIMIT 1',
+        'SELECT 1 FROM `user` WHERE Email = :email LIMIT 1',
         {'email': email},
       );
       return result.rows.isNotEmpty;
@@ -214,14 +214,14 @@ class MySqlAdminUsersRepository implements AdminUsersRepository {
       return await connection.transactional((transaction) async {
         final user = await transaction.execute(
           '''
-          INSERT INTO `User`
+          INSERT INTO `user`
             (FirebaseUid, Name, PhoneNum, Email, Role, AccountStatus)
           VALUES (:uid, :name, '', :email, 'admin', 'Active')
           ''',
           {'uid': firebaseUid, 'name': name, 'email': email},
         );
         final admin = await transaction.execute(
-          'INSERT INTO Admin (UserId, RoleKey) VALUES (:userId, :role)',
+          'INSERT INTO admin (UserId, RoleKey) VALUES (:userId, :role)',
           {'userId': user.lastInsertID.toInt(), 'role': roleKey},
         );
         return admin.lastInsertID.toInt();

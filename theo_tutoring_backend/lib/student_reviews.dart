@@ -164,8 +164,8 @@ class MySqlStudentReviewsRepository implements StudentReviewsRepository {
     final student = await connection.execute(
       '''
       SELECT sp.StudentID
-      FROM `User` u
-      INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
+      FROM `user` u
+      INNER JOIN studentprofile sp ON sp.UserID = u.UserId
       WHERE u.FirebaseUid = :uid
         AND u.Role = 'student'
         AND u.AccountStatus = 'Active'
@@ -182,9 +182,9 @@ class MySqlStudentReviewsRepository implements StudentReviewsRepository {
           '''
           SELECT b.TutorID,
             CASE WHEN $completedLessonSql THEN 1 ELSE 0 END AS IsOver,
-            (SELECT r.Reviewid FROM Reviews r
+            (SELECT r.Reviewid FROM reviews r
              WHERE r.BookingID = b.Booking_id) AS ExistingReview
-          FROM Booking b
+          FROM booking b
           WHERE b.Booking_id = :bookingId AND b.StudentID = :studentId
           FOR UPDATE
           ''',
@@ -210,7 +210,7 @@ class MySqlStudentReviewsRepository implements StudentReviewsRepository {
 
         final inserted = await tx.execute(
           '''
-          INSERT INTO Reviews (StudentID, TutorID, Rating, `comment`,
+          INSERT INTO reviews (StudentID, TutorID, Rating, `comment`,
             Highlights, PrivateNote, BookingID)
           VALUES (:studentId, :tutorId, :rating, :comment,
             :highlights, :privateNote, :bookingId)
@@ -232,9 +232,9 @@ class MySqlStudentReviewsRepository implements StudentReviewsRepository {
         // automatically), as the search and profile screens read it.
         await tx.execute(
           '''
-          UPDATE TutorProfile
+          UPDATE tutorprofile
           SET AveRate = COALESCE(
-            (SELECT ROUND(AVG(r.Rating), 2) FROM Reviews r
+            (SELECT ROUND(AVG(r.Rating), 2) FROM reviews r
              WHERE r.TutorID = :tutorId), 0)
           WHERE TutorID = :tutorId
           ''',
@@ -243,9 +243,9 @@ class MySqlStudentReviewsRepository implements StudentReviewsRepository {
         final rating = await tx.execute(
           '''
           SELECT tp.AveRate,
-            (SELECT COUNT(*) FROM Reviews r WHERE r.TutorID = tp.TutorID)
+            (SELECT COUNT(*) FROM reviews r WHERE r.TutorID = tp.TutorID)
               AS ReviewCount
-          FROM TutorProfile tp
+          FROM tutorprofile tp
           WHERE tp.TutorID = :tutorId
           ''',
           {'tutorId': tutorId},

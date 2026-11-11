@@ -26,7 +26,7 @@ Future<List<AvailabilityOverride>> loadAvailabilityOverrides(
       SELECT DATE_FORMAT(`Date`, '%Y-%m-%d') AS OverrideDate,
         TIME_FORMAT(StartTime, '%H:%i') AS StartTime,
         TIME_FORMAT(EndTime, '%H:%i') AS EndTime
-      FROM TutAvailabilityOverride
+      FROM tutavailabilityoverride
       WHERE TutorID = :tutorId AND `Date` BETWEEN :fromDate AND :throughDate
       ORDER BY `Date`, StartTime
       ''',

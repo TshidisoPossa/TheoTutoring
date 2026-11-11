@@ -19,7 +19,7 @@ String tutorAvailableNowSql(String alias) =>
 /// Records that the tutor is using the app right now.
 Future<void> markTutorActive(MySQLConnection connection, int tutorId) async {
   await connection.execute(
-    'UPDATE TutorProfile SET LastActiveAtUtc = UTC_TIMESTAMP(6) '
+    'UPDATE tutorprofile SET LastActiveAtUtc = UTC_TIMESTAMP(6) '
     'WHERE TutorID = :tutorId',
     {'tutorId': tutorId},
   );
@@ -28,7 +28,7 @@ Future<void> markTutorActive(MySQLConnection connection, int tutorId) async {
 /// Marks the tutor offline (they signed out).
 Future<void> markTutorOffline(MySQLConnection connection, int tutorId) async {
   await connection.execute(
-    'UPDATE TutorProfile SET LastActiveAtUtc = NULL WHERE TutorID = :tutorId',
+    'UPDATE tutorprofile SET LastActiveAtUtc = NULL WHERE TutorID = :tutorId',
     {'tutorId': tutorId},
   );
 }

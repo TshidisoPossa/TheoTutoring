@@ -24,8 +24,8 @@ class MySqlStudentReportsRepository {
     final booking = await connection.execute(
       '''
       SELECT tp.UserID AS ReportedUserID
-      FROM Booking b
-      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
+      FROM booking b
+      INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
       WHERE b.Booking_id = :bookingId AND b.StudentID = :studentId
       ''',
       {'bookingId': bookingId, 'studentId': student.studentId},
@@ -55,7 +55,7 @@ class MySqlStudentReportsRepository {
   ) async {
     final student = await _student(firebaseUid);
     final tutor = await connection.execute(
-      'SELECT UserID FROM TutorProfile WHERE TutorID = :tutorId',
+      'SELECT UserID FROM tutorprofile WHERE TutorID = :tutorId',
       {'tutorId': tutorId},
     );
     if (tutor.rows.isEmpty) {
@@ -76,8 +76,8 @@ class MySqlStudentReportsRepository {
     final result = await connection.execute(
       '''
       SELECT u.UserId, sp.StudentID
-      FROM `User` u
-      INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
+      FROM `user` u
+      INNER JOIN studentprofile sp ON sp.UserID = u.UserId
       WHERE u.FirebaseUid = :uid
         AND u.Role = 'student'
         AND u.AccountStatus = 'Active'
@@ -104,7 +104,7 @@ class MySqlStudentReportsRepository {
   }) async {
     final existing = await connection.execute(
       '''
-      SELECT 1 FROM Report
+      SELECT 1 FROM report
       WHERE ReporterID = :reporterId
         AND ReportedUserID = :reportedUserId
         AND BookingID <=> :bookingId
@@ -123,7 +123,7 @@ class MySqlStudentReportsRepository {
 
     final inserted = await connection.execute(
       '''
-      INSERT INTO Report (ReporterID, ReportedUserID, BookingID, Reason)
+      INSERT INTO report (ReporterID, ReportedUserID, BookingID, Reason)
       VALUES (:reporterId, :reportedUserId, :bookingId, :reason)
       ''',
       {

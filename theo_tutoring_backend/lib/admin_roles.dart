@@ -49,10 +49,10 @@ class MySqlAdminRoleRepository implements AdminRoleRepository {
         // Serializes role mutations so concurrent requests cannot both remove
         // the final Super Admin.
         await transaction.execute(
-          'SELECT AdminID FROM Admin ORDER BY AdminID FOR UPDATE',
+          'SELECT AdminID FROM admin ORDER BY AdminID FOR UPDATE',
         );
         final target = await transaction.execute(
-          'SELECT RoleKey FROM Admin WHERE AdminID = :id LIMIT 1',
+          'SELECT RoleKey FROM admin WHERE AdminID = :id LIMIT 1',
           {'id': targetAdminId},
         );
         if (target.rows.isEmpty) throw AdminRoleNotFound();
@@ -69,7 +69,7 @@ class MySqlAdminRoleRepository implements AdminRoleRepository {
         }
         if (previousRole == 'super_admin' && newRole != 'super_admin') {
           final count = await transaction.execute(
-            "SELECT COUNT(*) AS total FROM Admin WHERE RoleKey = 'super_admin'",
+            "SELECT COUNT(*) AS total FROM admin WHERE RoleKey = 'super_admin'",
           );
           final total = int.tryParse(count.rows.first.str('total') ?? '') ?? 0;
           if (total <= 1) {
@@ -80,12 +80,12 @@ class MySqlAdminRoleRepository implements AdminRoleRepository {
         }
 
         await transaction.execute(
-          'UPDATE Admin SET RoleKey = :role WHERE AdminID = :id',
+          'UPDATE admin SET RoleKey = :role WHERE AdminID = :id',
           {'role': newRole, 'id': targetAdminId},
         );
         await transaction.execute(
           '''
-          INSERT INTO AdminRoleChangeAudit
+          INSERT INTO adminrolechangeaudit
             (ActorAdminID, TargetAdminID, PreviousRoleKey, NewRoleKey,
              Reason, ChangedAtUtc)
           VALUES (:actorId, :targetId, :previousRole, :newRole, :reason,

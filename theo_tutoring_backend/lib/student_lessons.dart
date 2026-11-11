@@ -27,8 +27,8 @@ class MySqlStudentLessonsRepository {
     final student = await connection.execute(
       '''
       SELECT sp.StudentID
-      FROM `User` u
-      INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
+      FROM `user` u
+      INNER JOIN studentprofile sp ON sp.UserID = u.UserId
       WHERE u.FirebaseUid = :uid
         AND u.Role = 'student'
         AND u.AccountStatus = 'Active'
@@ -55,10 +55,10 @@ class MySqlStudentLessonsRepository {
         TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime,
         TIME_FORMAT(b.EndTime, '%H:%i') AS EndTime,
         b.CancellationReason
-      FROM Booking b
-      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-      INNER JOIN `User` tu ON tu.UserId = tp.UserID
-      INNER JOIN Subjects s ON s.subjectId = b.SubjectID
+      FROM booking b
+      INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+      INNER JOIN `user` tu ON tu.UserId = tp.UserID
+      INNER JOIN subjects s ON s.subjectId = b.SubjectID
       WHERE b.StudentID = :studentId
         AND (
           b.Status = 'Cancelled'
@@ -105,18 +105,18 @@ class MySqlStudentLessonsRepository {
         TIME_FORMAT(b.EndTime, '%H:%i') AS EndTime,
         r.Rating AS MyRating,
         tp.AveRate AS TutorRating, tp.VerificationStat AS TutorVerification,
-        (SELECT COUNT(*) FROM Reviews r2 WHERE r2.TutorID = tp.TutorID)
+        (SELECT COUNT(*) FROM reviews r2 WHERE r2.TutorID = tp.TutorID)
           AS TutorReviewCount,
         (SELECT GROUP_CONCAT(s2.subjectName ORDER BY s2.subjectName
                              SEPARATOR ', ')
-         FROM TutorSubjects ts
-         INNER JOIN Subjects s2 ON s2.subjectId = ts.SubjectID
+         FROM tutorsubjects ts
+         INNER JOIN subjects s2 ON s2.subjectId = ts.SubjectID
          WHERE ts.TutorID = tp.TutorID) AS TutorSubjects
-      FROM Booking b
-      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-      INNER JOIN `User` tu ON tu.UserId = tp.UserID
-      INNER JOIN Subjects s ON s.subjectId = b.SubjectID
-      LEFT JOIN Reviews r ON r.BookingID = b.Booking_id
+      FROM booking b
+      INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+      INNER JOIN `user` tu ON tu.UserId = tp.UserID
+      INNER JOIN subjects s ON s.subjectId = b.SubjectID
+      LEFT JOIN reviews r ON r.BookingID = b.Booking_id
       WHERE b.StudentID = :studentId AND $completedLessonSql
       ORDER BY b.Date DESC, b.StartTime DESC, b.Booking_id DESC
       LIMIT 50
@@ -148,8 +148,8 @@ class MySqlStudentLessonsRepository {
     final me = await connection.execute(
       '''
       SELECT u.Name, sp.InstitutionYear, sp.Institution
-      FROM StudentProfile sp
-      INNER JOIN `User` u ON u.UserId = sp.UserID
+      FROM studentprofile sp
+      INNER JOIN `user` u ON u.UserId = sp.UserID
       WHERE sp.StudentID = :studentId
       ''',
       {'studentId': studentId},
@@ -191,12 +191,12 @@ class MySqlStudentLessonsRepository {
             UTC_TIMESTAMP() + INTERVAL 2 HOUR,
             TIMESTAMP(b.Date, b.StartTime)
           ) AS MinutesBefore
-        FROM Booking b
-        INNER JOIN Subjects s ON s.subjectId = b.SubjectID
-        INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-        INNER JOIN `User` tu ON tu.UserId = tp.UserID
-        INNER JOIN StudentProfile sp ON sp.StudentID = b.StudentID
-        INNER JOIN `User` su ON su.UserId = sp.UserID
+        FROM booking b
+        INNER JOIN subjects s ON s.subjectId = b.SubjectID
+        INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+        INNER JOIN `user` tu ON tu.UserId = tp.UserID
+        INNER JOIN studentprofile sp ON sp.StudentID = b.StudentID
+        INNER JOIN `user` su ON su.UserId = sp.UserID
         WHERE b.Booking_id = :bookingId AND b.StudentID = :studentId
         FOR UPDATE OF b
         ''',
@@ -240,7 +240,7 @@ class MySqlStudentLessonsRepository {
 
       await tx.execute(
         '''
-        UPDATE Booking
+        UPDATE booking
         SET Status = 'Cancelled', CancellationReason = :reason
         WHERE Booking_id = :bookingId
         ''',
@@ -289,8 +289,8 @@ class MySqlStudentLessonsRepository {
           UTC_TIMESTAMP() + INTERVAL 2 HOUR,
           TIMESTAMP(b.Date, b.EndTime)
         ) AS SecondsToEnd
-      FROM Booking b
-      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
+      FROM booking b
+      INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
       WHERE b.Booking_id = :bookingId AND b.StudentID = :studentId
       ''',
       {'bookingId': bookingId, 'studentId': studentId},
@@ -349,14 +349,14 @@ Future<String?> lessonAmountPaid(
   final paid = purchaseId == null
       ? await tx.execute(
           '''
-          SELECT Amount FROM Payment
+          SELECT Amount FROM payment
           WHERE BookingId = :bookingId AND PaymentStatus = 'Successful'
           ''',
           {'bookingId': bookingId},
         )
       : await tx.execute(
           '''
-          SELECT :price AS Amount FROM PurchasePayment
+          SELECT :price AS Amount FROM purchasepayment
           WHERE PurchaseID = :purchaseId
           ''',
           {'purchaseId': purchaseId, 'price': lessonPrice},
@@ -375,7 +375,7 @@ Future<String> recordPendingRefund(
   final amount = refundAmountOf(paidAmount, percent);
   await tx.execute(
     '''
-    INSERT INTO Refund
+    INSERT INTO refund
       (BookingID, RefundPercentage, RefundAmount, RefundStatus)
     VALUES (:bookingId, :percent, :amount, 'Pending')
     ''',

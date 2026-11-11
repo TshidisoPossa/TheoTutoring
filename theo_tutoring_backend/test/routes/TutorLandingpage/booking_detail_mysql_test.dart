@@ -151,12 +151,12 @@ void main() {
     conn = await getConnection();
 
     final subject = await conn.execute(
-      'SELECT subjectId FROM Subjects ORDER BY subjectId LIMIT 1',
+      'SELECT subjectId FROM subjects ORDER BY subjectId LIMIT 1',
     );
     final subjectId = subject.rows.first.str('subjectId');
     final student = await conn.execute(
-      'SELECT s.StudentID, u.Name FROM StudentProfile s '
-      'JOIN `User` u ON u.UserId = s.UserID ORDER BY s.StudentID LIMIT 1',
+      'SELECT s.StudentID, u.Name FROM studentprofile s '
+      'JOIN `user` u ON u.UserId = s.UserID ORDER BY s.StudentID LIMIT 1',
     );
     final studentId = student.rows.first.str('StudentID');
     studentName = student.rows.first.reqStr('Name');
@@ -165,7 +165,7 @@ void main() {
     Future<void> available(int offset, String start, String end) async {
       final d = DateTime.parse(day(offset));
       final result = await conn.execute(
-        'INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time) '
+        'INSERT INTO tutavailability (TutorID, Day, StartTime, end_Time) '
         'VALUES (:t, :day, :s, :e)',
         {'t': _tutorId, 'day': weekdays[d.weekday - 1], 's': start, 'e': end},
       );
@@ -184,7 +184,7 @@ void main() {
       required String end,
     }) async {
       final result = await conn.execute(
-        'INSERT INTO Booking (StudentID, TutorID, SubjectID, `Date`, '
+        'INSERT INTO booking (StudentID, TutorID, SubjectID, `Date`, '
         'StartTime, EndTime, Note, Status, Created_at) '
         'VALUES (:st, :t, :subj, :d, :s, :e, :note, :status, '
         'NOW() - INTERVAL 3 HOUR)',
@@ -271,7 +271,7 @@ void main() {
       end: '10:00:00',
     );
     await conn.execute(
-      'INSERT INTO Payment (BookingId, PaymentMethod, PaymentStatus, '
+      'INSERT INTO payment (BookingId, PaymentMethod, PaymentStatus, '
       "Paid_At, Amount) VALUES (:id, 'Card', 'Successful', NOW(), 250.00)",
       {'id': ids['paid']},
     );
@@ -286,21 +286,21 @@ void main() {
 
   tearDownAll(() async {
     for (final id in ids.values) {
-      for (final table in ['Refund', 'Payment']) {
-        final column = table == 'Refund' ? 'BookingID' : 'BookingId';
+      for (final table in ['refund', 'payment']) {
+        final column = table == 'refund' ? 'BookingID' : 'BookingId';
         await conn.execute(
           'DELETE FROM $table WHERE $column = :id',
           {'id': id},
         );
       }
       await conn.execute(
-        'DELETE FROM Booking WHERE Booking_id = :id',
+        'DELETE FROM booking WHERE Booking_id = :id',
         {'id': id},
       );
     }
     for (final id in availabilityIds) {
       await conn.execute(
-        'DELETE FROM TutAvailability WHERE AvailabilityID = :id',
+        'DELETE FROM tutavailability WHERE AvailabilityID = :id',
         {'id': id},
       );
     }
@@ -332,8 +332,8 @@ void main() {
     );
     // The stars this student gave this tutor, straight from Reviews
     final given = await conn.execute(
-      'SELECT ROUND(AVG(r.Rating), 1) AS avg, COUNT(*) AS n FROM Reviews r '
-      'JOIN Booking b ON b.StudentID = r.StudentID AND b.TutorID = r.TutorID '
+      'SELECT ROUND(AVG(r.Rating), 1) AS avg, COUNT(*) AS n FROM reviews r '
+      'JOIN booking b ON b.StudentID = r.StudentID AND b.TutorID = r.TutorID '
       'WHERE b.Booking_id = :id',
       {'id': ids['week1']},
     );
@@ -377,17 +377,17 @@ void main() {
   test("details: link is the tutor's Meet room, unless the booking has its "
       'own', () async {
     final saved = await conn.execute(
-      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      'SELECT MeetLink FROM tutorprofile WHERE TutorID = :t',
       {'t': _tutorId},
     );
     final savedMeetLink = saved.rows.first.str('MeetLink');
     try {
       await conn.execute(
-        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
         {'link': _meetLink, 't': _tutorId},
       );
       await conn.execute(
-        'UPDATE Booking SET Link = :link WHERE Booking_id = :id',
+        'UPDATE booking SET Link = :link WHERE Booking_id = :id',
         {'link': _ownLink, 'id': ids['week2']},
       );
       Future<Object?> linkOf(String name) async {
@@ -399,7 +399,7 @@ void main() {
       expect(await linkOf('week2'), _ownLink);
     } finally {
       await conn.execute(
-        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
         {'link': savedMeetLink, 't': _tutorId},
       );
     }
@@ -437,7 +437,7 @@ void main() {
 
     // nothing changed in the database
     final row = await conn.execute(
-      'SELECT Status, StartTime FROM Booking WHERE Booking_id = :id',
+      'SELECT Status, StartTime FROM booking WHERE Booking_id = :id',
       {'id': ids['request']},
     );
     expect(row.rows.first.str('Status'), 'Pending');
@@ -467,7 +467,7 @@ void main() {
     expect(sent, contains('Please confirm the new time.'));
 
     final row = await conn.execute(
-      'SELECT Status, `Date`, StartTime, EndTime FROM Booking '
+      'SELECT Status, `Date`, StartTime, EndTime FROM booking '
       'WHERE Booking_id = :id',
       {'id': ids['week1']},
     );
@@ -506,7 +506,7 @@ void main() {
     expect(sent, contains('refunded in full'));
 
     final booking = await conn.execute(
-      'SELECT Status, CancellationReason FROM Booking WHERE Booking_id = :id',
+      'SELECT Status, CancellationReason FROM booking WHERE Booking_id = :id',
       {'id': ids['paid']},
     );
     expect(booking.rows.first.str('Status'), 'Cancelled');
@@ -515,7 +515,7 @@ void main() {
       'Cancelled by your tutor.',
     );
     final refund = await conn.execute(
-      'SELECT RefundPercentage, RefundAmount, RefundStatus FROM Refund '
+      'SELECT RefundPercentage, RefundAmount, RefundStatus FROM refund '
       'WHERE BookingID = :id',
       {'id': ids['paid']},
     );
@@ -543,7 +543,7 @@ void main() {
     expect(sent, contains('"tutorId":{"integerValue":"$_tutorId"}'));
 
     final booking = await conn.execute(
-      'SELECT Status, CancellationReason FROM Booking WHERE Booking_id = :id',
+      'SELECT Status, CancellationReason FROM booking WHERE Booking_id = :id',
       {'id': ids['unpaid']},
     );
     expect(booking.rows.first.str('Status'), 'Cancelled');
@@ -552,7 +552,7 @@ void main() {
       contains('reschedule'),
     );
     final refund = await conn.execute(
-      'SELECT RefundID FROM Refund WHERE BookingID = :id',
+      'SELECT RefundID FROM refund WHERE BookingID = :id',
       {'id': ids['unpaid']},
     );
     expect(refund.rows, isEmpty);

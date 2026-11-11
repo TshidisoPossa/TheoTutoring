@@ -225,7 +225,7 @@ void main() {
       for (final update in db.updates) {
         expect(update.params['userId'], '7');
       }
-      expect(db.updates.first.sql, contains('UPDATE `User`'));
+      expect(db.updates.first.sql, contains('UPDATE `user`'));
       expect(db.updates.first.sql, isNot(contains('ProfilePhoto')));
       expect(db.updates.last.params['subjects'], 'Mathematics, Chemistry');
     });

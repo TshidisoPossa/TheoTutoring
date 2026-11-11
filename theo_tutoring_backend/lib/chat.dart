@@ -12,10 +12,10 @@ const maxChatMessageLength = 2000;
 /// Which side of a conversation a signed-in user is on.
 enum ChatRole {
   /// A student (StudentProfile).
-  student('student', 'StudentProfile'),
+  student('student', 'studentprofile'),
 
   /// A tutor (TutorProfile).
-  tutor('tutor', 'TutorProfile');
+  tutor('tutor', 'tutorprofile');
 
   const ChatRole(this.value, this._profileTable);
 
@@ -188,9 +188,9 @@ class MySqlChatPermissions implements ChatPermissions {
   // A booking counts once the tutor can see it: legacy bookings, and
   // purchased lessons once paid (same rule as GET /TutorLandingpage/bookings).
   static const _visibleBookingSql = '''
-    FROM Booking b
-    JOIN StudentProfile s ON s.StudentID = b.StudentID
-    JOIN TutorProfile t ON t.TutorID = b.TutorID
+    FROM booking b
+    JOIN studentprofile s ON s.StudentID = b.StudentID
+    JOIN tutorprofile t ON t.TutorID = b.TutorID
     WHERE s.UserID = :studentUserId
       AND t.UserID = :tutorUserId
       AND (b.PurchaseID IS NULL OR b.Status IN ('Confirmed', 'Completed'))
@@ -204,7 +204,7 @@ class MySqlChatPermissions implements ChatPermissions {
       u.AccountStatus = 'Active' AS IsActive,
       (${role == ChatRole.tutor ? "p.VerificationStat = 'Approved'" : 'FALSE'})
         AS IsApproved
-      FROM `User` u
+      FROM `user` u
       JOIN ${role._profileTable} p ON p.UserID = u.UserId''';
 
   static ChatParticipant _participantFrom(

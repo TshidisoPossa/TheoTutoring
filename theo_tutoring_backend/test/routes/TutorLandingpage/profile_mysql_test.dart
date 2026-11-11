@@ -99,7 +99,7 @@ void main() {
   tearDownAll(() async {
     for (final id in addedBookings) {
       await conn.execute(
-        'DELETE FROM Booking WHERE Booking_id = :id',
+        'DELETE FROM booking WHERE Booking_id = :id',
         {'id': id},
       );
     }
@@ -132,23 +132,23 @@ void main() {
 
     test('shows subjects and qualifications saved in MySQL', () async {
       final subject = await conn.execute(
-        'SELECT subjectId, subjectName FROM Subjects ORDER BY subjectId LIMIT 1',
+        'SELECT subjectId, subjectName FROM subjects ORDER BY subjectId LIMIT 1',
       );
       final subjectId = int.parse(subject.rows.first.reqStr('subjectId'));
       await conn.execute(
-        'DELETE FROM TutorSubjects WHERE TutorID = :t',
+        'DELETE FROM tutorsubjects WHERE TutorID = :t',
         {'t': _tutorId},
       );
       await conn.execute(
-        'INSERT INTO TutorSubjects (TutorID, SubjectID) VALUES (:t, :s)',
+        'INSERT INTO tutorsubjects (TutorID, SubjectID) VALUES (:t, :s)',
         {'t': _tutorId, 's': subjectId},
       );
       await conn.execute(
-        'DELETE FROM Qualification WHERE TutorID = :t',
+        'DELETE FROM qualification WHERE TutorID = :t',
         {'t': _tutorId},
       );
       await conn.execute(
-        'INSERT INTO Qualification (TutorID, Degree, Institution) '
+        'INSERT INTO qualification (TutorID, Degree, Institution) '
         "VALUES (:t, 'BSc Test Degree', 'Test University')",
         {'t': _tutorId},
       );
@@ -169,12 +169,12 @@ void main() {
 
   group('Google Meet card', () {
     Future<void> setMeetLink(String? link) => conn.execute(
-      'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+      'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
       {'link': link, 't': _tutorId},
     );
 
     Future<String?> savedMeetLink() async => (await conn.execute(
-      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      'SELECT MeetLink FROM tutorprofile WHERE TutorID = :t',
       {'t': _tutorId},
     )).rows.single.str('MeetLink');
 
@@ -285,7 +285,7 @@ void main() {
 
       // Monday Morning + Afternoon is saved as one 08:00-17:00 row.
       final rows = await conn.execute(
-        'SELECT Day, StartTime, end_Time FROM TutAvailability '
+        'SELECT Day, StartTime, end_Time FROM tutavailability '
         'WHERE TutorID = :t ORDER BY Day, StartTime',
         {'t': _tutorId},
       );
@@ -311,14 +311,14 @@ void main() {
     test('a booked period is locked and cannot be removed', () async {
       // A Confirmed booking next Tuesday 14:00-15:00 (inside Tuesday Afternoon)
       final student = await conn.execute(
-        'SELECT StudentID FROM StudentProfile ORDER BY StudentID LIMIT 1',
+        'SELECT StudentID FROM studentprofile ORDER BY StudentID LIMIT 1',
       );
       final subject = await conn.execute(
-        'SELECT subjectId FROM Subjects ORDER BY subjectId LIMIT 1',
+        'SELECT subjectId FROM subjects ORDER BY subjectId LIMIT 1',
       );
       final date = _nextWeekday(DateTime.tuesday);
       final insert = await conn.execute(
-        'INSERT INTO Booking (StudentID, TutorID, SubjectID, `Date`, '
+        'INSERT INTO booking (StudentID, TutorID, SubjectID, `Date`, '
         'StartTime, EndTime, Note, Status, Created_at) '
         "VALUES (:s, :t, :subj, :d, '14:00:00', '15:00:00', "
         "'profile-mysql-test', 'Confirmed', NOW())",
@@ -396,22 +396,22 @@ class _Snapshot {
   static Future<_Snapshot> take(MySQLConnection conn, int tutorId) async {
     final p = {'t': tutorId};
     final tutor = await conn.execute(
-      'SELECT u.Name, u.ProfilePhoto, tp.Bio, tp.MeetLink FROM TutorProfile tp '
-      'JOIN `User` u ON u.UserId = tp.UserID WHERE tp.TutorID = :t',
+      'SELECT u.Name, u.ProfilePhoto, tp.Bio, tp.MeetLink FROM tutorprofile tp '
+      'JOIN `user` u ON u.UserId = tp.UserID WHERE tp.TutorID = :t',
       p,
     );
     if (tutor.rows.isEmpty) throw StateError('No tutor with TutorID $tutorId');
     final t = tutor.rows.first.textAssoc();
     final availability = await conn.execute(
-      'SELECT Day, StartTime, end_Time FROM TutAvailability WHERE TutorID = :t',
+      'SELECT Day, StartTime, end_Time FROM tutavailability WHERE TutorID = :t',
       p,
     );
     final subjects = await conn.execute(
-      'SELECT SubjectID FROM TutorSubjects WHERE TutorID = :t',
+      'SELECT SubjectID FROM tutorsubjects WHERE TutorID = :t',
       p,
     );
     final qualifications = await conn.execute(
-      'SELECT Degree, Institution FROM Qualification WHERE TutorID = :t',
+      'SELECT Degree, Institution FROM qualification WHERE TutorID = :t',
       p,
     );
     return _Snapshot(
@@ -429,33 +429,33 @@ class _Snapshot {
   Future<void> restore(MySQLConnection conn) async {
     final p = {'t': tutorId};
     await conn.execute(
-      'UPDATE `User` u JOIN TutorProfile tp ON tp.UserID = u.UserId '
+      'UPDATE `user` u JOIN tutorprofile tp ON tp.UserID = u.UserId '
       'SET u.ProfilePhoto = :photo WHERE tp.TutorID = :t',
       {'photo': photo, 't': tutorId},
     );
     await conn.execute(
-      'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+      'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
       {'link': meetLink, 't': tutorId},
     );
-    await conn.execute('DELETE FROM TutAvailability WHERE TutorID = :t', p);
+    await conn.execute('DELETE FROM tutavailability WHERE TutorID = :t', p);
     for (final a in availability) {
       await conn.execute(
-        'INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time) '
+        'INSERT INTO tutavailability (TutorID, Day, StartTime, end_Time) '
         'VALUES (:t, :d, :s, :e)',
         {'t': tutorId, 'd': a['Day'], 's': a['StartTime'], 'e': a['end_Time']},
       );
     }
-    await conn.execute('DELETE FROM TutorSubjects WHERE TutorID = :t', p);
+    await conn.execute('DELETE FROM tutorsubjects WHERE TutorID = :t', p);
     for (final s in subjects) {
       await conn.execute(
-        'INSERT INTO TutorSubjects (TutorID, SubjectID) VALUES (:t, :s)',
+        'INSERT INTO tutorsubjects (TutorID, SubjectID) VALUES (:t, :s)',
         {'t': tutorId, 's': s},
       );
     }
-    await conn.execute('DELETE FROM Qualification WHERE TutorID = :t', p);
+    await conn.execute('DELETE FROM qualification WHERE TutorID = :t', p);
     for (final q in qualifications) {
       await conn.execute(
-        'INSERT INTO Qualification (TutorID, Degree, Institution) '
+        'INSERT INTO qualification (TutorID, Degree, Institution) '
         'VALUES (:t, :d, :i)',
         {'t': tutorId, 'd': q['Degree'], 'i': q['Institution']},
       );

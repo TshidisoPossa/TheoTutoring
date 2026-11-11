@@ -175,7 +175,7 @@ Future<int> _resolveStudentId(String? authorization) async {
     '''
     SELECT sp.StudentID, u.AccountStatus
     FROM \`User\` u
-    INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
+    INNER JOIN studentprofile sp ON sp.UserID = u.UserId
     WHERE u.FirebaseUid = :uid AND u.Role = 'student'
     LIMIT 1
     ''',

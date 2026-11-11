@@ -49,12 +49,12 @@ class MySqlAdminSessionRateRepository implements AdminSessionRateRepository {
     final connection = await _connectionFactory();
     try {
       final result = await connection.execute(
-        'SELECT SettingsID FROM PlatformSettings WHERE SettingsID = 1 LIMIT 1',
+        'SELECT SettingsID FROM platformsettings WHERE SettingsID = 1 LIMIT 1',
       );
       if (result.rows.isEmpty) throw AdminSessionRateNotConfigured();
       await connection.execute(
         '''
-        UPDATE PlatformSettings
+        UPDATE platformsettings
            SET TutoringRate = :amount, UpdatedByAdminID = :adminId,
                UpdatedAt = CURRENT_TIMESTAMP
            WHERE SettingsID = 1''',
@@ -73,9 +73,9 @@ class MySqlAdminSessionRateRepository implements AdminSessionRateRepository {
   static const _select = '''
     SELECT settings.SettingsID, settings.TutoringRate,
            settings.UpdatedAt, actor.Name AS SetBy
-    FROM PlatformSettings settings
-    LEFT JOIN Admin admin ON admin.AdminID = settings.UpdatedByAdminID
-    LEFT JOIN `User` actor ON actor.UserId = admin.UserId
+    FROM platformsettings settings
+    LEFT JOIN admin admin ON admin.AdminID = settings.UpdatedByAdminID
+    LEFT JOIN `user` actor ON actor.UserId = admin.UserId
     WHERE settings.SettingsID = 1
     LIMIT 1
   ''';

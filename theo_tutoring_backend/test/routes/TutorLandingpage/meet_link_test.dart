@@ -33,7 +33,7 @@ class _FakeDb {
     when(() => connection.execute(any(), any())).thenAnswer((call) async {
       final sql = call.positionalArguments[0] as String;
       final params = call.positionalArguments[1] as Map<String, dynamic>;
-      expect(sql, contains('UPDATE TutorProfile SET MeetLink'));
+      expect(sql, contains('UPDATE tutorprofile SET MeetLink'));
       expect(params['tutorId'], 5);
       meetLink = params['link'] as String;
       return result;

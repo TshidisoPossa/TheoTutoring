@@ -50,7 +50,7 @@ Future<Response> onRequest(RequestContext context) async {
     final db = await createIndependentConnection();
     try {
       final existing = await db.execute(
-        'SELECT UserId FROM `User` WHERE Email = :email OR FirebaseUid = :uid',
+        'SELECT UserId FROM `user` WHERE Email = :email OR FirebaseUid = :uid',
         {'email': firebaseUser.email, 'uid': firebaseUser.uid},
       );
       if (existing.rows.isNotEmpty) {
@@ -76,7 +76,7 @@ Future<Response> onRequest(RequestContext context) async {
         final userId = userResult.lastInsertID.toInt();
         final tutorResult = await db.execute(
           '''
-          INSERT INTO TutorProfile (UserId, VerificationStat)
+          INSERT INTO tutorprofile (UserId, VerificationStat)
           VALUES (:userId, 'Pending')
           ''',
           {'userId': userId},

@@ -41,13 +41,13 @@ Future<Response> onRequest(RequestContext context) async {
              latest.Review_at,
              CASE WHEN latest.Status = 'Pending' THEN (
                SELECT rejected.AdminFeedback
-               FROM TutorApplication rejected
+               FROM tutorapplication rejected
                WHERE rejected.TutorID = latest.TutorID
                  AND rejected.Status = 'Rejected'
                ORDER BY rejected.SubmittedAt DESC, rejected.TutApplication DESC
                LIMIT 1
              ) ELSE NULL END AS LatestRejectedFeedback
-      FROM TutorApplication latest
+      FROM tutorapplication latest
       WHERE latest.TutorID = :tid
       ORDER BY latest.SubmittedAt DESC, latest.TutApplication DESC
       LIMIT 1
@@ -74,8 +74,8 @@ Future<Response> onRequest(RequestContext context) async {
   // Card 1: every student registered on the platform whose account is
   // Active (not suspended or deactivated). The same for every tutor.
   final active = await conn.execute(
-    'SELECT COUNT(*) AS n FROM StudentProfile s '
-    'JOIN `User` u ON u.UserId = s.UserID '
+    'SELECT COUNT(*) AS n FROM studentprofile s '
+    'JOIN `user` u ON u.UserId = s.UserID '
     "WHERE u.Role = 'student' AND u.AccountStatus = 'Active'",
   );
 
@@ -89,10 +89,10 @@ Future<Response> onRequest(RequestContext context) async {
     'u.Name AS StudentName, u.ProfilePhoto AS StudentPhoto, '
     'TIMESTAMPDIFF(MINUTE, NOW(), TIMESTAMP(b.`Date`, b.StartTime)) '
     'AS MinutesUntilStart '
-    'FROM Booking b '
-    'JOIN Subjects sj ON sj.subjectId = b.SubjectID '
-    'JOIN StudentProfile s ON s.StudentID = b.StudentID '
-    'JOIN `User` u ON u.UserId = s.UserID '
+    'FROM booking b '
+    'JOIN subjects sj ON sj.subjectId = b.SubjectID '
+    'JOIN studentprofile s ON s.StudentID = b.StudentID '
+    'JOIN `user` u ON u.UserId = s.UserID '
     "WHERE b.TutorID = :tid AND b.Status = 'Confirmed' "
     'AND b.`Date` = CURDATE() AND b.EndTime > CURTIME() '
     'ORDER BY b.StartTime',
@@ -101,15 +101,15 @@ Future<Response> onRequest(RequestContext context) async {
 
   // Rating card: average rating (TutorProfile.AveRate) and latest reviews
   final rating = await conn.execute(
-    'SELECT AveRate FROM TutorProfile WHERE TutorID = :tid',
+    'SELECT AveRate FROM tutorprofile WHERE TutorID = :tid',
     p,
   );
   final reviews = await conn.execute(
     'SELECT r.Reviewid, r.Rating, r.`comment` AS Comment, r.Created_At, '
     'u.Name AS StudentName '
-    'FROM Reviews r '
-    'JOIN StudentProfile s ON s.StudentID = r.StudentID '
-    'JOIN `User` u ON u.UserId = s.UserID '
+    'FROM reviews r '
+    'JOIN studentprofile s ON s.StudentID = r.StudentID '
+    'JOIN `user` u ON u.UserId = s.UserID '
     'WHERE r.TutorID = :tid '
     'ORDER BY r.Created_At DESC LIMIT 3',
     p,

@@ -39,26 +39,26 @@ void main() {
     conn = await getConnection();
 
     final tutor = await conn.execute(
-      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      'SELECT MeetLink FROM tutorprofile WHERE TutorID = :t',
       {'t': _tutorId},
     );
     savedMeetLink = tutor.rows.first.str('MeetLink');
     await conn.execute(
-      'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+      'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
       {'link': _meetLink, 't': _tutorId},
     );
 
     final subject = await conn.execute(
-      'SELECT subjectId FROM Subjects ORDER BY subjectId LIMIT 1',
+      'SELECT subjectId FROM subjects ORDER BY subjectId LIMIT 1',
     );
     final student = await conn.execute(
-      'SELECT StudentID FROM StudentProfile ORDER BY StudentID LIMIT 1',
+      'SELECT StudentID FROM studentprofile ORDER BY StudentID LIMIT 1',
     );
 
     // Far in the future, so they are the newest and inside the list's limit.
     Future<void> add(String name, {String? link}) async {
       final result = await conn.execute(
-        'INSERT INTO Booking (StudentID, TutorID, SubjectID, `Date`, '
+        'INSERT INTO booking (StudentID, TutorID, SubjectID, `Date`, '
         'StartTime, EndTime, Note, Link, Status) '
         "VALUES (:st, :t, :subj, '2099-01-01', '10:00:00', '11:00:00', "
         ":note, :link, 'Confirmed')",
@@ -80,12 +80,12 @@ void main() {
   tearDownAll(() async {
     for (final id in ids.values) {
       await conn.execute(
-        'DELETE FROM Booking WHERE Booking_id = :id',
+        'DELETE FROM booking WHERE Booking_id = :id',
         {'id': id},
       );
     }
     await conn.execute(
-      'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+      'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
       {'link': savedMeetLink, 't': _tutorId},
     );
     await conn.close();

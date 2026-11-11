@@ -15,8 +15,8 @@ class MySqlStudentDashboardRepository {
     final student = await connection.execute(
       '''
       SELECT sp.StudentID, u.Name, u.ProfilePhoto, u.Email, sp.Institution
-      FROM `User` u
-      INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
+      FROM `user` u
+      INNER JOIN studentprofile sp ON sp.UserID = u.UserId
       WHERE u.FirebaseUid = :uid
         AND u.Role = 'student'
         AND u.AccountStatus = 'Active'
@@ -34,10 +34,10 @@ class MySqlStudentDashboardRepository {
         DATE_FORMAT(b.Date, '%Y-%m-%d') AS SessionDate,
         TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime,
         TIME_FORMAT(b.EndTime, '%H:%i') AS EndTime
-      FROM Booking b
-      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-      INNER JOIN `User` tu ON tu.UserId = tp.UserID
-      INNER JOIN Subjects s ON s.subjectId = b.SubjectID
+      FROM booking b
+      INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+      INNER JOIN `user` tu ON tu.UserId = tp.UserID
+      INNER JOIN subjects s ON s.subjectId = b.SubjectID
       WHERE b.StudentID = :studentId
         AND b.Status = 'Confirmed'
         AND TIMESTAMP(b.Date, b.StartTime) >=

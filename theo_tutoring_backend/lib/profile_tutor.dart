@@ -22,7 +22,7 @@ Future<String?> getTutorAbout(
   final result = await conn.execute(
     '''
     SELECT Bio
-    FROM TutorProfile
+    FROM tutorprofile
     WHERE TutorID = :tutorId
     ''',
     {'tutorId': tutorId},
@@ -43,8 +43,8 @@ Future<List<Map<String, dynamic>>> getTutorSubjects(
   final result = await conn.execute(
     '''
     SELECT s.subjectId, s.subjectName
-    FROM TutorSubjects ts
-    JOIN Subjects s ON s.subjectId = ts.SubjectID
+    FROM tutorsubjects ts
+    JOIN subjects s ON s.subjectId = ts.SubjectID
     WHERE ts.TutorID = :tutorId
     ORDER BY s.subjectName
     ''',
@@ -67,7 +67,7 @@ Future<List<Map<String, dynamic>>> getTutorQualifications(
   final result = await conn.execute(
     '''
     SELECT QualificationID, Degree, Institution
-    FROM Qualification
+    FROM qualification
     WHERE TutorID = :tutorId
     ORDER BY QualificationID
     ''',
@@ -105,9 +105,9 @@ Future<({double average, int count})> getTutorRating(
   final result = await conn.execute(
     '''
     SELECT tp.AveRate,
-           (SELECT COUNT(*) FROM Reviews r WHERE r.TutorId = tp.TutorID)
+           (SELECT COUNT(*) FROM reviews r WHERE r.TutorId = tp.TutorID)
              AS ReviewCount
-    FROM TutorProfile tp
+    FROM tutorprofile tp
     WHERE tp.TutorID = :tutorId
     ''',
     {'tutorId': tutorId},
@@ -127,7 +127,7 @@ Future<bool> getTutorMeetConnected(MySQLConnection conn, int tutorId) async {
   final result = await conn.execute(
     '''
     SELECT MeetLink
-    FROM TutorProfile
+    FROM tutorprofile
     WHERE TutorID = :tutorId
     ''',
     {'tutorId': tutorId},
@@ -215,8 +215,8 @@ Future<void> updateTutorName(
 
   await conn.execute(
     '''
-    UPDATE `User` u
-    JOIN TutorProfile tp ON tp.UserID = u.UserId
+    UPDATE `user` u
+    JOIN tutorprofile tp ON tp.UserID = u.UserId
     SET u.Name = :name
     WHERE tp.TutorID = :tutorId
     ''',
@@ -245,8 +245,8 @@ Future<void> updateTutorPhoto(
 
   await conn.execute(
     '''
-    UPDATE `User` u
-    JOIN TutorProfile tp ON tp.UserID = u.UserId
+    UPDATE `user` u
+    JOIN tutorprofile tp ON tp.UserID = u.UserId
     SET u.ProfilePhoto = :photoUrl
     WHERE tp.TutorID = :tutorId
     ''',
@@ -265,7 +265,7 @@ Future<void> updateTutorAbout(
 
   await conn.execute(
     '''
-    UPDATE TutorProfile
+    UPDATE tutorprofile
     SET Bio = :about
     WHERE TutorID = :tutorId
     ''',
@@ -325,7 +325,7 @@ Future<Set<int>> getLockedSubjectIds(MySQLConnection conn, int tutorId) async {
   final result = await conn.execute(
     '''
     SELECT DISTINCT SubjectID
-    FROM Booking
+    FROM booking
     WHERE TutorID = :tutorId
       AND Status IN ('Pending', 'Accepted', 'Confirmed', 'Postponed')
       AND (`Date` > CURDATE() OR (`Date` = CURDATE() AND EndTime > CURTIME()))
@@ -352,7 +352,7 @@ Future<void> updateTutorSubjects(
 
   // Every subject must be in the Subjects table
   final found = await conn.execute(
-    'SELECT subjectId FROM Subjects WHERE subjectId IN ($placeholders)',
+    'SELECT subjectId FROM subjects WHERE subjectId IN ($placeholders)',
     params,
   );
   if (found.rows.length != subjectIds.length) {
@@ -364,7 +364,7 @@ Future<void> updateTutorSubjects(
   final removed = locked.difference(subjectIds.toSet());
   if (removed.isNotEmpty) {
     final names = await conn.execute(
-      'SELECT subjectName FROM Subjects WHERE subjectId = :id',
+      'SELECT subjectName FROM subjects WHERE subjectId = :id',
       {'id': removed.first},
     );
     final name = names.rows.isEmpty
@@ -377,12 +377,12 @@ Future<void> updateTutorSubjects(
 
   await conn.transactional((tx) async {
     await tx.execute(
-      'DELETE FROM TutorSubjects WHERE TutorID = :tutorId',
+      'DELETE FROM tutorsubjects WHERE TutorID = :tutorId',
       {'tutorId': tutorId},
     );
     for (final id in subjectIds) {
       await tx.execute(
-        'INSERT INTO TutorSubjects (TutorID, SubjectID) '
+        'INSERT INTO tutorsubjects (TutorID, SubjectID) '
         'VALUES (:tutorId, :subjectId)',
         {'tutorId': tutorId, 'subjectId': id},
       );
@@ -435,7 +435,7 @@ Future<void> updateTutorAvailability(
   await conn.execute('START TRANSACTION');
   try {
     await conn.execute(
-      'DELETE FROM TutAvailability WHERE TutorID = :tutorId',
+      'DELETE FROM tutavailability WHERE TutorID = :tutorId',
       {'tutorId': tutorId},
     );
     final params = <String, dynamic>{};
@@ -448,7 +448,7 @@ Future<void> updateTutorAvailability(
       params['e$i'] = _toTime(rows[i].end);
     }
     await conn.execute(
-      'INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time) '
+      'INSERT INTO tutavailability (TutorID, Day, StartTime, end_Time) '
       'VALUES ${values.join(', ')}',
       params,
     );
@@ -596,7 +596,7 @@ Future<List<DayRange>> _loadRanges(MySQLConnection conn, int tutorId) async {
   final result = await conn.execute(
     '''
     SELECT Day, StartTime, end_Time
-    FROM TutAvailability
+    FROM tutavailability
     WHERE TutorID = :tutorId
     ''',
     {'tutorId': tutorId},
@@ -625,7 +625,7 @@ Future<List<UpcomingBooking>> getUpcomingBookings(
   final result = await conn.execute(
     '''
     SELECT `Date`, StartTime, EndTime
-    FROM Booking
+    FROM booking
     WHERE TutorID = :tutorId
       AND Status IN ('Pending', 'Accepted', 'Confirmed', 'Postponed')
       AND (`Date` > CURDATE() OR (`Date` = CURDATE() AND EndTime > CURTIME()))
@@ -792,7 +792,7 @@ Future<void> saveDateAvailability(
   final date = change.date;
   await conn.transactional((tx) async {
     await tx.execute(
-      'SELECT TutorID FROM TutorProfile WHERE TutorID = :tutorId FOR UPDATE',
+      'SELECT TutorID FROM tutorprofile WHERE TutorID = :tutorId FOR UPDATE',
       {'tutorId': tutorId},
     );
 
@@ -837,7 +837,7 @@ Future<void> saveDateAvailability(
     }
 
     await tx.execute(
-      'DELETE FROM TutAvailabilityOverride '
+      'DELETE FROM tutavailabilityoverride '
       'WHERE TutorID = :tutorId AND `Date` = :date',
       {'tutorId': tutorId, 'date': date.iso},
     );
@@ -846,14 +846,14 @@ Future<void> saveDateAvailability(
         break; // no rows: the weekly hours apply again
       case DateAvailabilityMode.off:
         await tx.execute(
-          'INSERT INTO TutAvailabilityOverride (TutorID, `Date`) '
+          'INSERT INTO tutavailabilityoverride (TutorID, `Date`) '
           'VALUES (:tutorId, :date)',
           {'tutorId': tutorId, 'date': date.iso},
         );
       case DateAvailabilityMode.custom:
         for (final t in change.times) {
           await tx.execute(
-            'INSERT INTO TutAvailabilityOverride '
+            'INSERT INTO tutavailabilityoverride '
             '(TutorID, `Date`, StartTime, EndTime) '
             'VALUES (:tutorId, :date, :start, :end)',
             {

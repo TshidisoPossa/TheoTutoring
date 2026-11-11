@@ -133,8 +133,8 @@ Future<AdminIdentity> resolveAdmin(String? authorization) async {
   final result = await (await getConnection()).execute(
     '''
     SELECT a.AdminID, a.RoleKey, u.Name
-    FROM `User` u
-    INNER JOIN Admin a ON a.UserId = u.UserId
+    FROM `user` u
+    INNER JOIN admin a ON a.UserId = u.UserId
     WHERE u.FirebaseUid = :uid
       AND u.Role = 'admin'
       AND u.AccountStatus = 'Active'
@@ -225,29 +225,29 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
             CAST(pa.PaymentAttemptID AS CHAR)
           ) AS TransactionID,
           (SELECT action.Reason
-             FROM RefundAdminAction action
+             FROM refundadminaction action
             WHERE action.RefundID = r.RefundID
             ORDER BY action.CreatedAtUtc DESC, action.RefundAdminActionID DESC
             LIMIT 1) AS DecisionReason,
           (SELECT action.CreatedAtUtc
-             FROM RefundAdminAction action
+             FROM refundadminaction action
             WHERE action.RefundID = r.RefundID
             ORDER BY action.CreatedAtUtc DESC, action.RefundAdminActionID DESC
             LIMIT 1) AS DecisionAtUtc,
           decisionUser.Name AS DecidedBy
-        FROM Refund r
-        INNER JOIN Booking b ON b.Booking_id = r.BookingID
-        INNER JOIN StudentProfile sp ON sp.StudentID = b.StudentID
-        INNER JOIN `User` student ON student.UserId = sp.UserID
-        INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-        INNER JOIN `User` tutor ON tutor.UserId = tp.UserID
-        INNER JOIN Subjects s ON s.subjectId = b.SubjectID
-        LEFT JOIN Payment p ON p.BookingId = b.Booking_id
-        LEFT JOIN BookingPurchase bp ON bp.PurchaseID = b.PurchaseID
-        LEFT JOIN PurchasePayment pp ON pp.PurchaseID = b.PurchaseID
-        LEFT JOIN PaymentAttempt pa ON pa.PaymentAttemptID = pp.PaymentAttemptID
-        LEFT JOIN Admin decisionAdmin ON decisionAdmin.AdminID = r.AdminID
-        LEFT JOIN `User` decisionUser ON decisionUser.UserId = decisionAdmin.UserId
+        FROM refund r
+        INNER JOIN booking b ON b.Booking_id = r.BookingID
+        INNER JOIN studentprofile sp ON sp.StudentID = b.StudentID
+        INNER JOIN `user` student ON student.UserId = sp.UserID
+        INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+        INNER JOIN `user` tutor ON tutor.UserId = tp.UserID
+        INNER JOIN subjects s ON s.subjectId = b.SubjectID
+        LEFT JOIN payment p ON p.BookingId = b.Booking_id
+        LEFT JOIN bookingpurchase bp ON bp.PurchaseID = b.PurchaseID
+        LEFT JOIN purchasepayment pp ON pp.PurchaseID = b.PurchaseID
+        LEFT JOIN paymentattempt pa ON pa.PaymentAttemptID = pp.PaymentAttemptID
+        LEFT JOIN admin decisionAdmin ON decisionAdmin.AdminID = r.AdminID
+        LEFT JOIN `user` decisionUser ON decisionUser.UserId = decisionAdmin.UserId
         ORDER BY r.CancellationTime DESC, r.RefundID DESC
       ''');
 
@@ -419,20 +419,20 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
           CAST(attempt.PaymentAttemptID AS CHAR)
         ) AS TransactionID,
         adminUser.Name AS DecidedBy
-      FROM Report report
-      INNER JOIN `User` reporter ON reporter.UserId = report.ReporterID
+      FROM report report
+      INNER JOIN `user` reporter ON reporter.UserId = report.ReporterID
       -- empty for Payments & Payouts / Other (not about another user)
-      LEFT JOIN `User` reported ON reported.UserId = report.ReportedUserID
-      LEFT JOIN Booking booking ON booking.Booking_id = report.BookingID
-      LEFT JOIN Subjects subject ON subject.subjectId = booking.SubjectID
-      LEFT JOIN Payment payment ON payment.BookingId = booking.Booking_id
-      LEFT JOIN BookingPurchase purchase ON purchase.PurchaseID = booking.PurchaseID
-      LEFT JOIN PurchasePayment purchasePayment
+      LEFT JOIN `user` reported ON reported.UserId = report.ReportedUserID
+      LEFT JOIN booking booking ON booking.Booking_id = report.BookingID
+      LEFT JOIN subjects subject ON subject.subjectId = booking.SubjectID
+      LEFT JOIN payment payment ON payment.BookingId = booking.Booking_id
+      LEFT JOIN bookingpurchase purchase ON purchase.PurchaseID = booking.PurchaseID
+      LEFT JOIN purchasepayment purchasePayment
         ON purchasePayment.PurchaseID = booking.PurchaseID
-      LEFT JOIN PaymentAttempt attempt
+      LEFT JOIN paymentattempt attempt
         ON attempt.PaymentAttemptID = purchasePayment.PaymentAttemptID
-      LEFT JOIN Admin admin ON admin.AdminID = report.AdminID
-      LEFT JOIN `User` adminUser ON adminUser.UserId = admin.UserId
+      LEFT JOIN admin admin ON admin.AdminID = report.AdminID
+      LEFT JOIN `user` adminUser ON adminUser.UserId = admin.UserId
       ORDER BY report.Created_at DESC, report.ReportID DESC
     ''');
     return result.rows.map(_reportJson).toList();
@@ -507,7 +507,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
         final amount = _money(amountPaid * percentage / 100);
         await transaction.execute(
           '''
-          UPDATE Refund
+          UPDATE refund
           SET RefundPercentage = :percentage,
               RefundAmount = :amount,
               OverriddenByAdmin = TRUE,
@@ -546,7 +546,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     try {
       await connection.transactional((transaction) async {
         final current = await transaction.execute(
-          'SELECT Status FROM Report WHERE ReportID = :id FOR UPDATE',
+          'SELECT Status FROM report WHERE ReportID = :id FOR UPDATE',
           {'id': reportId},
         );
         if (current.rows.isEmpty) throw const AdminRefundNotFound();
@@ -555,7 +555,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
         }
         final update = await transaction.execute(
           '''
-          UPDATE Report
+          UPDATE report
           SET Status = 'Resolved',
               ResolutionNote = :note,
               AdminID = :adminId,
@@ -606,7 +606,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
             : null;
         await transaction.execute(
           '''
-          UPDATE Refund
+          UPDATE refund
           SET RefundStatus = :status,
               RefundPercentage = :percentage,
               RefundAmount = :amount,
@@ -657,12 +657,12 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
           )
           ELSE NULL
         END AS AmountPaid
-      FROM Refund r
-      INNER JOIN Booking b ON b.Booking_id = r.BookingID
-      LEFT JOIN Payment p ON p.BookingId = b.Booking_id
-      LEFT JOIN BookingPurchase bp ON bp.PurchaseID = b.PurchaseID
-      LEFT JOIN PurchasePayment pp ON pp.PurchaseID = b.PurchaseID
-      LEFT JOIN PaymentAttempt pa ON pa.PaymentAttemptID = pp.PaymentAttemptID
+      FROM refund r
+      INNER JOIN booking b ON b.Booking_id = r.BookingID
+      LEFT JOIN payment p ON p.BookingId = b.Booking_id
+      LEFT JOIN bookingpurchase bp ON bp.PurchaseID = b.PurchaseID
+      LEFT JOIN purchasepayment pp ON pp.PurchaseID = b.PurchaseID
+      LEFT JOIN paymentattempt pa ON pa.PaymentAttemptID = pp.PaymentAttemptID
       WHERE r.RefundID = :refundId
       FOR UPDATE
       ''',
@@ -683,7 +683,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
   }) async {
     await transaction.execute(
       '''
-      INSERT INTO RefundAdminAction
+      INSERT INTO refundadminaction
         (RefundID, AdminID, Action, Reason, RefundPercentage, RefundAmount, CreatedAtUtc)
       VALUES
         (:refundId, :adminId, :action, :reason, :percentage, :amount, UTC_TIMESTAMP(6))

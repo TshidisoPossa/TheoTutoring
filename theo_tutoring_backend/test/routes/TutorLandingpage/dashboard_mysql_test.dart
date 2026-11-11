@@ -85,10 +85,10 @@ void main() {
     before = await dashboard();
 
     final subject = await conn.execute(
-      'SELECT subjectId FROM Subjects ORDER BY subjectId LIMIT 1',
+      'SELECT subjectId FROM subjects ORDER BY subjectId LIMIT 1',
     );
     final student = await conn.execute(
-      'SELECT StudentID FROM StudentProfile ORDER BY StudentID LIMIT 1',
+      'SELECT StudentID FROM studentprofile ORDER BY StudentID LIMIT 1',
     );
 
     Future<void> add(
@@ -99,7 +99,7 @@ void main() {
       required String end,
     }) async {
       final result = await conn.execute(
-        'INSERT INTO Booking (StudentID, TutorID, SubjectID, `Date`, '
+        'INSERT INTO booking (StudentID, TutorID, SubjectID, `Date`, '
         'StartTime, EndTime, Note, Status) '
         'VALUES (:st, :t, :subj, :d, :s, :e, :note, :status)',
         {
@@ -171,7 +171,7 @@ void main() {
   tearDownAll(() async {
     for (final id in ids.values) {
       await conn.execute(
-        'DELETE FROM Booking WHERE Booking_id = :id',
+        'DELETE FROM booking WHERE Booking_id = :id',
         {'id': id},
       );
     }
@@ -180,8 +180,8 @@ void main() {
 
   test('Active Students counts every active registered student', () async {
     final expected = await conn.execute(
-      'SELECT COUNT(*) AS n FROM StudentProfile s '
-      'JOIN `User` u ON u.UserId = s.UserID '
+      'SELECT COUNT(*) AS n FROM studentprofile s '
+      'JOIN `user` u ON u.UserId = s.UserID '
       "WHERE u.Role = 'student' AND u.AccountStatus = 'Active'",
     );
     final body = await dashboard();
@@ -217,7 +217,7 @@ void main() {
   test("Today's Schedule link is the tutor's Meet room, unless the booking "
       'has its own', () async {
     final saved = await conn.execute(
-      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      'SELECT MeetLink FROM tutorprofile WHERE TutorID = :t',
       {'t': _tutorId},
     );
     final savedMeetLink = saved.rows.first.str('MeetLink');
@@ -232,19 +232,19 @@ void main() {
 
     try {
       await conn.execute(
-        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
         {'link': _meetLink, 't': _tutorId},
       );
       expect(await link(), _meetLink);
 
       await conn.execute(
-        'UPDATE Booking SET Link = :link WHERE Booking_id = :id',
+        'UPDATE booking SET Link = :link WHERE Booking_id = :id',
         {'link': _ownLink, 'id': ids['later today']},
       );
       expect(await link(), _ownLink);
     } finally {
       await conn.execute(
-        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
         {'link': savedMeetLink, 't': _tutorId},
       );
     }

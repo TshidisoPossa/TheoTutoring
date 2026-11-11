@@ -49,11 +49,11 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
           tp.VerificationStat, tp.Bio, tp.Experience,
           tp.Certificate, tp.IdDocument, u.Name, u.Email, u.PhoneNum,
           u.ProfilePhoto, u.AccountStatus
-        FROM TutorApplication ta
-        INNER JOIN TutorProfile tp ON tp.TutorID = ta.TutorID
-        INNER JOIN `User` u ON u.UserId = tp.UserId
-        LEFT JOIN Admin review_admin ON review_admin.AdminID = ta.AdminID
-        LEFT JOIN `User` reviewer ON reviewer.UserId = review_admin.UserId
+        FROM tutorapplication ta
+        INNER JOIN tutorprofile tp ON tp.TutorID = ta.TutorID
+        INNER JOIN `user` u ON u.UserId = tp.UserId
+        LEFT JOIN admin review_admin ON review_admin.AdminID = ta.AdminID
+        LEFT JOIN `user` reviewer ON reviewer.UserId = review_admin.UserId
         ORDER BY ta.SubmittedAt DESC, ta.TutApplication DESC
         ''');
 
@@ -75,7 +75,7 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
       final qualificationResult = await connection.execute(
         '''
         SELECT TutorID, Degree, Institution
-        FROM Qualification
+        FROM qualification
         WHERE TutorID IN ($placeholders)
         ORDER BY TutorID ASC, QualificationID ASC
         ''',
@@ -94,8 +94,8 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
       final subjectsResult = await connection.execute(
         '''
         SELECT ts.TutorID, s.subjectName
-        FROM TutorSubjects ts
-        INNER JOIN Subjects s ON s.subjectId = ts.SubjectID
+        FROM tutorsubjects ts
+        INNER JOIN subjects s ON s.subjectId = ts.SubjectID
         WHERE ts.TutorID IN ($placeholders)
         ORDER BY ts.TutorID ASC, s.subjectName ASC
         ''',
@@ -140,7 +140,7 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
         final current = await transaction.execute(
           '''
           SELECT ta.TutorID, ta.Status
-          FROM TutorApplication ta
+          FROM tutorapplication ta
           WHERE ta.TutApplication = :applicationId
           FOR UPDATE
           ''',
@@ -156,7 +156,7 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
 
         final update = await transaction.execute(
           '''
-          UPDATE TutorApplication
+          UPDATE tutorapplication
           SET Status = :status,
               AdminFeedback = :feedback,
               AdminID = :adminId,
@@ -178,7 +178,7 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
 
         await transaction.execute(
           '''
-          UPDATE TutorProfile
+          UPDATE tutorprofile
           SET VerificationStat = :status
           WHERE TutorID = :tutorId
           ''',
@@ -186,8 +186,8 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
         );
         await transaction.execute(
           '''
-          UPDATE `User` u
-          INNER JOIN TutorProfile tp ON tp.UserID = u.UserId
+          UPDATE `user` u
+          INNER JOIN tutorprofile tp ON tp.UserID = u.UserId
           SET u.AccountStatus = :accountStatus
           WHERE tp.TutorID = :tutorId AND u.Role = 'tutor'
           ''',

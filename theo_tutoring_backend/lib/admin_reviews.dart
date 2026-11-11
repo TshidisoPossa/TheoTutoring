@@ -75,13 +75,13 @@ abstract interface class AdminReviewsRepository {
 }
 
 const _reviewFrom = '''
-  FROM Reviews r
-  INNER JOIN TutorProfile tp ON tp.TutorID = r.TutorID
-  INNER JOIN `User` tu ON tu.UserId = tp.UserID
-  INNER JOIN StudentProfile sp ON sp.StudentID = r.StudentID
-  INNER JOIN `User` su ON su.UserId = sp.UserID
-  LEFT JOIN Booking b ON b.Booking_id = r.BookingID
-  LEFT JOIN Subjects s ON s.subjectId = b.SubjectID
+  FROM reviews r
+  INNER JOIN tutorprofile tp ON tp.TutorID = r.TutorID
+  INNER JOIN `user` tu ON tu.UserId = tp.UserID
+  INNER JOIN studentprofile sp ON sp.StudentID = r.StudentID
+  INNER JOIN `user` su ON su.UserId = sp.UserID
+  LEFT JOIN booking b ON b.Booking_id = r.BookingID
+  LEFT JOIN subjects s ON s.subjectId = b.SubjectID
 ''';
 
 const _reviewColumns = '''
@@ -90,7 +90,7 @@ const _reviewColumns = '''
     tp.TutorID, tu.Name AS TutorName, tu.ProfilePhoto AS TutorPhoto,
     sp.StudentID, su.Name AS StudentName, su.ProfilePhoto AS StudentPhoto,
     s.subjectName,
-    (SELECT COUNT(*) FROM Report rp WHERE rp.BookingID = r.BookingID)
+    (SELECT COUNT(*) FROM report rp WHERE rp.BookingID = r.BookingID)
       AS ReportCount
 ''';
 
@@ -184,7 +184,7 @@ class MySqlAdminReviewsRepository implements AdminReviewsRepository {
         COALESCE(SUM(Rating = 3), 0) AS Stars3,
         COALESCE(SUM(Rating = 2), 0) AS Stars2,
         COALESCE(SUM(Rating = 1), 0) AS Stars1
-      FROM Reviews
+      FROM reviews
     ''');
     final s = summary.rows.first;
 
@@ -192,9 +192,9 @@ class MySqlAdminReviewsRepository implements AdminReviewsRepository {
       '''
       SELECT tp.TutorID, u.Name, u.ProfilePhoto, u.AccountStatus,
         ROUND(AVG(r.Rating), 2) AS Average, COUNT(*) AS ReviewCount
-      FROM Reviews r
-      INNER JOIN TutorProfile tp ON tp.TutorID = r.TutorID
-      INNER JOIN `User` u ON u.UserId = tp.UserID
+      FROM reviews r
+      INNER JOIN tutorprofile tp ON tp.TutorID = r.TutorID
+      INNER JOIN `user` u ON u.UserId = tp.UserID
       GROUP BY tp.TutorID, u.Name, u.ProfilePhoto, u.AccountStatus
       HAVING COUNT(*) >= :minReviews AND AVG(r.Rating) < :below
       ORDER BY Average ASC, ReviewCount DESC
@@ -240,7 +240,7 @@ class MySqlAdminReviewsRepository implements AdminReviewsRepository {
       $_reviewColumns,
         tu.Email AS TutorEmail, tu.AccountStatus AS TutorStatus,
         tp.AveRate AS TutorAverage,
-        (SELECT COUNT(*) FROM Reviews r2 WHERE r2.TutorID = tp.TutorID)
+        (SELECT COUNT(*) FROM reviews r2 WHERE r2.TutorID = tp.TutorID)
           AS TutorReviewCount,
         su.Email AS StudentEmail, sp.Institution AS StudentInstitution,
         DATE_FORMAT(b.Date, '%Y-%m-%d') AS SessionDate,
@@ -265,8 +265,8 @@ class MySqlAdminReviewsRepository implements AdminReviewsRepository {
             SELECT rp.ReportID, rp.Category, rp.Reason, rp.Status,
               DATE_FORMAT(rp.Created_at, '%Y-%m-%dT%H:%i:%s') AS CreatedAt,
               ru.Name AS ReporterName, ru.Role AS ReporterRole
-            FROM Report rp
-            INNER JOIN `User` ru ON ru.UserId = rp.ReporterID
+            FROM report rp
+            INNER JOIN `user` ru ON ru.UserId = rp.ReporterID
             WHERE rp.BookingID = :bookingId
             ORDER BY rp.Created_at DESC
             ''',

@@ -49,8 +49,8 @@ Future<Response> handleTutorMeetLink(
     final tutorResult = await db.execute(
       '''
       SELECT tp.TutorID, u.AccountStatus
-      FROM tutorProfile tp
-      INNER JOIN User u ON tp.UserId = u.UserId
+      FROM tutorprofile tp
+      INNER JOIN user u ON tp.UserId = u.UserId
       WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'
       ''',
       {'uid': firebaseUser.uid},

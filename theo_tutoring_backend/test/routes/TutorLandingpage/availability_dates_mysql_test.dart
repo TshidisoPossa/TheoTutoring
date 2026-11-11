@@ -83,7 +83,7 @@ void main() {
   // GET /StudentlandingPage/availability.
   Future<List<String>> studentSlots(BookingDate date) async {
     final weekly = await conn.execute(
-      'SELECT Day, StartTime, end_Time FROM TutAvailability WHERE TutorID = :t',
+      'SELECT Day, StartTime, end_Time FROM tutavailability WHERE TutorID = :t',
       {'t': tutorId},
     );
     const days = [
@@ -114,7 +114,7 @@ void main() {
 
   Future<List<Map<String, String?>>> changeRows(BookingDate date) async {
     final rows = await conn.execute(
-      'SELECT StartTime, EndTime FROM TutAvailabilityOverride '
+      'SELECT StartTime, EndTime FROM tutavailabilityoverride '
       'WHERE TutorID = :t AND `Date` = :d ORDER BY StartTime',
       {'t': tutorId, 'd': date.iso},
     );
@@ -123,13 +123,13 @@ void main() {
 
   Future<int> addBooking(BookingDate date, String start, String end) async {
     final student = await conn.execute(
-      'SELECT StudentID FROM StudentProfile ORDER BY StudentID LIMIT 1',
+      'SELECT StudentID FROM studentprofile ORDER BY StudentID LIMIT 1',
     );
     final subject = await conn.execute(
-      'SELECT subjectId FROM Subjects ORDER BY subjectId LIMIT 1',
+      'SELECT subjectId FROM subjects ORDER BY subjectId LIMIT 1',
     );
     final insert = await conn.execute(
-      'INSERT INTO Booking (StudentID, TutorID, SubjectID, `Date`, '
+      'INSERT INTO booking (StudentID, TutorID, SubjectID, `Date`, '
       'StartTime, EndTime, Note, Status, Created_at) '
       "VALUES (:s, :t, :subj, :d, :start, :end, 'availability-dates-test', "
       "'Confirmed', NOW())",
@@ -151,34 +151,34 @@ void main() {
     conn = await getConnection();
     final p = {'t': tutorId};
     weeklyBefore = (await conn.execute(
-      'SELECT Day, StartTime, end_Time FROM TutAvailability WHERE TutorID = :t',
+      'SELECT Day, StartTime, end_Time FROM tutavailability WHERE TutorID = :t',
       p,
     )).rows.map((r) => r.textAssoc()).toList();
     changesBefore = (await conn.execute(
       "SELECT DATE_FORMAT(`Date`, '%Y-%m-%d') AS D, StartTime, EndTime "
-      'FROM TutAvailabilityOverride WHERE TutorID = :t',
+      'FROM tutavailabilityoverride WHERE TutorID = :t',
       p,
     )).rows.map((r) => r.textAssoc()).toList();
 
     // A known weekly pattern for the tests: Monday-Saturday 08:00-17:00.
-    await conn.execute('DELETE FROM TutAvailability WHERE TutorID = :t', p);
+    await conn.execute('DELETE FROM tutavailability WHERE TutorID = :t', p);
     for (final day in [
       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', //
     ]) {
       await conn.execute(
-        'INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time) '
+        'INSERT INTO tutavailability (TutorID, Day, StartTime, end_Time) '
         "VALUES (:t, :d, '08:00:00', '17:00:00')",
         {'t': tutorId, 'd': day},
       );
     }
     await conn.execute(
-      'DELETE FROM TutAvailabilityOverride WHERE TutorID = :t',
+      'DELETE FROM tutavailabilityoverride WHERE TutorID = :t',
       p,
     );
 
     // Dates from 3 to 80 days ahead with no lessons booked, Monday-Saturday.
     final booked = (await conn.execute(
-      "SELECT DISTINCT DATE_FORMAT(`Date`, '%Y-%m-%d') AS D FROM Booking "
+      "SELECT DISTINCT DATE_FORMAT(`Date`, '%Y-%m-%d') AS D FROM booking "
       'WHERE TutorID = :t AND `Date` >= CURDATE()',
       p,
     )).rows.map((r) => r.str('D')).toSet();
@@ -203,25 +203,25 @@ void main() {
     final p = {'t': tutorId};
     for (final id in addedBookings) {
       await conn.execute(
-        'DELETE FROM Booking WHERE Booking_id = :id',
+        'DELETE FROM booking WHERE Booking_id = :id',
         {'id': id},
       );
     }
-    await conn.execute('DELETE FROM TutAvailability WHERE TutorID = :t', p);
+    await conn.execute('DELETE FROM tutavailability WHERE TutorID = :t', p);
     for (final a in weeklyBefore) {
       await conn.execute(
-        'INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time) '
+        'INSERT INTO tutavailability (TutorID, Day, StartTime, end_Time) '
         'VALUES (:t, :d, :s, :e)',
         {'t': tutorId, 'd': a['Day'], 's': a['StartTime'], 'e': a['end_Time']},
       );
     }
     await conn.execute(
-      'DELETE FROM TutAvailabilityOverride WHERE TutorID = :t',
+      'DELETE FROM tutavailabilityoverride WHERE TutorID = :t',
       p,
     );
     for (final c in changesBefore) {
       await conn.execute(
-        'INSERT INTO TutAvailabilityOverride '
+        'INSERT INTO tutavailabilityoverride '
         '(TutorID, `Date`, StartTime, EndTime) VALUES (:t, :d, :s, :e)',
         {'t': tutorId, 'd': c['D'], 's': c['StartTime'], 'e': c['EndTime']},
       );

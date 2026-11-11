@@ -118,7 +118,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final discovery = await connection.execute(
       '''
       SELECT TutorID
-      FROM BookingPurchase
+      FROM bookingpurchase
       WHERE PurchaseID = :purchaseId AND StudentID = :studentId
       ''',
       {'purchaseId': purchaseId, 'studentId': studentId},
@@ -129,7 +129,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final student = await connection.execute(
       '''
       SELECT sp.StudentID
-      FROM StudentProfile sp
+      FROM studentprofile sp
       INNER JOIN \`User\` u ON u.UserId = sp.UserID
       WHERE sp.StudentID = :studentId
         AND u.Role = 'student'
@@ -141,7 +141,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     if (student.rows.isEmpty) throw const BookingPurchaseNotFound();
 
     final tutor = await connection.execute(
-      'SELECT TutorID FROM TutorProfile WHERE TutorID = :tutorId FOR UPDATE',
+      'SELECT TutorID FROM tutorprofile WHERE TutorID = :tutorId FOR UPDATE',
       {'tutorId': tutorId},
     );
     if (tutor.rows.isEmpty) throw const BookingPurchaseNotFound();
@@ -149,7 +149,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final purchaseResult = await connection.execute(
       '''
       SELECT PurchaseStatus, LessonCount, TotalAmount, StudentID, TutorID
-      FROM BookingPurchase
+      FROM bookingpurchase
       WHERE PurchaseID = :purchaseId
       FOR UPDATE
       ''',
@@ -168,7 +168,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final bookings = await connection.execute(
       '''
       SELECT Booking_id, LessonNumber, Status
-      FROM Booking
+      FROM booking
       WHERE PurchaseID = :purchaseId
       ORDER BY Booking_id
       FOR UPDATE
@@ -178,7 +178,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final holds = await connection.execute(
       '''
       SELECT HoldID, LessonNumber, BookingID, HoldStatus, ExpiresAtUtc
-      FROM BookingSlotHold
+      FROM bookingslothold
       WHERE PurchaseID = :purchaseId
       ORDER BY HoldID
       FOR UPDATE
@@ -189,7 +189,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       '''
       SELECT PaymentAttemptID, AttemptNumber, IdempotencyKey, PaymentMethod,
              DemoOutcome, PaymentStatus
-      FROM PaymentAttempt
+      FROM paymentattempt
       WHERE PurchaseID = :purchaseId
       ORDER BY PaymentAttemptID
       FOR UPDATE
@@ -199,7 +199,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final settlements = await connection.execute(
       '''
       SELECT PurchasePaymentID, PaymentAttemptID
-      FROM PurchasePayment
+      FROM purchasepayment
       WHERE PurchaseID = :purchaseId
       ORDER BY PurchasePaymentID
       FOR UPDATE
@@ -402,7 +402,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final timestamp = _formatUtcDateTime(nowUtc);
     final attemptInsert = await connection.execute(
       '''
-      INSERT INTO PaymentAttempt (
+      INSERT INTO paymentattempt (
         PurchaseID, AttemptNumber, IdempotencyKey, PaymentMethod,
         PaymentMode, DemoOutcome, PaymentStatus, Amount, FailureCode,
         CreatedAtUtc, UpdatedAtUtc, ResolvedAtUtc
@@ -429,7 +429,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     if (succeeded) {
       await connection.execute(
         '''
-        INSERT INTO PurchasePayment (
+        INSERT INTO purchasepayment (
           PurchaseID, PaymentAttemptID, Amount, CreatedAtUtc
         ) VALUES (:purchaseId, :attemptId, :amount, :nowUtc)
         ''',
@@ -442,7 +442,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       );
       final purchaseUpdate = await connection.execute(
         '''
-        UPDATE BookingPurchase
+        UPDATE bookingpurchase
         SET PurchaseStatus = 'Paid'
         WHERE PurchaseID = :purchaseId AND PurchaseStatus = 'Held'
         ''',
@@ -450,7 +450,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       );
       final bookingUpdate = await connection.execute(
         '''
-        UPDATE Booking
+        UPDATE booking
         SET Status = 'Confirmed'
         WHERE PurchaseID = :purchaseId AND Status = 'Pending'
         ''',
@@ -458,7 +458,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       );
       final holdUpdate = await connection.execute(
         '''
-        UPDATE BookingSlotHold
+        UPDATE bookingslothold
         SET HoldStatus = 'Consumed', ConsumedAtUtc = :nowUtc
         WHERE PurchaseID = :purchaseId
           AND HoldStatus = 'Active' AND ExpiresAtUtc > :nowUtc
@@ -492,8 +492,8 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final student = await connection.execute(
       '''
       SELECT sp.StudentID
-      FROM StudentProfile sp
-      INNER JOIN `User` u ON u.UserId = sp.UserID
+      FROM studentprofile sp
+      INNER JOIN `user` u ON u.UserId = sp.UserID
       WHERE sp.StudentID = :studentId
         AND u.Role = 'student'
         AND u.AccountStatus = 'Active'
@@ -506,7 +506,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     }
 
     final tutorLock = await connection.execute(
-      'SELECT TutorID FROM TutorProfile WHERE TutorID = :tutorId FOR UPDATE',
+      'SELECT TutorID FROM tutorprofile WHERE TutorID = :tutorId FOR UPDATE',
       {'tutorId': command.tutorId},
     );
     if (tutorLock.rows.isEmpty) throw const BookingPurchaseNotFound();
@@ -514,7 +514,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final existing = await connection.execute(
       '''
       SELECT PurchaseID, RequestFingerprint
-      FROM BookingPurchase
+      FROM bookingpurchase
       WHERE StudentID = :studentId AND IdempotencyKey = :idempotencyKey
       FOR UPDATE
       ''',
@@ -539,19 +539,19 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final eligibility = await connection.execute(
       '''
       SELECT tp.TutorID
-      FROM TutorProfile tp
-      INNER JOIN `User` u ON u.UserId = tp.UserID
+      FROM tutorprofile tp
+      INNER JOIN `user` u ON u.UserId = tp.UserID
       WHERE tp.TutorID = :tutorId
         AND u.Role = 'tutor'
         AND u.AccountStatus = 'Active'
         AND tp.VerificationStat = 'Approved'
         AND EXISTS (
-          SELECT 1 FROM TutorApplication ta
+          SELECT 1 FROM tutorapplication ta
           WHERE ta.TutorID = tp.TutorID AND ta.Status = 'Approved'
         )
         AND EXISTS (
-          SELECT 1 FROM TutorSubjects ts
-          INNER JOIN Subjects s ON s.subjectId = ts.SubjectID
+          SELECT 1 FROM tutorsubjects ts
+          INNER JOIN subjects s ON s.subjectId = ts.SubjectID
           WHERE ts.TutorID = tp.TutorID
             AND s.subjectId = :subjectId
         )
@@ -574,7 +574,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final availabilityResult = await connection.execute(
       '''
       SELECT Day, StartTime, end_Time
-      FROM TutAvailability
+      FROM tutavailability
       WHERE TutorID = :tutorId
       ORDER BY Day, StartTime
       ''',
@@ -620,7 +620,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
 
     final purchaseInsert = await connection.execute(
       '''
-      INSERT INTO BookingPurchase (
+      INSERT INTO bookingpurchase (
         StudentID, TutorID, SubjectID, PurchaseType, LessonCount,
         RatePerLesson, SubtotalAmount, DiscountPercent, DiscountAmount,
         TotalAmount, IdempotencyKey, RequestFingerprint, PurchaseStatus,
@@ -654,7 +654,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       final lesson = command.lessons[index];
       final bookingInsert = await connection.execute(
         '''
-        INSERT INTO Booking (
+        INSERT INTO booking (
           StudentID, TutorID, SubjectID, PurchaseID, LessonNumber,
           LessonPriceAtPurchase, `Date`, StartTime, EndTime, Note, Status
         ) VALUES (
@@ -694,7 +694,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       final lesson = command.lessons[index];
       await connection.execute(
         '''
-        INSERT INTO BookingSlotHold (
+        INSERT INTO bookingslothold (
           PurchaseID, LessonNumber, TutorID, BookingID, LessonDate,
           StartTime, EndTime, HoldStatus, CreatedAtUtc, ExpiresAtUtc
         ) VALUES (
@@ -728,7 +728,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       final bookings = await connection.execute(
         '''
         SELECT Booking_id
-        FROM Booking
+        FROM booking
         WHERE `Date` = :lessonDate
           AND Status = 'Confirmed'
           AND (TutorID = :tutorId OR StudentID = :studentId)
@@ -753,8 +753,8 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       final holds = await connection.execute(
         '''
         SELECT h.HoldID
-        FROM BookingSlotHold h
-        INNER JOIN BookingPurchase p ON p.PurchaseID = h.PurchaseID
+        FROM bookingslothold h
+        INNER JOIN bookingpurchase p ON p.PurchaseID = h.PurchaseID
         WHERE h.LessonDate = :lessonDate
           AND h.HoldStatus = 'Active'
           AND h.ExpiresAtUtc > UTC_TIMESTAMP(6)
@@ -785,7 +785,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final purchaseResult = await connection.execute(
       '''
       SELECT LessonCount, PurchaseStatus
-      FROM BookingPurchase
+      FROM bookingpurchase
       WHERE PurchaseID = :purchaseId
       FOR UPDATE
       ''',
@@ -798,7 +798,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     await connection.execute(
       '''
       SELECT Booking_id
-      FROM Booking
+      FROM booking
       WHERE PurchaseID = :purchaseId
       ORDER BY Booking_id
       FOR UPDATE
@@ -808,7 +808,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final holds = await connection.execute(
       '''
       SELECT HoldID, LessonNumber, HoldStatus, ExpiresAtUtc
-      FROM BookingSlotHold
+      FROM bookingslothold
       WHERE PurchaseID = :purchaseId
       ORDER BY HoldID
       FOR UPDATE
@@ -835,7 +835,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     if (!allLessonsHeld) {
       await connection.execute(
         '''
-        UPDATE Booking
+        UPDATE booking
         SET Status = 'Cancelled'
         WHERE PurchaseID = :purchaseId AND Status = 'Pending'
         ''',
@@ -843,7 +843,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       );
       await connection.execute(
         '''
-        UPDATE BookingSlotHold
+        UPDATE bookingslothold
         SET HoldStatus = CASE
               WHEN ExpiresAtUtc <= :nowUtc THEN 'Expired'
               ELSE 'Released'
@@ -859,7 +859,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       );
       await connection.execute(
         '''
-        UPDATE BookingPurchase
+        UPDATE bookingpurchase
         SET PurchaseStatus = 'Expired'
         WHERE PurchaseID = :purchaseId AND PurchaseStatus = 'Held'
         ''',
@@ -879,7 +879,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       SELECT PurchaseID, TutorID, SubjectID, PurchaseStatus, RatePerLesson,
              LessonCount, SubtotalAmount, DiscountPercent, DiscountAmount,
              TotalAmount
-      FROM BookingPurchase
+      FROM bookingpurchase
       WHERE PurchaseID = :purchaseId AND StudentID = :studentId
       ''',
       {'purchaseId': purchaseId, 'studentId': studentId},
@@ -895,8 +895,8 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
                THEN 'Expired'
                ELSE h.HoldStatus
              END AS HoldStatus
-      FROM Booking b
-      INNER JOIN BookingSlotHold h
+      FROM booking b
+      INNER JOIN bookingslothold h
         ON h.PurchaseID = b.PurchaseID
        AND h.LessonNumber = b.LessonNumber
       WHERE b.PurchaseID = :purchaseId
@@ -925,7 +925,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final expiryResult = await connection.execute(
       '''
       SELECT MAX(ExpiresAtUtc) AS HoldExpiresAt
-      FROM BookingSlotHold WHERE PurchaseID = :purchaseId
+      FROM bookingslothold WHERE PurchaseID = :purchaseId
       ''',
       {'purchaseId': purchaseId},
     );
@@ -959,7 +959,7 @@ Future<void> _expirePaymentPurchase(
   final formattedNow = _formatUtcDateTime(nowUtc);
   await connection.execute(
     '''
-    UPDATE Booking
+    UPDATE booking
     SET Status = 'Cancelled'
     WHERE PurchaseID = :purchaseId AND Status = 'Pending'
     ''',
@@ -967,7 +967,7 @@ Future<void> _expirePaymentPurchase(
   );
   await connection.execute(
     '''
-    UPDATE BookingSlotHold
+    UPDATE bookingslothold
     SET HoldStatus = CASE
           WHEN ExpiresAtUtc <= :nowUtc THEN 'Expired'
           ELSE 'Released'
@@ -982,7 +982,7 @@ Future<void> _expirePaymentPurchase(
   );
   await connection.execute(
     '''
-    UPDATE BookingPurchase
+    UPDATE bookingpurchase
     SET PurchaseStatus = 'Expired'
     WHERE PurchaseID = :purchaseId AND PurchaseStatus = 'Held'
     ''',

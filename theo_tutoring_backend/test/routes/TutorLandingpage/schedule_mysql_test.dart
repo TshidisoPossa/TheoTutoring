@@ -109,14 +109,14 @@ void main() {
     );
 
     final subjects = await conn.execute(
-      'SELECT subjectId, subjectName FROM Subjects ORDER BY subjectId LIMIT 2',
+      'SELECT subjectId, subjectName FROM subjects ORDER BY subjectId LIMIT 2',
     );
     subjectA = int.parse(subjects.rows.first.reqStr('subjectId'));
     subjectB = int.parse(subjects.rows.last.reqStr('subjectId'));
     subjectBName = subjects.rows.last.reqStr('subjectName');
     final student = await conn.execute(
-      'SELECT s.StudentID, u.Name FROM StudentProfile s '
-      'JOIN `User` u ON u.UserId = s.UserID ORDER BY s.StudentID LIMIT 1',
+      'SELECT s.StudentID, u.Name FROM studentprofile s '
+      'JOIN `user` u ON u.UserId = s.UserID ORDER BY s.StudentID LIMIT 1',
     );
     final studentId = student.rows.first.str('StudentID');
     studentName = student.rows.first.reqStr('Name');
@@ -131,7 +131,7 @@ void main() {
       String createdAt = 'NOW()',
     }) async {
       final result = await conn.execute(
-        'INSERT INTO Booking (StudentID, TutorID, SubjectID, `Date`, '
+        'INSERT INTO booking (StudentID, TutorID, SubjectID, `Date`, '
         'StartTime, EndTime, Note, Status, Created_at) '
         'VALUES (:st, :t, :subj, :d, :s, :e, :note, :status, $createdAt)',
         {
@@ -209,7 +209,7 @@ void main() {
 
     // The student paid for "today" 25 minutes ago.
     await conn.execute(
-      'INSERT INTO Payment (BookingId, PaymentMethod, PaymentStatus, '
+      'INSERT INTO payment (BookingId, PaymentMethod, PaymentStatus, '
       'Paid_At, Amount) '
       "VALUES (:b, 'Card', 'Successful', NOW() - INTERVAL 25 MINUTE, 300)",
       {'b': ids['today']},
@@ -219,11 +219,11 @@ void main() {
   tearDownAll(() async {
     for (final id in ids.values) {
       await conn.execute(
-        'DELETE FROM Payment WHERE BookingId = :id',
+        'DELETE FROM payment WHERE BookingId = :id',
         {'id': id},
       );
       await conn.execute(
-        'DELETE FROM Booking WHERE Booking_id = :id',
+        'DELETE FROM booking WHERE Booking_id = :id',
         {'id': id},
       );
     }
@@ -307,17 +307,17 @@ void main() {
 
   test("link: the tutor's Meet room, unless the booking has its own", () async {
     final saved = await conn.execute(
-      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      'SELECT MeetLink FROM tutorprofile WHERE TutorID = :t',
       {'t': _tutorId},
     );
     final savedMeetLink = saved.rows.first.str('MeetLink');
     try {
       await conn.execute(
-        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
         {'link': _meetLink, 't': _tutorId},
       );
       await conn.execute(
-        'UPDATE Booking SET Link = :link WHERE Booking_id = :id',
+        'UPDATE booking SET Link = :link WHERE Booking_id = :id',
         {'link': _ownLink, 'id': ids['tomorrow']},
       );
       final sessions = ours(await schedule('?tab=upcoming'));
@@ -327,7 +327,7 @@ void main() {
       expect(linkOf('tomorrow'), _ownLink);
     } finally {
       await conn.execute(
-        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
         {'link': savedMeetLink, 't': _tutorId},
       );
     }

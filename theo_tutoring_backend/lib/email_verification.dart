@@ -93,7 +93,7 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
   @override
   Future<CodeOwner?> findUser(String firebaseUid) async {
     final result = await (await _connect()).execute(
-      'SELECT UserId, Name FROM `User` WHERE FirebaseUid = :uid LIMIT 1',
+      'SELECT UserId, Name FROM `user` WHERE FirebaseUid = :uid LIMIT 1',
       {'uid': firebaseUid},
     );
     if (result.rows.isEmpty) return null;
@@ -118,7 +118,7 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
           MIN(CASE WHEN CreatedAtUtc > UTC_TIMESTAMP(6) - INTERVAL 1 HOUR
                    THEN CreatedAtUtc END) + INTERVAL 1 HOUR
         ) AS HourFreesIn
-      FROM EmailVerificationCode
+      FROM emailverificationcode
       WHERE UserId = :userId
       ''',
       {'userId': userId},
@@ -135,7 +135,7 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
   Future<int> saveCode(int userId, String codeHash) async {
     final result = await (await _connect()).execute(
       '''
-      INSERT INTO EmailVerificationCode
+      INSERT INTO emailverificationcode
         (UserId, CodeHash, CreatedAtUtc, ExpiresAtUtc)
       VALUES (:userId, :hash, UTC_TIMESTAMP(6),
               UTC_TIMESTAMP(6) + INTERVAL ${codeLifetime.inSeconds} SECOND)
@@ -148,7 +148,7 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
   @override
   Future<void> deleteCode(int codeId) async {
     await (await _connect()).execute(
-      'DELETE FROM EmailVerificationCode WHERE CodeID = :id',
+      'DELETE FROM emailverificationcode WHERE CodeID = :id',
       {'id': codeId},
     );
   }
@@ -160,7 +160,7 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
       SELECT CodeID, CodeHash, Attempts,
              UsedAtUtc IS NOT NULL AS Used,
              ExpiresAtUtc <= UTC_TIMESTAMP(6) AS Expired
-      FROM EmailVerificationCode
+      FROM emailverificationcode
       WHERE UserId = :userId
       ORDER BY CodeID DESC
       LIMIT 1
@@ -183,7 +183,7 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
     // One statement, so two quick taps cannot both use the last try.
     final result = await (await _connect()).execute(
       '''
-      UPDATE EmailVerificationCode
+      UPDATE emailverificationcode
       SET Attempts = Attempts + 1
       WHERE CodeID = :id AND UsedAtUtc IS NULL AND Attempts < :max
       ''',
@@ -196,7 +196,7 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
   Future<void> markUsed(int codeId) async {
     await (await _connect()).execute(
       '''
-      UPDATE EmailVerificationCode
+      UPDATE emailverificationcode
       SET UsedAtUtc = UTC_TIMESTAMP(6)
       WHERE CodeID = :id
       ''',

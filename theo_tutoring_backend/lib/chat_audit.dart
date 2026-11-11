@@ -98,7 +98,7 @@ class MySqlChatAudit implements ChatAuditSink {
   /// Insert-or-keep; IsRead may only go from 0 to 1. UserID is the account
   /// the row belongs to: the sender.
   static const recordSql = '''
-    INSERT INTO Messaging
+    INSERT INTO messaging
       (FirestoreMessageID, UserID, BookingID, ReceiveID, SenderID,
        MessageText, SentAt, IsRead)
     VALUES
@@ -125,7 +125,7 @@ class MySqlChatAudit implements ChatAuditSink {
     final ids = _checkedIds(firestoreMessageIds);
     if (ids.isEmpty) return {};
     final result = await _connection.execute(
-      'SELECT FirestoreMessageID FROM Messaging '
+      'SELECT FirestoreMessageID FROM messaging '
       'WHERE FirestoreMessageID IN (${_placeholders(ids)})',
       _parameters(ids),
     );
@@ -140,7 +140,7 @@ class MySqlChatAudit implements ChatAuditSink {
     final ids = _checkedIds(firestoreMessageIds);
     if (ids.isEmpty) return 0;
     final result = await _connection.execute(
-      'UPDATE Messaging SET IsRead = TRUE '
+      'UPDATE messaging SET IsRead = TRUE '
       'WHERE IsRead = FALSE AND FirestoreMessageID IN (${_placeholders(ids)})',
       _parameters(ids),
     );

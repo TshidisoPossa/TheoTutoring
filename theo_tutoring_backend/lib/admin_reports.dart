@@ -47,7 +47,7 @@ class MySqlAdminReportRepository implements AdminReportRepository {
     final params = <String, Object?>{'status': status, 'category': category};
 
     final count = await conn.execute(
-      'SELECT COUNT(*) AS Total FROM Report r $where',
+      'SELECT COUNT(*) AS Total FROM report r $where',
       params,
     );
     final rows = await conn.execute(
@@ -58,9 +58,9 @@ class MySqlAdminReportRepository implements AdminReportRepository {
              reporter.Email AS ReporterEmail, reporter.Role AS ReporterRole,
              reported.UserId AS ReportedUserId, reported.Name AS ReportedName,
              reported.Email AS ReportedEmail, reported.Role AS ReportedRole
-      FROM Report r
-      INNER JOIN `User` reporter ON reporter.UserId = r.ReporterID
-      LEFT JOIN `User` reported ON reported.UserId = r.ReportedUserID
+      FROM report r
+      INNER JOIN `user` reporter ON reporter.UserId = r.ReporterID
+      LEFT JOIN `user` reported ON reported.UserId = r.ReportedUserID
       $where
       ORDER BY r.Created_at DESC, r.ReportID DESC
       LIMIT $pageSize OFFSET ${(page - 1) * pageSize}

@@ -34,9 +34,9 @@ const _studentSelect =
     'SELECT sp.StudentID, u.Name, u.Email, u.PhoneNum, u.ProfilePhoto, '
     'u.Created_at, u.AccountStatus, sp.Course, sp.InstitutionYear, '
     'sp.Subject_of_interest, '
-    '(SELECT COUNT(*) FROM Booking b WHERE b.StudentID = sp.StudentID '
+    '(SELECT COUNT(*) FROM booking b WHERE b.StudentID = sp.StudentID '
     "AND b.Status = 'Completed') AS TotalLessons "
-    'FROM `User` u JOIN StudentProfile sp ON sp.UserID = u.UserId ';
+    'FROM `user` u JOIN studentprofile sp ON sp.UserID = u.UserId ';
 
 Map<String, Object?> _student(ResultSetRow r) => {
   'studentId': int.parse(r.reqStr('StudentID')),
@@ -73,8 +73,8 @@ class MySqlStudentRosterRepository implements StudentRosterRepository {
     }
     final clause = where.join(' AND ');
     final total = await conn.execute(
-      'SELECT COUNT(*) AS n FROM `User` u '
-      'JOIN StudentProfile sp ON sp.UserID = u.UserId WHERE $clause',
+      'SELECT COUNT(*) AS n FROM `user` u '
+      'JOIN studentprofile sp ON sp.UserID = u.UserId WHERE $clause',
       params,
     );
     final rows = await conn.execute(
@@ -86,10 +86,10 @@ class MySqlStudentRosterRepository implements StudentRosterRepository {
     final summary = await conn.execute(
       'SELECT COUNT(*) AS total, '
       "COALESCE(SUM(u.AccountStatus = 'Suspended'), 0) AS suspended, "
-      '(SELECT COUNT(DISTINCT b.StudentID) FROM Booking b '
+      '(SELECT COUNT(DISTINCT b.StudentID) FROM booking b '
       'WHERE b.`Date` >= DATE_FORMAT(CURDATE(), \'%Y-%m-01\')) AS activeMonth, '
-      "(SELECT COUNT(*) FROM Booking b WHERE b.Status = 'Completed') AS lessons "
-      'FROM `User` u JOIN StudentProfile sp ON sp.UserID = u.UserId '
+      "(SELECT COUNT(*) FROM booking b WHERE b.Status = 'Completed') AS lessons "
+      'FROM `user` u JOIN studentprofile sp ON sp.UserID = u.UserId '
       "WHERE u.Role = 'student'",
     );
     final s = summary.rows.first;
@@ -115,13 +115,13 @@ class MySqlStudentRosterRepository implements StudentRosterRepository {
   Future<Map<String, Object?>> setStatus(int studentId, String status) async {
     final conn = await getConnection();
     final found = await conn.execute(
-      'SELECT u.UserId FROM `User` u JOIN StudentProfile sp '
+      'SELECT u.UserId FROM `user` u JOIN studentprofile sp '
       "ON sp.UserID = u.UserId WHERE sp.StudentID = :id AND u.Role = 'student'",
       {'id': studentId},
     );
     if (found.rows.isEmpty) throw const StudentNotFound();
     await conn.execute(
-      'UPDATE `User` SET AccountStatus = :status WHERE UserId = :uid',
+      'UPDATE `user` SET AccountStatus = :status WHERE UserId = :uid',
       {'status': status, 'uid': found.rows.first.str('UserId')},
     );
     final row = await conn.execute(

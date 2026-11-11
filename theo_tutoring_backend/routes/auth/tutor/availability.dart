@@ -70,12 +70,12 @@ Future<Response> handleTutorAvailability(
       '''
       SELECT tp.TutorID, u.UserId, u.AccountStatus, tp.Bio, tp.Certificate,
              tp.MeetLink,
-             (SELECT COUNT(*) FROM TutorSubjects ts
+             (SELECT COUNT(*) FROM tutorsubjects ts
                WHERE ts.TutorID = tp.TutorID) AS SubjectCount,
-             (SELECT COUNT(*) FROM Qualification q
+             (SELECT COUNT(*) FROM qualification q
                WHERE q.TutorID = tp.TutorID) AS QualificationCount
-      FROM tutorProfile tp
-      INNER JOIN User u ON tp.UserId = u.UserId
+      FROM tutorprofile tp
+      INNER JOIN user u ON tp.UserId = u.UserId
       WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'
       ''',
       {'uid': firebaseUser.uid},
@@ -123,7 +123,7 @@ Future<Response> handleTutorAvailability(
       await conn.execute(
         '''
         SELECT tutApplication
-        FROM tutorApplication
+        FROM tutorapplication
         WHERE TutorID = :tutorId
         ORDER BY tutApplication ASC
         FOR UPDATE
@@ -131,11 +131,11 @@ Future<Response> handleTutorAvailability(
         {'tutorId': tutorId},
       );
       await conn.execute(
-        'SELECT TutorID FROM TutorProfile WHERE TutorID = :tutorId FOR UPDATE',
+        'SELECT TutorID FROM tutorprofile WHERE TutorID = :tutorId FOR UPDATE',
         {'tutorId': tutorId},
       );
       final lockedUser = await conn.execute(
-        'SELECT AccountStatus FROM `User` WHERE UserId = :userId FOR UPDATE',
+        'SELECT AccountStatus FROM `user` WHERE UserId = :userId FOR UPDATE',
         {'userId': userId},
       );
       if (lockedUser.rows.isEmpty) {
@@ -144,7 +144,7 @@ Future<Response> handleTutorAvailability(
       final latest = await conn.execute(
         '''
         SELECT Status
-        FROM tutorApplication
+        FROM tutorapplication
         WHERE TutorID = :tutorId
         ORDER BY SubmittedAt DESC, tutApplication DESC
         LIMIT 1
@@ -155,7 +155,7 @@ Future<Response> handleTutorAvailability(
       final pendingApplications = await conn.execute(
         '''
         SELECT tutApplication
-        FROM tutorApplication
+        FROM tutorapplication
         WHERE TutorID = :tutorId AND Status = 'Pending'
         FOR UPDATE
         ''',
@@ -175,14 +175,14 @@ Future<Response> handleTutorAvailability(
       if (plan == TutorApplicationSubmissionPlan.alreadyPending) return false;
 
       await conn.execute(
-        'DELETE FROM TutAvailability WHERE TutorID = :tutorId',
+        'DELETE FROM tutavailability WHERE TutorID = :tutorId',
         {'tutorId': tutorId},
       );
 
       for (final slot in slots) {
         await conn.execute(
           '''
-          INSERT INTO tutAvailability (TutorID, Day, StartTime, end_Time)
+          INSERT INTO tutavailability (TutorID, Day, StartTime, end_Time)
           VALUES (:tutorId, :day, :startTime, :endTime)
           ''',
           {
@@ -196,14 +196,14 @@ Future<Response> handleTutorAvailability(
 
       await conn.execute(
         '''
-        UPDATE User SET AccountStatus = 'Pending'
+        UPDATE user SET AccountStatus = 'Pending'
         WHERE UserId = :userId
         ''',
         {'userId': userId},
       );
       await conn.execute(
         '''
-        UPDATE tutorProfile
+        UPDATE tutorprofile
         SET VerificationStat = 'Pending'
         WHERE TutorID = :tutorId
         ''',
@@ -211,7 +211,7 @@ Future<Response> handleTutorAvailability(
       );
       await conn.execute(
         '''
-        INSERT INTO tutorApplication (TutorID, Status, SubmittedAt)
+        INSERT INTO tutorapplication (TutorID, Status, SubmittedAt)
         VALUES (:tutorId, 'Pending', NOW())
         ''',
         {'tutorId': tutorId},

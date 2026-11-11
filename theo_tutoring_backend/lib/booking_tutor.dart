@@ -200,16 +200,16 @@ Future<Map<String, dynamic>?> getBookingDetail(
     's.InstitutionYear, s.Course, ' // "Sophomore", "Major & Focus"
     's.Institution, ' // the student's university (NULL for older accounts)
     // The stars this student has given this tutor in their reviews
-    '(SELECT ROUND(AVG(r.Rating), 1) FROM Reviews r '
+    '(SELECT ROUND(AVG(r.Rating), 1) FROM reviews r '
     ' WHERE r.StudentID = b.StudentID AND r.TutorID = b.TutorID) '
     'AS RatingGiven, '
-    '(SELECT COUNT(*) FROM Reviews r '
+    '(SELECT COUNT(*) FROM reviews r '
     ' WHERE r.StudentID = b.StudentID AND r.TutorID = b.TutorID) '
     'AS ReviewsGiven '
-    'FROM Booking b '
-    'JOIN Subjects sj ON sj.subjectId = b.SubjectID ' // booking -> subject name
-    'JOIN StudentProfile s ON s.StudentID = b.StudentID ' // -> student profile
-    'JOIN `User` u ON u.UserId = s.UserID ' // student profile -> name + photo
+    'FROM booking b '
+    'JOIN subjects sj ON sj.subjectId = b.SubjectID ' // booking -> subject name
+    'JOIN studentprofile s ON s.StudentID = b.StudentID ' // -> student profile
+    'JOIN `user` u ON u.UserId = s.UserID ' // student profile -> name + photo
     'WHERE b.Booking_id = :id AND b.TutorID = :tid', // only the tutor's own
     {'id': bookingId, 'tid': tutorId},
   );
@@ -267,8 +267,8 @@ Future<Map<String, dynamic>?> _getRecurring(
 ) async {
   final result = await conn.execute(
     'SELECT o.Booking_id, o.`Date`, o.Status, o.StartTime, o.EndTime '
-    'FROM Booking t ' // t = the booking on screen
-    'JOIN Booking o ON o.TutorID = t.TutorID ' // o = it and its later weeks
+    'FROM booking t ' // t = the booking on screen
+    'JOIN booking o ON o.TutorID = t.TutorID ' // o = it and its later weeks
     'AND o.StudentID = t.StudentID AND o.SubjectID = t.SubjectID '
     'AND o.StartTime = t.StartTime AND o.EndTime = t.EndTime '
     'AND o.`Date` >= t.`Date` '
@@ -321,10 +321,10 @@ Future<PostponedBooking> postponeBooking(
       'TIMESTAMP(b.`Date`, b.StartTime) <= NOW() AS HasStarted, '
       'TIMESTAMP(:d, :s) >= NOW() + INTERVAL ${minimumLeadTime.inMinutes} '
       'MINUTE AS FarEnough '
-      'FROM Booking b '
-      'JOIN Subjects sj ON sj.subjectId = b.SubjectID '
-      'JOIN StudentProfile s ON s.StudentID = b.StudentID '
-      'JOIN `User` u ON u.UserId = s.UserID '
+      'FROM booking b '
+      'JOIN subjects sj ON sj.subjectId = b.SubjectID '
+      'JOIN studentprofile s ON s.StudentID = b.StudentID '
+      'JOIN `user` u ON u.UserId = s.UserID '
       'WHERE b.Booking_id = :id AND b.TutorID = :tid '
       'FOR UPDATE OF b',
       {'id': bookingId, 'tid': tutorId, 'd': slot.date, 's': slot.startTime},
@@ -377,7 +377,7 @@ Future<PostponedBooking> postponeBooking(
       ];
     } else {
       final ranges = await tx.execute(
-        'SELECT StartTime, end_Time FROM TutAvailability '
+        'SELECT StartTime, end_Time FROM tutavailability '
         'WHERE TutorID = :tid AND Day = :day',
         {'tid': tutorId, 'day': weekday},
       );
@@ -404,7 +404,7 @@ Future<PostponedBooking> postponeBooking(
 
     // ...and must not overlap another session that holds the tutor's time.
     final clashes = await tx.execute(
-      'SELECT Booking_id FROM Booking '
+      'SELECT Booking_id FROM booking '
       'WHERE TutorID = :tid AND Booking_id <> :id AND `Date` = :d '
       "AND Status IN ('${slotHoldingStatuses.join("', '")}') "
       'AND StartTime < :e AND EndTime > :s '
@@ -425,7 +425,7 @@ Future<PostponedBooking> postponeBooking(
     }
 
     await tx.execute(
-      'UPDATE Booking SET `Date` = :d, StartTime = :s, EndTime = :e, '
+      'UPDATE booking SET `Date` = :d, StartTime = :s, EndTime = :e, '
       "Status = 'Postponed' WHERE Booking_id = :id",
       {
         'id': bookingId,
@@ -497,10 +497,10 @@ Future<TutorCancellation> tutorCancelBooking(
       "TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime, "
       'sj.subjectName AS Subject, u.FirebaseUid AS StudentUid, '
       'TIMESTAMP(b.`Date`, b.StartTime) <= NOW() AS HasStarted '
-      'FROM Booking b '
-      'JOIN Subjects sj ON sj.subjectId = b.SubjectID '
-      'JOIN StudentProfile s ON s.StudentID = b.StudentID '
-      'JOIN `User` u ON u.UserId = s.UserID '
+      'FROM booking b '
+      'JOIN subjects sj ON sj.subjectId = b.SubjectID '
+      'JOIN studentprofile s ON s.StudentID = b.StudentID '
+      'JOIN `user` u ON u.UserId = s.UserID '
       'WHERE b.Booking_id = :id AND b.TutorID = :tid '
       'FOR UPDATE OF b',
       {'id': bookingId, 'tid': tutorId},
@@ -536,7 +536,7 @@ Future<TutorCancellation> tutorCancelBooking(
           );
 
     await tx.execute(
-      "UPDATE Booking SET Status = 'Cancelled', CancellationReason = :reason "
+      "UPDATE booking SET Status = 'Cancelled', CancellationReason = :reason "
       'WHERE Booking_id = :id',
       {'id': bookingId, 'reason': tutorCancellationReason(kind)},
     );

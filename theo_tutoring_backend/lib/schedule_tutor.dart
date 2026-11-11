@@ -134,7 +134,7 @@ Future<Map<String, int>> getScheduleCounts(
     'COALESCE(SUM(${_tabCondition[ScheduleTab.newRequests]}), 0) AS NewCount, '
     'COALESCE(SUM(${_tabCondition[ScheduleTab.past]}), 0) AS Past, '
     'COALESCE(SUM(${_tabCondition[ScheduleTab.all]}), 0) AS AllCount '
-    'FROM Booking b WHERE b.TutorID = :tid',
+    'FROM booking b WHERE b.TutorID = :tid',
     {'tid': tutorId},
   );
   final c = result.rows.first.textAssoc();
@@ -179,11 +179,11 @@ Future<List<Map<String, dynamic>>> getScheduleSessions(
     // Upcoming tab: "Confirmed 25m ago" = when the student paid
     'TIMESTAMPDIFF(MINUTE, p.Paid_At, NOW()) AS ConfirmedMinutesAgo, '
     'u.Name AS StudentName, u.ProfilePhoto AS StudentPhoto '
-    'FROM Booking b '
-    'JOIN Subjects sj ON sj.subjectId = b.SubjectID ' // booking -> subject name
-    'JOIN StudentProfile s ON s.StudentID = b.StudentID ' // -> student profile
-    'JOIN `User` u ON u.UserId = s.UserID ' // student profile -> name + photo
-    'LEFT JOIN Payment p ON p.BookingId = b.Booking_id '
+    'FROM booking b '
+    'JOIN subjects sj ON sj.subjectId = b.SubjectID ' // booking -> subject name
+    'JOIN studentprofile s ON s.StudentID = b.StudentID ' // -> student profile
+    'JOIN `user` u ON u.UserId = s.UserID ' // student profile -> name + photo
+    'LEFT JOIN payment p ON p.BookingId = b.Booking_id '
     "AND p.PaymentStatus = 'Successful' " // the payment that confirmed it
     'WHERE b.TutorID = :tid AND ${_tabCondition[query.tab]}'
     '${_dateCondition[query.date]}$subjectCondition '

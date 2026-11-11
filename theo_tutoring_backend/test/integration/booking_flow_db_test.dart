@@ -82,7 +82,7 @@ void main() {
 
       Future<int> createUser(String label, String role) async {
         final id = await insert(
-          'INSERT INTO `User` (FirebaseUid, Name, PhoneNum, Email, Role, '
+          'INSERT INTO `user` (FirebaseUid, Name, PhoneNum, Email, Role, '
           'AccountStatus) VALUES (:uid, :name, :phone, :email, :role, '
           "'Active')",
           {
@@ -100,7 +100,7 @@ void main() {
       Future<int> createStudent(String label) async {
         final userId = await createUser(label, 'student');
         final id = await insert(
-          'INSERT INTO StudentProfile (Address, ProofOfReg, InstitutionYear, '
+          'INSERT INTO studentprofile (Address, ProofOfReg, InstitutionYear, '
           'Course, Subject_of_interest, UserID) VALUES '
           "('itest', 'itest', '1', 'itest', 'itest', :userId)",
           {'userId': userId},
@@ -112,22 +112,22 @@ void main() {
       Future<int> createTutor(String label) async {
         final userId = await createUser(label, 'tutor');
         final id = await insert(
-          'INSERT INTO TutorProfile (Bio, Experience, VerificationStat, '
+          'INSERT INTO tutorprofile (Bio, Experience, VerificationStat, '
           "UserID) VALUES ('itest', '1 year', 'Approved', :userId)",
           {'userId': userId},
         );
         tutorIds.add(id);
         await admin.execute(
-          'INSERT INTO TutorApplication (TutorID, Status) '
+          'INSERT INTO tutorapplication (TutorID, Status) '
           "VALUES (:id, 'Approved')",
           {'id': id},
         );
         await admin.execute(
-          'INSERT INTO TutorSubjects (TutorID, SubjectID) VALUES (:t, :s)',
+          'INSERT INTO tutorsubjects (TutorID, SubjectID) VALUES (:t, :s)',
           {'t': id, 's': subjectId},
         );
         await admin.execute(
-          'INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time) '
+          'INSERT INTO tutavailability (TutorID, Day, StartTime, end_Time) '
           "VALUES (:t, :day, '08:00:00', '20:00:00')",
           {'t': id, 'day': _dayName(lessonDate)},
         );
@@ -236,13 +236,13 @@ void main() {
         final result = await rows(
           'SELECT p.PurchaseStatus, b.Status AS BookingStatus, h.HoldStatus, '
           'b.StudentID, b.TutorID, '
-          '(SELECT COUNT(*) FROM PaymentAttempt '
+          '(SELECT COUNT(*) FROM paymentattempt '
           'WHERE PurchaseID = p.PurchaseID) AS Attempts, '
-          '(SELECT COUNT(*) FROM PurchasePayment '
+          '(SELECT COUNT(*) FROM purchasepayment '
           'WHERE PurchaseID = p.PurchaseID) AS Settlements '
-          'FROM BookingPurchase p '
-          'JOIN Booking b ON b.PurchaseID = p.PurchaseID '
-          'JOIN BookingSlotHold h ON h.PurchaseID = p.PurchaseID '
+          'FROM bookingpurchase p '
+          'JOIN booking b ON b.PurchaseID = p.PurchaseID '
+          'JOIN bookingslothold h ON h.PurchaseID = p.PurchaseID '
           'WHERE p.PurchaseID = :id',
           {'id': purchaseId},
         );
@@ -256,7 +256,7 @@ void main() {
           throw StateError('Refusing to run: connected to the wrong database.');
         }
         final settings = await rows(
-          'SELECT TutoringRate FROM PlatformSettings WHERE SettingsID = 1',
+          'SELECT TutoringRate FROM platformsettings WHERE SettingsID = 1',
         );
         rate = settings.single['TutoringRate']!;
 
@@ -272,7 +272,7 @@ void main() {
         lessonDate = date.toIso8601String().substring(0, 10);
 
         subjectId = await insert(
-          'INSERT INTO Subjects (subjectName) VALUES (:name)',
+          'INSERT INTO subjects (subjectName) VALUES (:name)',
           {'name': '$tag-subject'},
         );
         subjectIds.add(subjectId);
@@ -288,20 +288,20 @@ void main() {
         final owners =
             'StudentID IN (${ids(studentIds)}) OR TutorID IN (${ids(tutorIds)})';
         final purchaseFilter =
-            'SELECT PurchaseID FROM BookingPurchase WHERE $owners';
+            'SELECT PurchaseID FROM bookingpurchase WHERE $owners';
         for (final sql in [
-          'DELETE FROM PurchasePayment WHERE PurchaseID IN ($purchaseFilter)',
-          'DELETE FROM PaymentAttempt WHERE PurchaseID IN ($purchaseFilter)',
-          'DELETE FROM BookingSlotHold WHERE PurchaseID IN ($purchaseFilter)',
-          'DELETE FROM Booking WHERE $owners',
-          'DELETE FROM BookingPurchase WHERE $owners',
-          'DELETE FROM TutAvailability WHERE TutorID IN (${ids(tutorIds)})',
-          'DELETE FROM TutorSubjects WHERE TutorID IN (${ids(tutorIds)})',
-          'DELETE FROM TutorApplication WHERE TutorID IN (${ids(tutorIds)})',
-          'DELETE FROM TutorProfile WHERE TutorID IN (${ids(tutorIds)})',
-          'DELETE FROM StudentProfile WHERE StudentID IN (${ids(studentIds)})',
-          'DELETE FROM `User` WHERE UserId IN (${ids(userIds)})',
-          'DELETE FROM Subjects WHERE subjectId IN (${ids(subjectIds)})',
+          'DELETE FROM purchasepayment WHERE PurchaseID IN ($purchaseFilter)',
+          'DELETE FROM paymentattempt WHERE PurchaseID IN ($purchaseFilter)',
+          'DELETE FROM bookingslothold WHERE PurchaseID IN ($purchaseFilter)',
+          'DELETE FROM booking WHERE $owners',
+          'DELETE FROM bookingpurchase WHERE $owners',
+          'DELETE FROM tutavailability WHERE TutorID IN (${ids(tutorIds)})',
+          'DELETE FROM tutorsubjects WHERE TutorID IN (${ids(tutorIds)})',
+          'DELETE FROM tutorapplication WHERE TutorID IN (${ids(tutorIds)})',
+          'DELETE FROM tutorprofile WHERE TutorID IN (${ids(tutorIds)})',
+          'DELETE FROM studentprofile WHERE StudentID IN (${ids(studentIds)})',
+          'DELETE FROM `user` WHERE UserId IN (${ids(userIds)})',
+          'DELETE FROM subjects WHERE subjectId IN (${ids(subjectIds)})',
         ]) {
           await admin.execute(sql);
         }
@@ -360,7 +360,7 @@ void main() {
           expect(replay.body['purchaseId'], singleId);
           expect((await purchase('11:00', '12:00', '$tag-p1')).status, 409);
           final count = await rows(
-            'SELECT COUNT(*) AS n FROM BookingPurchase WHERE StudentID = :s',
+            'SELECT COUNT(*) AS n FROM bookingpurchase WHERE StudentID = :s',
             {'s': studentA},
           );
           expect(count.single['n'], '1');
@@ -460,7 +460,7 @@ void main() {
         expect(created.status, 201);
         expiringId = created.body['purchaseId'] as int;
         await admin.execute(
-          'UPDATE BookingSlotHold SET ExpiresAtUtc = '
+          'UPDATE bookingslothold SET ExpiresAtUtc = '
           'DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE) '
           'WHERE PurchaseID = :id',
           {'id': expiringId},
@@ -480,13 +480,13 @@ void main() {
         'paid booking belongs to its own tutor only, as Confirmed',
         () async {
           final booking = await rows(
-            'SELECT TutorID, Status FROM Booking WHERE PurchaseID = :id',
+            'SELECT TutorID, Status FROM booking WHERE PurchaseID = :id',
             {'id': singleId},
           );
           expect(booking.single['TutorID'], '$tutorA');
           expect(booking.single['Status'], 'Confirmed');
           final other = await rows(
-            'SELECT COUNT(*) AS n FROM Booking '
+            'SELECT COUNT(*) AS n FROM booking '
             "WHERE TutorID = :t AND Status = 'Confirmed'",
             {'t': tutorB},
           );
@@ -501,7 +501,7 @@ void main() {
           final held = await purchase('18:00', '19:00', '$tag-held');
           expect(held.status, 201);
           final legacyId = await insert(
-            'INSERT INTO Booking (StudentID, TutorID, SubjectID, `Date`, '
+            'INSERT INTO booking (StudentID, TutorID, SubjectID, `Date`, '
             'StartTime, EndTime, Note, Status) VALUES (:s, :t, :sub, '
             ":d, '16:00:00', '17:00:00', 'legacy request', 'Pending')",
             {'s': studentA, 't': tutorA, 'sub': subjectId, 'd': lessonDate},
@@ -512,7 +512,7 @@ void main() {
           final byStatus = {for (final b in forA) b.bookingId: b};
 
           final paid = await rows(
-            'SELECT Booking_id FROM Booking WHERE PurchaseID IN (:p1, :p2)',
+            'SELECT Booking_id FROM booking WHERE PurchaseID IN (:p1, :p2)',
             {'p1': singleId, 'p2': concurrentPayId},
           );
           for (final row in paid) {
@@ -549,7 +549,7 @@ void main() {
 
           // Keep the dashboard assertions below independent of this request.
           await admin.execute(
-            'DELETE FROM Booking WHERE Booking_id = :id',
+            'DELETE FROM booking WHERE Booking_id = :id',
             {'id': legacyId},
           );
         },

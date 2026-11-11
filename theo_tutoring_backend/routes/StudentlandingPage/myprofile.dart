@@ -23,8 +23,8 @@ Future<Response> onRequest(RequestContext context) async {
     final result = await connection.execute(
       '''
       SELECT u.UserId, sp.StudentID, u.Name, u.Email, u.Role, u.AccountStatus
-      FROM `User` u
-      INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
+      FROM `user` u
+      INNER JOIN studentprofile sp ON sp.UserID = u.UserId
       WHERE u.FirebaseUid = :uid AND u.Role = 'student'
       LIMIT 1
       ''',

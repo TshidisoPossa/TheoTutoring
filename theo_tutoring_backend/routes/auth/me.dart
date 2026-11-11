@@ -58,10 +58,10 @@ Future<Response> handleAuthMe(
       '''
       SELECT u.UserId, u.Name, u.Email, u.Role, u.AccountStatus,
              sp.StudentID, tp.TutorID, a.AdminID
-      FROM `User` u
-      LEFT JOIN StudentProfile sp ON sp.UserID = u.UserId
-      LEFT JOIN TutorProfile tp ON tp.UserID = u.UserId
-      LEFT JOIN Admin a ON a.UserId = u.UserId
+      FROM `user` u
+      LEFT JOIN studentprofile sp ON sp.UserID = u.UserId
+      LEFT JOIN tutorprofile tp ON tp.UserID = u.UserId
+      LEFT JOIN admin a ON a.UserId = u.UserId
       WHERE u.FirebaseUid = :uid
       LIMIT 1
       ''',

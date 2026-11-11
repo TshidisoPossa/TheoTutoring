@@ -1328,7 +1328,7 @@ void main() {
       expect(params, {'uid': 'uid-theo', 'role': 'tutor'});
       expect(sql, contains('u.FirebaseUid'));
       expect(sql, contains("u.AccountStatus = 'Active'"));
-      expect(sql, contains('JOIN TutorProfile p'));
+      expect(sql, contains('JOIN tutorprofile p'));
       expect(me!.firebaseUid, 'uid-theo');
       expect(me.isPublicTutor, isTrue);
     });
@@ -1372,7 +1372,7 @@ void main() {
       final (sql, params) = calls.single;
       expect(booked, isTrue);
       expect(params, {'studentUserId': _lerato, 'tutorUserId': _tutor});
-      expect(sql, contains('FROM Booking b'));
+      expect(sql, contains('FROM booking b'));
       expect(sql, isNot(contains('Messaging')));
     });
 

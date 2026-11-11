@@ -25,13 +25,13 @@ class MySqlTutorPublicProfileRepository {
 
     final presence = await connection.execute(
       'SELECT ${tutorAvailableNowSql('tp')} AS AvailableNow '
-      'FROM TutorProfile tp WHERE tp.TutorID = :tutorId',
+      'FROM tutorprofile tp WHERE tp.TutorID = :tutorId',
       {'tutorId': tutorId},
     );
 
     final qualifications = await connection.execute(
       '''
-      SELECT Degree, Institution FROM Qualification
+      SELECT Degree, Institution FROM qualification
       WHERE TutorID = :tutorId
       ORDER BY QualificationID DESC
       ''',
@@ -42,7 +42,7 @@ class MySqlTutorPublicProfileRepository {
       '''
       SELECT Day, TIME_FORMAT(StartTime, '%H:%i') AS StartTime,
         TIME_FORMAT(end_Time, '%H:%i') AS EndTime
-      FROM TutAvailability
+      FROM tutavailability
       WHERE TutorID = :tutorId
       ORDER BY FIELD(Day, 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
         'Friday', 'Saturday', 'Sunday'), StartTime
@@ -54,9 +54,9 @@ class MySqlTutorPublicProfileRepository {
       '''
       SELECT r.Reviewid, r.Rating, r.comment, su.Name AS StudentName,
         DATE_FORMAT(r.Created_At, '%Y-%m-%dT%H:%i:%s') AS CreatedAt
-      FROM Reviews r
-      INNER JOIN StudentProfile sp ON sp.StudentID = r.StudentID
-      INNER JOIN `User` su ON su.UserId = sp.UserID
+      FROM reviews r
+      INNER JOIN studentprofile sp ON sp.StudentID = r.StudentID
+      INNER JOIN `user` su ON su.UserId = sp.UserID
       WHERE r.TutorID = :tutorId
       ORDER BY r.Created_At DESC, r.Reviewid DESC
       LIMIT $tutorProfileReviewLimit

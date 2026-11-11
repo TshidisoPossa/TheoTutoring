@@ -169,7 +169,7 @@ Future<Response> createStudentRecords(
   required String proofOfRegistrationUrl,
 }) async {
   final existingUser = await connection.execute(
-    'SELECT UserId FROM User WHERE Email = :email OR FirebaseUid = :uid',
+    'SELECT UserId FROM user WHERE Email = :email OR FirebaseUid = :uid',
     {'email': email, 'uid': firebaseUid},
   );
   if (existingUser.rows.isNotEmpty) {
@@ -185,7 +185,7 @@ Future<Response> createStudentRecords(
   try {
     final userResult = await connection.execute(
       '''
-      INSERT INTO User (
+      INSERT INTO user (
         Name, Email, FirebaseUid, PhoneNum, ProfilePhoto, Role, AccountStatus
       )
       VALUES (
@@ -203,7 +203,7 @@ Future<Response> createStudentRecords(
 
     final studentResult = await connection.execute(
       '''
-      INSERT INTO StudentProfile (
+      INSERT INTO studentprofile (
         Institution, Address, ProofOfReg, InstitutionYear, Course,
         Subject_of_interest, UserID
       )

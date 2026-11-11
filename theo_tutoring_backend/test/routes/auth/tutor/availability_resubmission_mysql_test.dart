@@ -69,39 +69,39 @@ void main() {
 
       try {
         userId = await insert(
-          'INSERT INTO `User` '
+          'INSERT INTO `user` '
           '(FirebaseUid, Name, PhoneNum, Email, Role, AccountStatus) '
           "VALUES (:uid, 'Integration Tutor', '0000000000', :email, 'tutor', 'Rejected')",
           {'uid': uid, 'email': email},
         );
         tutorId = await insert(
-          'INSERT INTO TutorProfile '
+          'INSERT INTO tutorprofile '
           '(UserID, Bio, Experience, Certificate, VerificationStat) '
           "VALUES (:userId, 'Bio', '3 years', 'https://example.test/cert.pdf', 'Rejected')",
           {'userId': userId},
         );
         subjectId = await insert(
-          'INSERT INTO Subjects (subjectName) VALUES (:name)',
+          'INSERT INTO subjects (subjectName) VALUES (:name)',
           {'name': 'Resubmit $tag'},
         );
         await connection.execute(
-          'INSERT INTO TutorSubjects (TutorID, SubjectID) '
+          'INSERT INTO tutorsubjects (TutorID, SubjectID) '
           'VALUES (:tutorId, :subjectId)',
           {'tutorId': tutorId, 'subjectId': subjectId},
         );
         await connection.execute(
-          'INSERT INTO Qualification (TutorID, Degree, Institution) '
+          'INSERT INTO qualification (TutorID, Degree, Institution) '
           "VALUES (:tutorId, 'BSc', 'Test University')",
           {'tutorId': tutorId},
         );
         await connection.execute(
-          'INSERT INTO TutorApplication '
+          'INSERT INTO tutorapplication '
           '(TutorID, Status, AdminFeedback, Review_at) '
           "VALUES (:tutorId, 'Rejected', 'Upload a clearer certificate.', NOW())",
           {'tutorId': tutorId},
         );
         await connection.execute(
-          'INSERT INTO TutAvailability (TutorID, Day, StartTime, end_Time) '
+          'INSERT INTO tutavailability (TutorID, Day, StartTime, end_Time) '
           "VALUES (:tutorId, 'Monday', '08:00', '09:00')",
           {'tutorId': tutorId},
         );
@@ -115,13 +115,13 @@ void main() {
           {'error': 'Please connect Google Meet first.'},
         );
         final stillRejected = await connection.execute(
-          'SELECT COUNT(*) AS n FROM TutorApplication WHERE TutorID = :tutorId',
+          'SELECT COUNT(*) AS n FROM tutorapplication WHERE TutorID = :tutorId',
           {'tutorId': tutorId},
         );
         expect(stillRejected.rows.single.str('n'), '1');
 
         await connection.execute(
-          'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :tutorId',
+          'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :tutorId',
           {'link': 'https://meet.google.com/abc-mnop-xyz', 'tutorId': tutorId},
         );
 
@@ -129,7 +129,7 @@ void main() {
         expect(first.statusCode, HttpStatus.ok);
 
         final applications = await connection.execute(
-          'SELECT Status, AdminFeedback FROM TutorApplication '
+          'SELECT Status, AdminFeedback FROM tutorapplication '
           'WHERE TutorID = :tutorId ORDER BY TutApplication DESC',
           {'tutorId': tutorId},
         );
@@ -142,18 +142,18 @@ void main() {
         );
 
         final user = await connection.execute(
-          'SELECT AccountStatus FROM `User` WHERE UserId = :userId',
+          'SELECT AccountStatus FROM `user` WHERE UserId = :userId',
           {'userId': userId},
         );
         final profile = await connection.execute(
-          'SELECT VerificationStat FROM TutorProfile WHERE TutorID = :tutorId',
+          'SELECT VerificationStat FROM tutorprofile WHERE TutorID = :tutorId',
           {'tutorId': tutorId},
         );
         expect(user.rows.single.str('AccountStatus'), 'Pending');
         expect(profile.rows.single.str('VerificationStat'), 'Pending');
 
         final slots = await connection.execute(
-          'SELECT Day, StartTime, end_Time FROM TutAvailability '
+          'SELECT Day, StartTime, end_Time FROM tutavailability '
           'WHERE TutorID = :tutorId',
           {'tutorId': tutorId},
         );
@@ -163,17 +163,17 @@ void main() {
         final duplicate = await submit();
         expect(duplicate.statusCode, HttpStatus.ok);
         final duplicateCheck = await connection.execute(
-          'SELECT COUNT(*) AS n FROM TutorApplication WHERE TutorID = :tutorId',
+          'SELECT COUNT(*) AS n FROM tutorapplication WHERE TutorID = :tutorId',
           {'tutorId': tutorId},
         );
         expect(duplicateCheck.rows.single.str('n'), '2');
       } finally {
         if (tutorId != null) {
           for (final table in [
-            'TutAvailability',
-            'Qualification',
-            'TutorSubjects',
-            'TutorApplication',
+            'tutavailability',
+            'qualification',
+            'tutorsubjects',
+            'tutorapplication',
           ]) {
             await connection.execute(
               'DELETE FROM $table WHERE TutorID = :tutorId',
@@ -181,19 +181,19 @@ void main() {
             );
           }
           await connection.execute(
-            'DELETE FROM TutorProfile WHERE TutorID = :tutorId',
+            'DELETE FROM tutorprofile WHERE TutorID = :tutorId',
             {'tutorId': tutorId},
           );
         }
         if (userId != null) {
           await connection.execute(
-            'DELETE FROM `User` WHERE UserId = :userId',
+            'DELETE FROM `user` WHERE UserId = :userId',
             {'userId': userId},
           );
         }
         if (subjectId != null) {
           await connection.execute(
-            'DELETE FROM Subjects WHERE subjectId = :subjectId',
+            'DELETE FROM subjects WHERE subjectId = :subjectId',
             {'subjectId': subjectId},
           );
         }

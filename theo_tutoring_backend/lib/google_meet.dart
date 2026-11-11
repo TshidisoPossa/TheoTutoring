@@ -20,7 +20,7 @@ import 'package:theo_tutoring_backend/request_utils.dart';
 /// Booking.Link, otherwise the tutor's Meet room. Keeps the alias Link, so
 /// the JSON the tutor app reads does not change.
 const tutorMeetLinkSql =
-    'COALESCE(b.Link, (SELECT ml.MeetLink FROM TutorProfile ml '
+    'COALESCE(b.Link, (SELECT ml.MeetLink FROM tutorprofile ml '
     'WHERE ml.TutorID = b.TutorID)) AS Link';
 
 const _spacesUrl = 'https://meet.googleapis.com/v2/spaces';
@@ -97,7 +97,7 @@ Future<void> saveTutorMeetLink(
   String link,
 ) async {
   await conn.execute(
-    'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :tutorId',
+    'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :tutorId',
     {'link': link, 'tutorId': tutorId},
   );
 }

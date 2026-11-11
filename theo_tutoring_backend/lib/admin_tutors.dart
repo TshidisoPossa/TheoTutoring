@@ -42,15 +42,15 @@ const _tutorSelect =
     'SELECT tp.TutorID, u.Name, u.Email, u.PhoneNum, u.ProfilePhoto, '
     'u.Created_at, u.AccountStatus, tp.VerificationStat, tp.Experience, '
     'tp.AveRate, '
-    '(SELECT COUNT(*) FROM Reviews r WHERE r.TutorId = tp.TutorID) '
+    '(SELECT COUNT(*) FROM reviews r WHERE r.TutorId = tp.TutorID) '
     'AS ReviewCount, '
     '(SELECT GROUP_CONCAT(s.subjectName ORDER BY s.subjectName '
-    "SEPARATOR ', ') FROM TutorSubjects ts "
-    'JOIN Subjects s ON s.subjectId = ts.SubjectID '
+    "SEPARATOR ', ') FROM tutorsubjects ts "
+    'JOIN subjects s ON s.subjectId = ts.SubjectID '
     'WHERE ts.TutorID = tp.TutorID) AS SubjectNames, '
-    '(SELECT COUNT(*) FROM Booking b WHERE b.TutorID = tp.TutorID '
+    '(SELECT COUNT(*) FROM booking b WHERE b.TutorID = tp.TutorID '
     "AND b.Status = 'Completed') AS TotalLessons "
-    'FROM `User` u JOIN TutorProfile tp ON tp.UserID = u.UserId ';
+    'FROM `user` u JOIN tutorprofile tp ON tp.UserID = u.UserId ';
 
 Map<String, Object?> _tutor(ResultSetRow r) => {
   'tutorId': int.parse(r.reqStr('TutorID')),
@@ -89,8 +89,8 @@ class MySqlTutorRosterRepository implements TutorRosterRepository {
     }
     final clause = where.join(' AND ');
     final total = await conn.execute(
-      'SELECT COUNT(*) AS n FROM `User` u '
-      'JOIN TutorProfile tp ON tp.UserID = u.UserId WHERE $clause',
+      'SELECT COUNT(*) AS n FROM `user` u '
+      'JOIN tutorprofile tp ON tp.UserID = u.UserId WHERE $clause',
       params,
     );
     final rows = await conn.execute(
@@ -102,10 +102,10 @@ class MySqlTutorRosterRepository implements TutorRosterRepository {
     final summary = await conn.execute(
       'SELECT COUNT(*) AS total, '
       "COALESCE(SUM(u.AccountStatus = 'Suspended'), 0) AS suspended, "
-      '(SELECT COUNT(DISTINCT b.TutorID) FROM Booking b '
+      '(SELECT COUNT(DISTINCT b.TutorID) FROM booking b '
       'WHERE b.`Date` >= DATE_FORMAT(CURDATE(), \'%Y-%m-01\')) AS activeMonth, '
-      "(SELECT COUNT(*) FROM Booking b WHERE b.Status = 'Completed') AS lessons "
-      'FROM `User` u JOIN TutorProfile tp ON tp.UserID = u.UserId '
+      "(SELECT COUNT(*) FROM booking b WHERE b.Status = 'Completed') AS lessons "
+      'FROM `user` u JOIN tutorprofile tp ON tp.UserID = u.UserId '
       "WHERE u.Role = 'tutor'",
     );
     final s = summary.rows.first;
@@ -131,7 +131,7 @@ class MySqlTutorRosterRepository implements TutorRosterRepository {
   Future<Map<String, Object?>> setStatus(int tutorId, String status) async {
     final conn = await getConnection();
     final found = await conn.execute(
-      'SELECT u.UserId, u.AccountStatus FROM `User` u JOIN TutorProfile tp '
+      'SELECT u.UserId, u.AccountStatus FROM `user` u JOIN tutorprofile tp '
       "ON tp.UserID = u.UserId WHERE tp.TutorID = :id AND u.Role = 'tutor'",
       {'id': tutorId},
     );
@@ -142,7 +142,7 @@ class MySqlTutorRosterRepository implements TutorRosterRepository {
       throw TutorStatusLocked(current);
     }
     await conn.execute(
-      'UPDATE `User` SET AccountStatus = :status WHERE UserId = :uid',
+      'UPDATE `user` SET AccountStatus = :status WHERE UserId = :uid',
       {'status': status, 'uid': found.rows.first.str('UserId')},
     );
     final row = await conn.execute(

@@ -109,12 +109,12 @@ class MySqlAdminMonitorRepository implements AdminMonitorRepository {
     try {
       final result = await connection.execute('''
         SELECT
-          (SELECT COUNT(*) FROM `User` WHERE AccountStatus = 'Active') AS activeUsers,
-          (SELECT COUNT(*) FROM TutorProfile profile
-            INNER JOIN `User` tutor ON tutor.UserId = profile.UserID
+          (SELECT COUNT(*) FROM `user` WHERE AccountStatus = 'Active') AS activeUsers,
+          (SELECT COUNT(*) FROM tutorprofile profile
+            INNER JOIN `user` tutor ON tutor.UserId = profile.UserID
             WHERE tutor.AccountStatus = 'Active'
               AND profile.VerificationStat = 'Approved') AS activeTutors,
-          (SELECT COUNT(*) FROM TutorApplication WHERE Status = 'Pending') AS pendingApplications
+          (SELECT COUNT(*) FROM tutorapplication WHERE Status = 'Pending') AS pendingApplications
       ''');
       final row = result.rows.single;
       return {
@@ -170,9 +170,9 @@ class MySqlAdminMonitorRepository implements AdminMonitorRepository {
             )), '') AS detail,
             action.CreatedAtUtc AS createdAt,
             'immutable_event' AS recordType
-          FROM RefundAdminAction action
-          INNER JOIN Admin admin ON admin.AdminID = action.AdminID
-          INNER JOIN `User` actor ON actor.UserId = admin.UserId
+          FROM refundadminaction action
+          INNER JOIN admin admin ON admin.AdminID = action.AdminID
+          INNER JOIN `user` actor ON actor.UserId = admin.UserId
 
           UNION ALL
 
@@ -186,9 +186,9 @@ class MySqlAdminMonitorRepository implements AdminMonitorRepository {
             NULLIF(TRIM(report.ResolutionNote), '') AS detail,
             report.ResolvedAtUtc AS createdAt,
             'current_state_summary' AS recordType
-          FROM Report report
-          INNER JOIN Admin admin ON admin.AdminID = report.AdminID
-          INNER JOIN `User` actor ON actor.UserId = admin.UserId
+          FROM report report
+          INNER JOIN admin admin ON admin.AdminID = report.AdminID
+          INNER JOIN `user` actor ON actor.UserId = admin.UserId
           WHERE report.Status = 'Resolved'
             AND report.ResolvedAtUtc IS NOT NULL
 

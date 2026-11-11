@@ -57,20 +57,20 @@ class MySqlBookingAvailabilityRepository
     final tutor = await connection.execute(
       '''
       SELECT tp.TutorID
-      FROM TutorProfile tp
-      INNER JOIN `User` u ON u.UserId = tp.UserID
+      FROM tutorprofile tp
+      INNER JOIN `user` u ON u.UserId = tp.UserID
       WHERE tp.TutorID = :tutorId
         AND u.Role = 'tutor'
         AND u.AccountStatus = 'Active'
         AND tp.VerificationStat = 'Approved'
         AND EXISTS (
-          SELECT 1 FROM TutorApplication ta
+          SELECT 1 FROM tutorapplication ta
           WHERE ta.TutorID = tp.TutorID AND ta.Status = 'Approved'
         )
         AND EXISTS (
           SELECT 1
-          FROM TutorSubjects ts
-          INNER JOIN Subjects s ON s.subjectId = ts.SubjectID
+          FROM tutorsubjects ts
+          INNER JOIN subjects s ON s.subjectId = ts.SubjectID
           WHERE ts.TutorID = tp.TutorID
             AND s.subjectId = :subjectId
         )
@@ -94,7 +94,7 @@ class MySqlBookingAvailabilityRepository
     final availabilityResult = await connection.execute(
       '''
       SELECT Day, StartTime, end_Time
-      FROM TutAvailability
+      FROM tutavailability
       WHERE TutorID = :tutorId
       ORDER BY Day, StartTime
       ''',
@@ -124,7 +124,7 @@ class MySqlBookingAvailabilityRepository
     final bookingResult = await connection.execute(
       '''
       SELECT Date, StartTime, EndTime
-      FROM Booking
+      FROM booking
       WHERE Date BETWEEN :fromDate AND :throughDate
         AND Status = 'Confirmed'
         AND (TutorID = :tutorId OR StudentID = :studentId)
@@ -149,8 +149,8 @@ class MySqlBookingAvailabilityRepository
     final holdResult = await connection.execute(
       '''
       SELECT h.LessonDate, h.StartTime, h.EndTime
-      FROM BookingSlotHold h
-      INNER JOIN BookingPurchase p ON p.PurchaseID = h.PurchaseID
+      FROM bookingslothold h
+      INNER JOIN bookingpurchase p ON p.PurchaseID = h.PurchaseID
       WHERE h.LessonDate BETWEEN :fromDate AND :throughDate
         AND h.HoldStatus = 'Active'
         AND h.ExpiresAtUtc > UTC_TIMESTAMP(6)

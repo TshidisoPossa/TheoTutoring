@@ -71,9 +71,9 @@ class MySqlTutorReportRepository implements TutorReportRepository {
     final result = await (await _connect()).execute(
       '''
       SELECT DISTINCT u.UserId, u.Name, u.ProfilePhoto
-      FROM Booking b
-      INNER JOIN StudentProfile sp ON sp.StudentID = b.StudentID
-      INNER JOIN `User` u ON u.UserId = sp.UserID
+      FROM booking b
+      INNER JOIN studentprofile sp ON sp.StudentID = b.StudentID
+      INNER JOIN `user` u ON u.UserId = sp.UserID
       WHERE b.TutorID = :tutorId
       ORDER BY u.Name, u.UserId
       ''',
@@ -98,7 +98,7 @@ class MySqlTutorReportRepository implements TutorReportRepository {
   }) async {
     final conn = await _connect();
     final tutor = await conn.execute(
-      'SELECT UserID FROM TutorProfile WHERE TutorID = :tutorId LIMIT 1',
+      'SELECT UserID FROM tutorprofile WHERE TutorID = :tutorId LIMIT 1',
       {'tutorId': tutorId},
     );
     if (tutor.rows.isEmpty) {
@@ -113,8 +113,8 @@ class MySqlTutorReportRepository implements TutorReportRepository {
       final booked = await conn.execute(
         '''
         SELECT 1
-        FROM Booking b
-        INNER JOIN StudentProfile sp ON sp.StudentID = b.StudentID
+        FROM booking b
+        INNER JOIN studentprofile sp ON sp.StudentID = b.StudentID
         WHERE b.TutorID = :tutorId AND sp.UserID = :studentUserId
         LIMIT 1
         ''',
@@ -130,7 +130,7 @@ class MySqlTutorReportRepository implements TutorReportRepository {
       // it twice.
       final open = await conn.execute(
         '''
-        SELECT 1 FROM Report
+        SELECT 1 FROM report
         WHERE ReporterID = :reporterId
           AND ReportedUserID = :studentUserId
           AND Status <> 'Resolved'
@@ -149,7 +149,7 @@ class MySqlTutorReportRepository implements TutorReportRepository {
 
     final inserted = await conn.execute(
       '''
-      INSERT INTO Report (ReporterID, ReportedUserID, Category, Reason)
+      INSERT INTO report (ReporterID, ReportedUserID, Category, Reason)
       VALUES (:reporterId, :studentUserId, :category, :description)
       ''',
       {

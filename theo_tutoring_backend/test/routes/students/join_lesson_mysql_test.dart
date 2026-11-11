@@ -67,7 +67,7 @@ void main() {
   }) async {
     final result = await conn.execute(
       '''
-      INSERT INTO Booking (StudentID, TutorID, SubjectID, PurchaseID,
+      INSERT INTO booking (StudentID, TutorID, SubjectID, PurchaseID,
         LessonNumber, LessonPriceAtPurchase, `Date`, StartTime, EndTime,
         Note, Status, Link)
       SELECT :student, :tutor, :subject, :purchase,
@@ -94,7 +94,7 @@ void main() {
   }
 
   Future<void> pay(String name) => conn.execute(
-    'INSERT INTO Payment (BookingId, PaymentMethod, PaymentStatus, '
+    'INSERT INTO payment (BookingId, PaymentMethod, PaymentStatus, '
     'Paid_At, Amount) '
     "VALUES (:b, 'Card', 'Successful', NOW(), 250)",
     {'b': ids[name]},
@@ -117,8 +117,8 @@ void main() {
     repo = MySqlStudentLessonsRepository(conn);
 
     final students = await conn.execute(
-      'SELECT sp.StudentID, u.FirebaseUid FROM StudentProfile sp '
-      'JOIN `User` u ON u.UserId = sp.UserID '
+      'SELECT sp.StudentID, u.FirebaseUid FROM studentprofile sp '
+      'JOIN `user` u ON u.UserId = sp.UserID '
       "WHERE u.Role = 'student' AND u.AccountStatus = 'Active' "
       'ORDER BY sp.StudentID LIMIT 2',
     );
@@ -128,24 +128,24 @@ void main() {
       otherStudentId = int.parse(students.rows.last.reqStr('StudentID'));
     }
     final subject = await conn.execute(
-      'SELECT subjectId FROM Subjects ORDER BY subjectId LIMIT 1',
+      'SELECT subjectId FROM subjects ORDER BY subjectId LIMIT 1',
     );
     subjectId = int.parse(subject.rows.first.reqStr('subjectId'));
 
     final tutor = await conn.execute(
-      'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
+      'SELECT MeetLink FROM tutorprofile WHERE TutorID = :t',
       {'t': _tutorId},
     );
     savedMeetLink = tutor.rows.first.str('MeetLink');
     await conn.execute(
-      'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+      'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
       {'link': _tutorLink, 't': _tutorId},
     );
 
     // A paid two-lesson package, for the Postponed package lesson.
     final purchase = await conn.execute(
       '''
-      INSERT INTO BookingPurchase (StudentID, TutorID, SubjectID,
+      INSERT INTO bookingpurchase (StudentID, TutorID, SubjectID,
         PurchaseType, LessonCount, RatePerLesson, SubtotalAmount,
         DiscountPercent, DiscountAmount, TotalAmount, PurchaseStatus,
         CreatedAtUtc)
@@ -157,7 +157,7 @@ void main() {
     purchaseId = purchase.lastInsertID.toInt();
     final attempt = await conn.execute(
       '''
-      INSERT INTO PaymentAttempt (PurchaseID, AttemptNumber, IdempotencyKey,
+      INSERT INTO paymentattempt (PurchaseID, AttemptNumber, IdempotencyKey,
         PaymentMethod, DemoOutcome, PaymentStatus, Amount, CreatedAtUtc,
         UpdatedAtUtc)
       VALUES (:p, 1, 'join-mysql-test', 'CreditDebitCard', 'SimulatedSuccess',
@@ -168,7 +168,7 @@ void main() {
     attemptId = attempt.lastInsertID.toInt();
     await conn.execute(
       '''
-      INSERT INTO PurchasePayment (PurchaseID, PaymentAttemptID, Amount,
+      INSERT INTO purchasepayment (PurchaseID, PaymentAttemptID, Amount,
         CreatedAtUtc)
       VALUES (:p, :a, 500.00, UTC_TIMESTAMP(6))
       ''',
@@ -209,26 +209,26 @@ void main() {
 
   tearDownAll(() async {
     for (final id in ids.values) {
-      await conn.execute('DELETE FROM Payment WHERE BookingId = :id', {
+      await conn.execute('DELETE FROM payment WHERE BookingId = :id', {
         'id': id,
       });
-      await conn.execute('DELETE FROM Booking WHERE Booking_id = :id', {
+      await conn.execute('DELETE FROM booking WHERE Booking_id = :id', {
         'id': id,
       });
     }
     if (purchaseId != null) {
-      await conn.execute('DELETE FROM PurchasePayment WHERE PurchaseID = :p', {
+      await conn.execute('DELETE FROM purchasepayment WHERE PurchaseID = :p', {
         'p': purchaseId,
       });
-      await conn.execute('DELETE FROM PaymentAttempt WHERE PurchaseID = :p', {
+      await conn.execute('DELETE FROM paymentattempt WHERE PurchaseID = :p', {
         'p': purchaseId,
       });
-      await conn.execute('DELETE FROM BookingPurchase WHERE PurchaseID = :p', {
+      await conn.execute('DELETE FROM bookingpurchase WHERE PurchaseID = :p', {
         'p': purchaseId,
       });
     }
     await conn.execute(
-      'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+      'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
       {'link': savedMeetLink, 't': _tutorId},
     );
     await conn.close();
@@ -305,7 +305,7 @@ void main() {
 
   test('a tutor with no link is refused', () async {
     await conn.execute(
-      'UPDATE TutorProfile SET MeetLink = NULL WHERE TutorID = :t',
+      'UPDATE tutorprofile SET MeetLink = NULL WHERE TutorID = :t',
       {'t': _tutorId},
     );
     try {
@@ -316,7 +316,7 @@ void main() {
       );
     } finally {
       await conn.execute(
-        'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
+        'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :t',
         {'link': _tutorLink, 't': _tutorId},
       );
     }

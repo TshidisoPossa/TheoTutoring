@@ -85,10 +85,10 @@ class MySqlTutorBookingsRepository implements TutorBookingsRepository {
            b.SubjectID, sj.subjectName AS Subject, b.Note, $tutorMeetLinkSql,
            b.PurchaseID, b.LessonNumber, b.Created_at,
            u.Name AS StudentName
-    FROM Booking b
-    JOIN Subjects sj ON sj.subjectId = b.SubjectID
-    JOIN StudentProfile s ON s.StudentID = b.StudentID
-    JOIN `User` u ON u.UserId = s.UserID
+    FROM booking b
+    JOIN subjects sj ON sj.subjectId = b.SubjectID
+    JOIN studentprofile s ON s.StudentID = b.StudentID
+    JOIN `user` u ON u.UserId = s.UserID
     WHERE b.TutorID = :tutorId
       AND (b.PurchaseID IS NULL OR b.Status IN ('Confirmed', 'Completed'))
       AND (:status IS NULL OR b.Status = :status)

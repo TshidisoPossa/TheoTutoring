@@ -14,8 +14,8 @@ Future<Map<String, dynamic>?> getTutorHeader(
     SELECT tp.TutorID,
            u.Name,
            u.ProfilePhoto
-    FROM TutorProfile tp
-    JOIN `User` u ON u.UserId = tp.UserID
+    FROM tutorprofile tp
+    JOIN `user` u ON u.UserId = tp.UserID
     WHERE tp.TutorID = :tutorId
     ''',
     {'tutorId': tutorId},

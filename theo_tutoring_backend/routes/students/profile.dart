@@ -118,8 +118,8 @@ Future<_Profile?> _loadProfile(MySQLConnection db, String uid) async {
     '''
     SELECT u.UserId, u.Name, u.Email, u.ProfilePhoto, sp.Institution,
            sp.Subject_of_interest
-    FROM `User` u
-    INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
+    FROM `user` u
+    INNER JOIN studentprofile sp ON sp.UserID = u.UserId
     WHERE u.FirebaseUid = :uid
       AND u.Role = 'student'
       AND u.AccountStatus = 'Active'
@@ -227,7 +227,7 @@ class _ProfileChanges {
     ];
     if (userSets.isNotEmpty) {
       await db.execute(
-        'UPDATE `User` SET ${userSets.join(', ')} WHERE UserId = :userId',
+        'UPDATE `user` SET ${userSets.join(', ')} WHERE UserId = :userId',
         {
           'userId': userId,
           if (name != null) 'name': name,
@@ -237,7 +237,7 @@ class _ProfileChanges {
     }
     if (profileSets.isNotEmpty) {
       await db.execute(
-        'UPDATE StudentProfile SET ${profileSets.join(', ')} '
+        'UPDATE studentprofile SET ${profileSets.join(', ')} '
         'WHERE UserID = :userId',
         {
           'userId': userId,

@@ -108,12 +108,12 @@ Future<bool> notifyTutorOfPaidPurchase(int purchaseId) async {
         tu.FirebaseUid AS TutorUid,
         DATE_FORMAT(b.Date, '%Y-%m-%d') AS LessonDate,
         TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime
-      FROM Booking b
-      INNER JOIN Subjects s ON s.subjectId = b.SubjectID
-      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-      INNER JOIN `User` tu ON tu.UserId = tp.UserID
-      INNER JOIN StudentProfile sp ON sp.StudentID = b.StudentID
-      INNER JOIN `User` su ON su.UserId = sp.UserID
+      FROM booking b
+      INNER JOIN subjects s ON s.subjectId = b.SubjectID
+      INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+      INNER JOIN `user` tu ON tu.UserId = tp.UserID
+      INNER JOIN studentprofile sp ON sp.StudentID = b.StudentID
+      INNER JOIN `user` su ON su.UserId = sp.UserID
       WHERE b.PurchaseID = :purchaseId AND b.Status = 'Confirmed'
       ORDER BY b.Date, b.StartTime
       ''',
@@ -169,10 +169,10 @@ Future<void> syncTutorNotifications(
         MINUTE, UTC_TIMESTAMP() + INTERVAL 2 HOUR, TIMESTAMP(b.Date, b.StartTime)
       ) AS MinutesUntil,
       DATEDIFF(b.Date, DATE(UTC_TIMESTAMP() + INTERVAL 2 HOUR)) AS DaysAway
-    FROM Booking b
-    INNER JOIN Subjects s ON s.subjectId = b.SubjectID
-    INNER JOIN StudentProfile sp ON sp.StudentID = b.StudentID
-    INNER JOIN `User` su ON su.UserId = sp.UserID
+    FROM booking b
+    INNER JOIN subjects s ON s.subjectId = b.SubjectID
+    INNER JOIN studentprofile sp ON sp.StudentID = b.StudentID
+    INNER JOIN `user` su ON su.UserId = sp.UserID
     WHERE b.TutorID = :tutorId AND b.Status = 'Confirmed'
       AND TIMESTAMP(b.Date, b.StartTime) > UTC_TIMESTAMP() + INTERVAL 2 HOUR
       AND TIMESTAMP(b.Date, b.StartTime)
@@ -190,11 +190,11 @@ Future<void> syncTutorNotifications(
     SELECT r.Reviewid, r.Rating, r.`comment` AS Comment, r.BookingID,
       s.subjectName, su.Name AS StudentName,
       TIMESTAMPDIFF(SECOND, r.Created_At, NOW()) AS AgeSeconds
-    FROM Reviews r
-    INNER JOIN StudentProfile sp ON sp.StudentID = r.StudentID
-    INNER JOIN `User` su ON su.UserId = sp.UserID
-    LEFT JOIN Booking b ON b.Booking_id = r.BookingID
-    LEFT JOIN Subjects s ON s.subjectId = b.SubjectID
+    FROM reviews r
+    INNER JOIN studentprofile sp ON sp.StudentID = r.StudentID
+    INNER JOIN `user` su ON su.UserId = sp.UserID
+    LEFT JOIN booking b ON b.Booking_id = r.BookingID
+    LEFT JOIN subjects s ON s.subjectId = b.SubjectID
     WHERE r.TutorID = :tutorId AND r.Created_At >= NOW() - INTERVAL 7 DAY
     ORDER BY r.Created_At DESC
     LIMIT 20

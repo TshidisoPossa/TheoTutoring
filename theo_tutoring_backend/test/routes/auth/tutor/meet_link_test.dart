@@ -36,7 +36,7 @@ class _FakeDb {
     when(() => connection.execute(any(), any())).thenAnswer((call) async {
       final sql = call.positionalArguments[0] as String;
       final params = call.positionalArguments[1] as Map<String, dynamic>?;
-      if (sql.contains('UPDATE TutorProfile SET MeetLink')) {
+      if (sql.contains('UPDATE tutorprofile SET MeetLink')) {
         expect(params!['tutorId'], 7);
         meetLink = params['link'] as String?;
         return updated;

@@ -174,7 +174,7 @@ void main() {
       expect(filter.sql, contains('EXISTS'));
       expect(filter.sql, contains("ta.Status = 'Approved'"));
       expect(filter.sql, contains('ta.TutorID = tp.TutorID'));
-      expect(filter.sql, isNot(contains('JOIN TutorApplication')));
+      expect(filter.sql, isNot(contains('JOIN tutorapplication')));
     });
 
     test('uses parameterized subject and escaped literal text filters', () {

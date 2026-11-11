@@ -34,8 +34,8 @@ bool _pendingTutorMayOpen(Uri uri) {
 Future<({int tutorId, String status})?> _findTutor(String firebaseUid) async {
   final conn = await getConnection(); // shared DB connection (do not close it)
   final result = await conn.execute(
-    'SELECT tp.TutorID, u.AccountStatus FROM TutorProfile tp '
-    'INNER JOIN `User` u ON tp.UserID = u.UserId '
+    'SELECT tp.TutorID, u.AccountStatus FROM tutorprofile tp '
+    'INNER JOIN `user` u ON tp.UserID = u.UserId '
     "WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'",
     {'uid': firebaseUid},
   );

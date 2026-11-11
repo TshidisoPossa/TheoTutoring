@@ -39,8 +39,8 @@ Future<StudentSession?> findActiveStudent(
   final result = await conn.execute(
     '''
     SELECT sp.StudentID
-    FROM `User` u
-    INNER JOIN StudentProfile sp ON sp.UserID = u.UserId
+    FROM `user` u
+    INNER JOIN studentprofile sp ON sp.UserID = u.UserId
     WHERE u.FirebaseUid = :uid AND u.Role = 'student'
       AND u.AccountStatus = 'Active'
     LIMIT 1
@@ -162,14 +162,14 @@ Future<bool> notifyStudentOfPaidPurchase(int purchaseId) async {
         su.FirebaseUid AS StudentUid,
         DATE_FORMAT(b.Date, '%Y-%m-%d') AS LessonDate,
         TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime,
-        (SELECT pp.Amount FROM PurchasePayment pp
+        (SELECT pp.Amount FROM purchasepayment pp
           WHERE pp.PurchaseID = b.PurchaseID LIMIT 1) AS Amount
-      FROM Booking b
-      INNER JOIN Subjects s ON s.subjectId = b.SubjectID
-      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-      INNER JOIN `User` tu ON tu.UserId = tp.UserID
-      INNER JOIN StudentProfile sp ON sp.StudentID = b.StudentID
-      INNER JOIN `User` su ON su.UserId = sp.UserID
+      FROM booking b
+      INNER JOIN subjects s ON s.subjectId = b.SubjectID
+      INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+      INNER JOIN `user` tu ON tu.UserId = tp.UserID
+      INNER JOIN studentprofile sp ON sp.StudentID = b.StudentID
+      INNER JOIN `user` su ON su.UserId = sp.UserID
       WHERE b.PurchaseID = :purchaseId AND b.Status = 'Confirmed'
       ORDER BY b.Date, b.StartTime
       ''',
@@ -217,13 +217,13 @@ Future<bool> notifyStudentOfRefund(int refundId, {String? reason}) async {
         s.subjectName, tu.Name AS TutorName, su.FirebaseUid AS StudentUid,
         DATE_FORMAT(b.Date, '%Y-%m-%d') AS LessonDate,
         TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime
-      FROM Refund r
-      INNER JOIN Booking b ON b.Booking_id = r.BookingID
-      INNER JOIN Subjects s ON s.subjectId = b.SubjectID
-      INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-      INNER JOIN `User` tu ON tu.UserId = tp.UserID
-      INNER JOIN StudentProfile sp ON sp.StudentID = b.StudentID
-      INNER JOIN `User` su ON su.UserId = sp.UserID
+      FROM refund r
+      INNER JOIN booking b ON b.Booking_id = r.BookingID
+      INNER JOIN subjects s ON s.subjectId = b.SubjectID
+      INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+      INNER JOIN `user` tu ON tu.UserId = tp.UserID
+      INNER JOIN studentprofile sp ON sp.StudentID = b.StudentID
+      INNER JOIN `user` su ON su.UserId = sp.UserID
       WHERE r.RefundID = :refundId
       ''',
       {'refundId': refundId},
@@ -272,10 +272,10 @@ Future<void> syncStudentNotifications(
         MINUTE, UTC_TIMESTAMP() + INTERVAL 2 HOUR, TIMESTAMP(b.Date, b.StartTime)
       ) AS MinutesUntil,
       DATEDIFF(b.Date, DATE(UTC_TIMESTAMP() + INTERVAL 2 HOUR)) AS DaysAway
-    FROM Booking b
-    INNER JOIN Subjects s ON s.subjectId = b.SubjectID
-    INNER JOIN TutorProfile tp ON tp.TutorID = b.TutorID
-    INNER JOIN `User` tu ON tu.UserId = tp.UserID
+    FROM booking b
+    INNER JOIN subjects s ON s.subjectId = b.SubjectID
+    INNER JOIN tutorprofile tp ON tp.TutorID = b.TutorID
+    INNER JOIN `user` tu ON tu.UserId = tp.UserID
     WHERE b.StudentID = :studentId AND b.Status = 'Confirmed'
       AND TIMESTAMP(b.Date, b.StartTime) > UTC_TIMESTAMP() + INTERVAL 2 HOUR
       AND TIMESTAMP(b.Date, b.StartTime)

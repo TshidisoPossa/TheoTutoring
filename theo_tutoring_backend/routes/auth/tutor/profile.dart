@@ -118,8 +118,8 @@ Future<Response> onRequest(RequestContext context) async {
     final tutorResult = await db.execute(
       '''
       SELECT tp.TutorID, u.UserId, u.AccountStatus
-      FROM TutorProfile tp
-      INNER JOIN User u ON tp.UserId = u.UserId
+      FROM tutorprofile tp
+      INNER JOIN user u ON tp.UserId = u.UserId
       WHERE u.FirebaseUid = :uid AND u.Role = 'tutor'
       ''',
       {'uid': firebaseUser.uid},
@@ -154,7 +154,7 @@ Future<Response> onRequest(RequestContext context) async {
     final placeholders = subjectParams.keys.map((k) => ':$k').join(', ');
 
     final foundSubjects = await db.execute(
-      'SELECT SubjectID FROM Subjects WHERE SubjectID IN ($placeholders)',
+      'SELECT SubjectID FROM subjects WHERE SubjectID IN ($placeholders)',
       subjectParams,
     );
     if (foundSubjects.rows.length != subjectIds.length) {
@@ -167,7 +167,7 @@ Future<Response> onRequest(RequestContext context) async {
     await db.transactional((conn) async {
       await conn.execute(
         '''
-        UPDATE tutorProfile
+        UPDATE tutorprofile
         SET Bio = :bio,
             Experience = :experience,
             Certificate = :certificate,
@@ -185,18 +185,18 @@ Future<Response> onRequest(RequestContext context) async {
 
       // The profile photo belongs to User, not TutorProfile.
       await conn.execute(
-        'UPDATE User SET ProfilePhoto = :photo WHERE UserId = :userId',
+        'UPDATE user SET ProfilePhoto = :photo WHERE UserId = :userId',
         {'photo': profilePhotoUrl, 'userId': userId},
       );
 
       await conn.execute(
-        'DELETE FROM tutorSubjects WHERE TutorID = :tutorId',
+        'DELETE FROM tutorsubjects WHERE TutorID = :tutorId',
         {'tutorId': tutorId},
       );
       for (final subjectId in subjectIds) {
         await conn.execute(
           '''
-          INSERT INTO tutorSubjects (TutorID, SubjectID)
+          INSERT INTO tutorsubjects (TutorID, SubjectID)
           VALUES (:tutorId, :subjectId)
           ''',
           {'tutorId': tutorId, 'subjectId': subjectId},
