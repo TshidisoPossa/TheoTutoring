@@ -1,5 +1,6 @@
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 import '../../../lib/database.dart';
 import '../../../lib/firebase_auth.dart';
@@ -88,9 +89,9 @@ Future<Response> handleTutorAvailability(
     }
 
     final row = tutorResult.rows.first;
-    final tutorId = int.parse(row.colByName('TutorID')!);
-    final userId = int.parse(row.colByName('UserId')!);
-    final accountStatus = row.colByName('AccountStatus');
+    final tutorId = int.parse(row.reqStr('TutorID'));
+    final userId = int.parse(row.reqStr('UserId'));
+    final accountStatus = row.str('AccountStatus');
 
     if (!canSubmitTutorAvailability(accountStatus)) {
       return jsonError(
@@ -100,10 +101,10 @@ Future<Response> handleTutorAvailability(
     }
 
     final step2Complete =
-        (row.colByName('Bio') ?? '').isNotEmpty &&
-        (row.colByName('Certificate') ?? '').isNotEmpty &&
-        int.parse(row.colByName('SubjectCount') ?? '0') > 0 &&
-        int.parse(row.colByName('QualificationCount') ?? '0') > 0;
+        (row.str('Bio') ?? '').isNotEmpty &&
+        (row.str('Certificate') ?? '').isNotEmpty &&
+        int.parse(row.str('SubjectCount') ?? '0') > 0 &&
+        int.parse(row.str('QualificationCount') ?? '0') > 0;
 
     if (!step2Complete) {
       return jsonError(
@@ -113,7 +114,7 @@ Future<Response> handleTutorAvailability(
     }
 
     // ── Lessons need the tutor's Meet room (POST /auth/tutor/meet-link) ──
-    if ((row.colByName('MeetLink') ?? '').isEmpty) {
+    if ((row.str('MeetLink') ?? '').isEmpty) {
       return jsonError(400, 'Please connect Google Meet first.');
     }
 
@@ -161,11 +162,11 @@ Future<Response> handleTutorAvailability(
         {'tutorId': tutorId},
       );
       final plan = planTutorApplicationSubmission(
-        accountStatus: lockedUser.rows.first.colByName('AccountStatus'),
+        accountStatus: lockedUser.rows.first.str('AccountStatus'),
         requestAccountStatus: accountStatus,
         latestApplicationStatus: latest.rows.isEmpty
             ? null
-            : latest.rows.first.colByName('Status'),
+            : latest.rows.first.str('Status'),
         hasPendingApplication: pendingApplications.rows.isNotEmpty,
       );
       if (plan == TutorApplicationSubmissionPlan.blocked) {

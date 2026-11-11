@@ -1,6 +1,7 @@
 import 'dart:io';
 
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/booking_tutor.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/notifications.dart';
@@ -118,7 +119,7 @@ Future<bool> notifyTutorOfPaidPurchase(int purchaseId) async {
       ''',
       {'purchaseId': purchaseId},
     );
-    final rows = result.rows.map((r) => r.assoc()).toList();
+    final rows = result.rows.map((r) => r.textAssoc()).toList();
     if (rows.isEmpty) return false;
     final tutorUid = rows.first['TutorUid'];
     if (tutorUid == null || tutorUid.isEmpty) return false;
@@ -203,7 +204,7 @@ Future<void> syncTutorNotifications(
 
   final now = DateTime.now().toUtc();
   final notices = [
-    for (final row in upcoming.rows.map((r) => r.assoc()))
+    for (final row in upcoming.rows.map((r) => r.textAssoc()))
       upcomingNotice(
         bookingId: int.parse(row['Booking_id']!),
         studentName: row['StudentName'] ?? 'your student',
@@ -212,7 +213,7 @@ Future<void> syncTutorNotifications(
         minutesUntil: int.parse(row['MinutesUntil']!),
         daysAway: int.parse(row['DaysAway']!),
       ),
-    for (final row in reviews.rows.map((r) => r.assoc()))
+    for (final row in reviews.rows.map((r) => r.textAssoc()))
       reviewNotice(
         reviewId: int.parse(row['Reviewid']!),
         studentName: row['StudentName'] ?? 'A student',

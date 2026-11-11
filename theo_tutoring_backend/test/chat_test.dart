@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/chat.dart';
 import 'package:theo_tutoring_backend/chat_audit.dart';
@@ -1616,7 +1617,7 @@ class _MockRow extends Mock implements ResultSetRow {}
 ResultSetRow _row(Map<String, String?> values) {
   final row = _MockRow();
   when(row.assoc).thenReturn(values);
-  when(() => row.colByName(any())).thenAnswer(
+  when(() => row.str(any())).thenAnswer(
     (invocation) => values[invocation.positionalArguments.first as String],
   );
   return row;

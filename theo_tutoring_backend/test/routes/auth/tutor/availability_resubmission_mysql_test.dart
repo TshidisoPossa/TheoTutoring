@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 
 import '../../../../routes/auth/tutor/availability.dart' as availability;
@@ -117,7 +118,7 @@ void main() {
           'SELECT COUNT(*) AS n FROM TutorApplication WHERE TutorID = :tutorId',
           {'tutorId': tutorId},
         );
-        expect(stillRejected.rows.single.colByName('n'), '1');
+        expect(stillRejected.rows.single.str('n'), '1');
 
         await connection.execute(
           'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :tutorId',
@@ -133,10 +134,10 @@ void main() {
           {'tutorId': tutorId},
         );
         expect(applications.rows.length, 2);
-        expect(applications.rows.first.colByName('Status'), 'Pending');
-        expect(applications.rows.last.colByName('Status'), 'Rejected');
+        expect(applications.rows.first.str('Status'), 'Pending');
+        expect(applications.rows.last.str('Status'), 'Rejected');
         expect(
-          applications.rows.last.colByName('AdminFeedback'),
+          applications.rows.last.str('AdminFeedback'),
           'Upload a clearer certificate.',
         );
 
@@ -148,8 +149,8 @@ void main() {
           'SELECT VerificationStat FROM TutorProfile WHERE TutorID = :tutorId',
           {'tutorId': tutorId},
         );
-        expect(user.rows.single.colByName('AccountStatus'), 'Pending');
-        expect(profile.rows.single.colByName('VerificationStat'), 'Pending');
+        expect(user.rows.single.str('AccountStatus'), 'Pending');
+        expect(profile.rows.single.str('VerificationStat'), 'Pending');
 
         final slots = await connection.execute(
           'SELECT Day, StartTime, end_Time FROM TutAvailability '
@@ -157,7 +158,7 @@ void main() {
           {'tutorId': tutorId},
         );
         expect(slots.rows.length, 1);
-        expect(slots.rows.single.colByName('StartTime'), '09:00:00');
+        expect(slots.rows.single.str('StartTime'), '09:00:00');
 
         final duplicate = await submit();
         expect(duplicate.statusCode, HttpStatus.ok);
@@ -165,7 +166,7 @@ void main() {
           'SELECT COUNT(*) AS n FROM TutorApplication WHERE TutorID = :tutorId',
           {'tutorId': tutorId},
         );
-        expect(duplicateCheck.rows.single.colByName('n'), '2');
+        expect(duplicateCheck.rows.single.str('n'), '2');
       } finally {
         if (tutorId != null) {
           for (final table in [

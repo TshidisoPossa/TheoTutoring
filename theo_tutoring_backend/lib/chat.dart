@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 // Student <-> tutor chat. Who may chat is decided from MySQL
 // (ChatPermissions). Messages live in Firestore (chat_store.dart); the
@@ -235,7 +236,7 @@ class MySqlChatPermissions implements ChatPermissions {
       {'uid': firebaseUid, 'role': role.value},
     );
     if (result.rows.isEmpty) return null;
-    return _participantFrom(result.rows.first.assoc(), role);
+    return _participantFrom(result.rows.first.textAssoc(), role);
   }
 
   @override
@@ -249,7 +250,7 @@ class MySqlChatPermissions implements ChatPermissions {
       {'userId': userId, 'role': role.value},
     );
     if (result.rows.isEmpty) return null;
-    return _participantFrom(result.rows.first.assoc(), role);
+    return _participantFrom(result.rows.first.textAssoc(), role);
   }
 
   @override
@@ -281,7 +282,10 @@ class MySqlChatPermissions implements ChatPermissions {
     );
     return {
       for (final row in result.rows)
-        int.parse(row.assoc()['UserId']!): _participantFrom(row.assoc(), role),
+        int.parse(row.textAssoc()['UserId']!): _participantFrom(
+          row.textAssoc(),
+          role,
+        ),
     };
   }
 

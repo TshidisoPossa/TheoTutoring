@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 // ONE place that loads the tutor's name and profile picture.
 // Every tutor page (Dashboard, Requests, Request Details, Schedule, Profile)
@@ -22,7 +23,7 @@ Future<Map<String, dynamic>?> getTutorHeader(
 
   if (result.rows.isEmpty) return null; // no such tutor
 
-  final data = result.rows.first.assoc();
+  final data = result.rows.first.textAssoc();
 
   return {
     'tutorId': int.parse(data['TutorID']!),

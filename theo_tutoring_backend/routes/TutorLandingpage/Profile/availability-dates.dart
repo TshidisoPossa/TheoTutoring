@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/exception.dart';
+import 'package:mysql_dart/exception.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/profile_tutor.dart';
@@ -52,7 +52,8 @@ Future<Response> onRequest(RequestContext context) async {
     stderr.writeln('Error saving a date in the availability calendar: $e');
     return jsonError(
       HttpStatus.serviceUnavailable,
-      e.errorCode == 1146 // table missing
+      e.errorCode ==
+              1146 // table missing
           ? 'Date changes are not set up yet (database migration 007).'
           : 'Could not save this date. Please try again.',
     );

@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 
@@ -145,13 +146,13 @@ Future<AdminIdentity> resolveAdmin(String? authorization) async {
     throw const AdminAccessDenied('Administrator access is required.');
   }
   final row = result.rows.first;
-  final roleKey = row.colByName('RoleKey') ?? '';
+  final roleKey = row.str('RoleKey') ?? '';
   if (!isKnownAdminRole(roleKey)) {
     throw const AdminAccessDenied('Administrator role is not recognized.');
   }
   return AdminIdentity(
-    id: int.parse(row.colByName('AdminID')!),
-    name: row.colByName('Name') ?? 'Administrator',
+    id: int.parse(row.reqStr('AdminID')),
+    name: row.str('Name') ?? 'Administrator',
     roleKey: roleKey,
   );
 }
@@ -325,53 +326,53 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
   }
 
   Map<String, Object?> _caseJson(ResultSetRow row) {
-    final status = switch (row.colByName('RefundStatus')) {
+    final status = switch (row.str('RefundStatus')) {
       'Approved' || 'Processed' => 'approved',
       'Rejected' => 'denied',
       _ => 'pending',
     };
-    final amountPaid = _double(row.colByName('AmountPaid'));
-    final storedPercentage = _double(row.colByName('RefundPercentage')) ?? 0;
+    final amountPaid = _double(row.str('AmountPaid'));
+    final storedPercentage = _double(row.str('RefundPercentage')) ?? 0;
     final overridden =
-        row.colByName('OverriddenByAdmin') == '1' ||
-        row.colByName('OverriddenByAdmin')?.toLowerCase() == 'true';
+        row.str('OverriddenByAdmin') == '1' ||
+        row.str('OverriddenByAdmin')?.toLowerCase() == 'true';
     final percentage = status == 'pending' && !overridden
         ? _policyPercentage(
-            _wallTime(row.colByName('CancellationTime')),
+            _wallTime(row.str('CancellationTime')),
             _wallTime(
-              '${row.colByName('Date')} ${row.colByName('StartTime')}',
+              '${row.date('Date')} ${row.str('StartTime')}',
             ),
           )
         : storedPercentage;
-    final storedAmount = _double(row.colByName('RefundAmount'));
+    final storedAmount = _double(row.str('RefundAmount'));
     final refundAmount =
         storedAmount ??
         (amountPaid == null ? null : _money(amountPaid * percentage / 100));
 
     return {
-      'id': row.colByName('RefundID'),
+      'id': row.str('RefundID'),
       'type': 'cancellation',
       'status': status,
-      'bookingId': row.colByName('Booking_id'),
-      'transactionId': row.colByName('TransactionID'),
-      'studentName': row.colByName('StudentName'),
-      'tutorName': row.colByName('TutorName'),
-      'subject': row.colByName('subjectName'),
+      'bookingId': row.str('Booking_id'),
+      'transactionId': row.str('TransactionID'),
+      'studentName': row.str('StudentName'),
+      'tutorName': row.str('TutorName'),
+      'subject': row.str('subjectName'),
       'sessionStart': _johannesburgIso(
-        '${row.colByName('Date')} ${row.colByName('StartTime')}',
+        '${row.date('Date')} ${row.str('StartTime')}',
       ),
-      'cancelledAt': _johannesburgIso(row.colByName('CancellationTime')),
-      'createdAt': _johannesburgIso(row.colByName('CancellationTime')),
+      'cancelledAt': _johannesburgIso(row.str('CancellationTime')),
+      'createdAt': _johannesburgIso(row.str('CancellationTime')),
       'reportedBy': null,
-      'reason': row.colByName('DecisionReason'),
+      'reason': row.str('DecisionReason'),
       'amountPaid': amountPaid,
-      'paymentMethod': row.colByName('PaymentMethod'),
+      'paymentMethod': row.str('PaymentMethod'),
       'refundPercentage': percentage,
       'refundAmount': refundAmount,
       'overriddenByAdmin': overridden,
-      'decidedBy': row.colByName('DecidedBy'),
+      'decidedBy': row.str('DecidedBy'),
       'needsAction': status == 'pending',
-      '_decisionAtUtc': _utcDateTime(row.colByName('DecisionAtUtc')),
+      '_decisionAtUtc': _utcDateTime(row.str('DecisionAtUtc')),
     };
   }
 
@@ -438,40 +439,40 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
   }
 
   Map<String, Object?> _reportJson(ResultSetRow row) {
-    final rawStatus = row.colByName('ReportStatus')?.toLowerCase();
+    final rawStatus = row.str('ReportStatus')?.toLowerCase();
     final status = switch (rawStatus) {
       'resolved' => 'resolved',
       'under review' || 'underreview' || 'under_review' => 'under_review',
       _ => 'open',
     };
-    final sessionDate = row.colByName('Date');
+    final sessionDate = row.date('Date');
     // Tutors' Report a Problem has a category; students' reports do not
-    final category = row.colByName('Category');
-    final description = row.colByName('Reason');
+    final category = row.str('Category');
+    final description = row.str('Reason');
     return {
-      'id': 'report-${row.colByName('ReportID')}',
+      'id': 'report-${row.str('ReportID')}',
       'type': 'report',
       'status': status,
-      'bookingId': row.colByName('Booking_id'),
-      'transactionId': row.colByName('TransactionID'),
-      'studentName': row.colByName('StudentName'),
-      'tutorName': row.colByName('TutorName'),
-      'subject': row.colByName('subjectName'),
+      'bookingId': row.str('Booking_id'),
+      'transactionId': row.str('TransactionID'),
+      'studentName': row.str('StudentName'),
+      'tutorName': row.str('TutorName'),
+      'subject': row.str('subjectName'),
       'sessionStart': sessionDate == null
           ? null
-          : _johannesburgIso('$sessionDate ${row.colByName('StartTime')}'),
+          : _johannesburgIso('$sessionDate ${row.str('StartTime')}'),
       'cancelledAt': null,
-      'createdAt': _johannesburgIso(row.colByName('CreatedAtUtc')),
-      'reportedBy': row.colByName('ReporterRole'),
+      'createdAt': _johannesburgIso(row.str('CreatedAtUtc')),
+      'reportedBy': row.str('ReporterRole'),
       'reason': category == null ? description : '$category: $description',
-      'amountPaid': _double(row.colByName('AmountPaid')),
-      'paymentMethod': row.colByName('PaymentMethod'),
+      'amountPaid': _double(row.str('AmountPaid')),
+      'paymentMethod': row.str('PaymentMethod'),
       'refundPercentage': null,
       'refundAmount': null,
       'overriddenByAdmin': false,
-      'decidedBy': row.colByName('DecidedBy'),
+      'decidedBy': row.str('DecidedBy'),
       'needsAction': status != 'resolved',
-      '_decisionAtUtc': _utcDateTime(row.colByName('ResolvedAtUtc')),
+      '_decisionAtUtc': _utcDateTime(row.str('ResolvedAtUtc')),
     };
   }
 
@@ -494,13 +495,13 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     try {
       await connection.transactional((transaction) async {
         final record = await _selectForUpdate(transaction, refundId);
-        final amountPaid = _double(record.colByName('AmountPaid'));
+        final amountPaid = _double(record.str('AmountPaid'));
         if (amountPaid == null || amountPaid <= 0) {
           throw const AdminRefundConflict(
             'An override requires a successful payment.',
           );
         }
-        if (record.colByName('RefundStatus') != 'Pending') {
+        if (record.str('RefundStatus') != 'Pending') {
           throw const AdminRefundConflict('This refund is already closed.');
         }
         final amount = _money(amountPaid * percentage / 100);
@@ -549,7 +550,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
           {'id': reportId},
         );
         if (current.rows.isEmpty) throw const AdminRefundNotFound();
-        if (current.rows.first.colByName('Status') == 'Resolved') {
+        if (current.rows.first.str('Status') == 'Resolved') {
           throw const AdminRefundConflict('This report is already resolved.');
         }
         final update = await transaction.execute(
@@ -584,17 +585,17 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     try {
       await connection.transactional((transaction) async {
         final record = await _selectForUpdate(transaction, refundId);
-        if (record.colByName('RefundStatus') != 'Pending') {
+        if (record.str('RefundStatus') != 'Pending') {
           throw const AdminRefundConflict('This refund is already closed.');
         }
-        var percentage = _double(record.colByName('RefundPercentage')) ?? 0;
-        if (record.colByName('OverriddenByAdmin') != '1') {
+        var percentage = _double(record.str('RefundPercentage')) ?? 0;
+        if (record.str('OverriddenByAdmin') != '1') {
           percentage = _policyPercentage(
-            _wallTime(record.colByName('CancellationTime')),
-            _wallTime(record.colByName('SessionStart')),
+            _wallTime(record.str('CancellationTime')),
+            _wallTime(record.str('SessionStart')),
           );
         }
-        final amountPaid = _double(record.colByName('AmountPaid'));
+        final amountPaid = _double(record.str('AmountPaid'));
         if (decision == 'Approved' && (amountPaid == null || amountPaid <= 0)) {
           throw const AdminRefundConflict(
             'This booking has no successful payment to refund.',

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 
 Future<Response> onRequest(RequestContext context) async {
@@ -38,7 +39,7 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     final row = result.rows.first;
-    final accountStatus = row.colByName('AccountStatus');
+    final accountStatus = row.str('AccountStatus');
     if (accountStatus == 'Suspended' || accountStatus == 'Deactivated') {
       return Response.json(
         statusCode: 403,
@@ -47,12 +48,12 @@ Future<Response> onRequest(RequestContext context) async {
     }
     return Response.json(
       body: {
-        'userId': int.parse(row.colByName('UserId')!),
-        'studentId': int.parse(row.colByName('StudentID')!),
-        'name': row.colByName('Name'),
-        'email': row.colByName('Email'),
-        'role': row.colByName('Role'),
-        'accountStatus': row.colByName('AccountStatus'),
+        'userId': int.parse(row.reqStr('UserId')),
+        'studentId': int.parse(row.reqStr('StudentID')),
+        'name': row.str('Name'),
+        'email': row.str('Email'),
+        'role': row.str('Role'),
+        'accountStatus': row.str('AccountStatus'),
       },
     );
   } on AuthTokenException catch (error) {

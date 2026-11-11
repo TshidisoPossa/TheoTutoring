@@ -1,7 +1,8 @@
 import 'dart:io';
 
-import 'package:mysql_client/mysql_client.dart';
-import 'package:mysql_client/exception.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
+import 'package:mysql_dart/exception.dart';
 
 import 'availability_overrides.dart';
 import 'booking_domain.dart';
@@ -123,7 +124,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       {'purchaseId': purchaseId, 'studentId': studentId},
     );
     if (discovery.rows.isEmpty) throw const BookingPurchaseNotFound();
-    final tutorId = _int(discovery.rows.first.colByName('TutorID'));
+    final tutorId = _int(discovery.rows.first.str('TutorID'));
 
     final student = await connection.execute(
       '''
@@ -156,13 +157,13 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     );
     if (purchaseResult.rows.isEmpty) throw const BookingPurchaseNotFound();
     final purchase = purchaseResult.rows.first;
-    if (_int(purchase.colByName('StudentID')) != studentId ||
-        _int(purchase.colByName('TutorID')) != tutorId) {
+    if (_int(purchase.str('StudentID')) != studentId ||
+        _int(purchase.str('TutorID')) != tutorId) {
       throw const BookingPurchaseNotFound();
     }
-    final purchaseStatus = _string(purchase.colByName('PurchaseStatus'));
-    final lessonCount = _int(purchase.colByName('LessonCount'));
-    final amount = _string(purchase.colByName('TotalAmount'));
+    final purchaseStatus = _string(purchase.str('PurchaseStatus'));
+    final lessonCount = _int(purchase.str('LessonCount'));
+    final amount = _string(purchase.str('TotalAmount'));
 
     final bookings = await connection.execute(
       '''
@@ -210,27 +211,25 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
         ? 'SimulatedSuccess'
         : 'SimulatedFailure';
     for (final attempt in attempts.rows) {
-      if (_string(attempt.colByName('IdempotencyKey')) ==
-          command.idempotencyKey) {
-        if (_string(attempt.colByName('PaymentMethod')) !=
-                command.paymentMethod ||
-            _string(attempt.colByName('DemoOutcome')) != expectedOutcome) {
+      if (_string(attempt.str('IdempotencyKey')) == command.idempotencyKey) {
+        if (_string(attempt.str('PaymentMethod')) != command.paymentMethod ||
+            _string(attempt.str('DemoOutcome')) != expectedOutcome) {
           throw const BookingPurchaseConflict(
             'idempotency_key_reused',
             'The idempotency key was already used for a different request.',
           );
         }
-        final attemptId = _int(attempt.colByName('PaymentAttemptID'));
+        final attemptId = _int(attempt.str('PaymentAttemptID'));
         final settled = settlements.rows.any(
-          (row) => _int(row.colByName('PaymentAttemptID')) == attemptId,
+          (row) => _int(row.str('PaymentAttemptID')) == attemptId,
         );
         if (purchaseStatus == 'Held' &&
-            _string(attempt.colByName('PaymentStatus')) == 'Failed') {
+            _string(attempt.str('PaymentStatus')) == 'Failed') {
           final nowResult = await connection.execute(
             'SELECT UTC_TIMESTAMP(6) AS NowUtc',
           );
           final replayNowUtc = _utcDateTime(
-            nowResult.rows.first.colByName('NowUtc'),
+            nowResult.rows.first.str('NowUtc'),
           );
           var allHoldsValid =
               bookings.rows.length == lessonCount &&
@@ -238,32 +237,31 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
           var holdExpired = false;
           final replayBookings = <int, Map<String, Object?>>{};
           for (final booking in bookings.rows) {
-            final number = _int(booking.colByName('LessonNumber'));
+            final number = _int(booking.str('LessonNumber'));
             if (replayBookings.containsKey(number)) {
               allHoldsValid = false;
               continue;
             }
             replayBookings[number] = {
-              'id': _int(booking.colByName('Booking_id')),
-              'status': _string(booking.colByName('Status')),
+              'id': _int(booking.str('Booking_id')),
+              'status': _string(booking.str('Status')),
             };
-            if (_string(booking.colByName('Status')) != 'Pending') {
+            if (_string(booking.str('Status')) != 'Pending') {
               allHoldsValid = false;
             }
           }
           for (final hold in holds.rows) {
-            final number = _int(hold.colByName('LessonNumber'));
+            final number = _int(hold.str('LessonNumber'));
             final booking = replayBookings[number];
-            final bookingId = hold.colByName('BookingID');
+            final bookingId = hold.str('BookingID');
             if (booking == null ||
                 bookingId == null ||
                 _int(bookingId) != booking['id']) {
               allHoldsValid = false;
             }
-            final holdIsActive =
-                _string(hold.colByName('HoldStatus')) == 'Active';
+            final holdIsActive = _string(hold.str('HoldStatus')) == 'Active';
             final holdIsUnexpired = _utcDateTime(
-              hold.colByName('ExpiresAtUtc'),
+              hold.str('ExpiresAtUtc'),
             ).isAfter(replayNowUtc);
             if (!holdIsActive || !holdIsUnexpired) {
               allHoldsValid = false;
@@ -292,8 +290,8 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
         return _PaymentTransactionOutcome.receipt(
           PaymentAttemptReceipt(
             paymentAttemptId: attemptId,
-            attemptNumber: _int(attempt.colByName('AttemptNumber')),
-            paymentStatus: _string(attempt.colByName('PaymentStatus')),
+            attemptNumber: _int(attempt.str('AttemptNumber')),
+            paymentStatus: _string(attempt.str('PaymentStatus')),
             purchaseStatus: purchaseStatus,
             replayed: true,
             settled: settled,
@@ -315,7 +313,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       );
     }
     if (attempts.rows.any(
-      (row) => _string(row.colByName('PaymentStatus')) != 'Failed',
+      (row) => _string(row.str('PaymentStatus')) != 'Failed',
     )) {
       throw const BookingPurchaseConflict(
         'payment_attempt_unresolved',
@@ -326,39 +324,39 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final nowResult = await connection.execute(
       'SELECT UTC_TIMESTAMP(6) AS NowUtc',
     );
-    final nowUtc = _utcDateTime(nowResult.rows.first.colByName('NowUtc'));
+    final nowUtc = _utcDateTime(nowResult.rows.first.str('NowUtc'));
     var completeHoldSet =
         bookings.rows.length == lessonCount && holds.rows.length == lessonCount;
     var holdExpired = false;
     final bookingByLesson = <int, Map<String, dynamic>>{};
     for (final booking in bookings.rows) {
-      final number = _int(booking.colByName('LessonNumber'));
+      final number = _int(booking.str('LessonNumber'));
       if (bookingByLesson.containsKey(number)) {
         completeHoldSet = false;
         continue;
       }
       bookingByLesson[number] = {
-        'id': _int(booking.colByName('Booking_id')),
-        'status': _string(booking.colByName('Status')),
+        'id': _int(booking.str('Booking_id')),
+        'status': _string(booking.str('Status')),
       };
-      if (_string(booking.colByName('Status')) != 'Pending') {
+      if (_string(booking.str('Status')) != 'Pending') {
         completeHoldSet = false;
       }
     }
 
     final holdsByLesson = <int, Map<String, Object?>>{};
     for (final hold in holds.rows) {
-      final number = _int(hold.colByName('LessonNumber'));
+      final number = _int(hold.str('LessonNumber'));
       if (holdsByLesson.containsKey(number)) {
         completeHoldSet = false;
         continue;
       }
       final booking = bookingByLesson[number];
-      final expiresAtUtc = _utcDateTime(hold.colByName('ExpiresAtUtc'));
-      final status = _string(hold.colByName('HoldStatus'));
+      final expiresAtUtc = _utcDateTime(hold.str('ExpiresAtUtc'));
+      final status = _string(hold.str('HoldStatus'));
       if (booking == null ||
-          hold.colByName('BookingID') == null ||
-          _int(hold.colByName('BookingID')) != booking['id']) {
+          hold.str('BookingID') == null ||
+          _int(hold.str('BookingID')) != booking['id']) {
         completeHoldSet = false;
       }
       final holdIsUnexpired = expiresAtUtc.isAfter(nowUtc);
@@ -395,7 +393,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
 
     final attemptNumber = attempts.rows.isEmpty
         ? 1
-        : _int(attempts.rows.last.colByName('AttemptNumber')) + 1;
+        : _int(attempts.rows.last.str('AttemptNumber')) + 1;
     if (attemptNumber > 65535) {
       throw const BookingPurchaseServiceUnavailable();
     }
@@ -527,13 +525,13 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     );
     if (existing.rows.isNotEmpty) {
       final row = existing.rows.first;
-      if (_string(row.colByName('RequestFingerprint')) != command.fingerprint) {
+      if (_string(row.str('RequestFingerprint')) != command.fingerprint) {
         throw const BookingPurchaseConflict(
           'idempotency_key_reused',
           'The idempotency key was already used for a different request.',
         );
       }
-      final purchaseId = _int(row.colByName('PurchaseID'));
+      final purchaseId = _int(row.str('PurchaseID'));
       await _expirePurchaseIfNeeded(connection, purchaseId);
       return _loadReceipt(connection, studentId, purchaseId, replayed: true);
     }
@@ -585,9 +583,9 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final availability = [
       for (final row in availabilityResult.rows)
         WeeklyAvailability(
-          weekday: _weekday(_string(row.colByName('Day'))),
-          startMinutes: parseClockTime(_string(row.colByName('StartTime'))),
-          endMinutes: parseClockTime(_string(row.colByName('end_Time'))),
+          weekday: _weekday(_string(row.str('Day'))),
+          startMinutes: parseClockTime(_string(row.str('StartTime'))),
+          endMinutes: parseClockTime(_string(row.str('end_Time'))),
         ),
     ];
 
@@ -595,7 +593,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       'SELECT UTC_TIMESTAMP(6) AS NowUtc',
     );
     final databaseNow = _utcDateTime(
-      databaseNowResult.rows.first.colByName('NowUtc'),
+      databaseNowResult.rows.first.str('NowUtc'),
     );
     final lessonDates = [for (final l in command.lessons) l.interval.date]
       ..sort((a, b) => b.daysUntil(a)); // earliest first
@@ -687,10 +685,10 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       ''',
     );
     final holdCreatedAt = _formatUtcDateTime(
-      _utcDateTime(holdTimes.rows.first.colByName('CreatedAtUtc')),
+      _utcDateTime(holdTimes.rows.first.str('CreatedAtUtc')),
     );
     final holdExpiresAt = _formatUtcDateTime(
-      _utcDateTime(holdTimes.rows.first.colByName('ExpiresAtUtc')),
+      _utcDateTime(holdTimes.rows.first.str('ExpiresAtUtc')),
     );
     for (var index = 0; index < command.lessons.length; index++) {
       final lesson = command.lessons[index];
@@ -795,7 +793,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     );
     if (purchaseResult.rows.isEmpty) throw const BookingPurchaseNotFound();
     final purchase = purchaseResult.rows.first;
-    if (purchase.colByName('PurchaseStatus') != 'Held') return;
+    if (purchase.str('PurchaseStatus') != 'Held') return;
 
     await connection.execute(
       '''
@@ -820,13 +818,13 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final nowResult = await connection.execute(
       'SELECT UTC_TIMESTAMP(6) AS NowUtc',
     );
-    final nowUtc = _utcDateTime(nowResult.rows.first.colByName('NowUtc'));
-    final requiredCount = _int(purchase.colByName('LessonCount'));
+    final nowUtc = _utcDateTime(nowResult.rows.first.str('NowUtc'));
+    final requiredCount = _int(purchase.str('LessonCount'));
     final validLessons = {
       for (final row in holds.rows)
-        if (row.colByName('HoldStatus') == 'Active' &&
-            _utcDateTime(row.colByName('ExpiresAtUtc')).isAfter(nowUtc))
-          _int(row.colByName('LessonNumber')),
+        if (row.str('HoldStatus') == 'Active' &&
+            _utcDateTime(row.str('ExpiresAtUtc')).isAfter(nowUtc))
+          _int(row.str('LessonNumber')),
     };
     final allLessonsHeld =
         validLessons.length == requiredCount &&
@@ -909,19 +907,19 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
     final lessons = [
       for (final row in lessonResult.rows)
         PurchaseLessonReceipt(
-          bookingId: _int(row.colByName('Booking_id')),
-          lessonNumber: _int(row.colByName('LessonNumber')),
+          bookingId: _int(row.str('Booking_id')),
+          lessonNumber: _int(row.str('LessonNumber')),
           lesson: PurchaseLesson(
-            date: BookingDate.parse(_string(row.colByName('Date'))),
-            startMinutes: parseClockTime(_string(row.colByName('StartTime'))),
-            endMinutes: parseClockTime(_string(row.colByName('EndTime'))),
+            date: BookingDate.parse(_string(row.date('Date'))),
+            startMinutes: parseClockTime(_string(row.str('StartTime'))),
+            endMinutes: parseClockTime(_string(row.str('EndTime'))),
           ),
           holdStatus: _receiptHoldStatus(
-            _string(row.colByName('HoldStatus')),
+            _string(row.str('HoldStatus')),
           ),
         ),
     ];
-    if (lessons.length != _int(purchase.colByName('LessonCount'))) {
+    if (lessons.length != _int(purchase.str('LessonCount'))) {
       throw const BookingPurchaseServiceUnavailable();
     }
     final expiryResult = await connection.execute(
@@ -932,21 +930,21 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       {'purchaseId': purchaseId},
     );
     return BookingPurchaseReceipt(
-      purchaseId: _int(purchase.colByName('PurchaseID')),
-      purchaseStatus: _string(purchase.colByName('PurchaseStatus')),
+      purchaseId: _int(purchase.str('PurchaseID')),
+      purchaseStatus: _string(purchase.str('PurchaseStatus')),
       holdExpiresAtUtc: _utcDateTime(
-        expiryResult.rows.first.colByName('HoldExpiresAt'),
+        expiryResult.rows.first.str('HoldExpiresAt'),
       ),
-      tutorId: _int(purchase.colByName('TutorID')),
-      subjectId: _int(purchase.colByName('SubjectID')),
-      rate: _string(purchase.colByName('RatePerLesson')),
-      lessonCount: _int(purchase.colByName('LessonCount')),
-      subtotal: _string(purchase.colByName('SubtotalAmount')),
+      tutorId: _int(purchase.str('TutorID')),
+      subjectId: _int(purchase.str('SubjectID')),
+      rate: _string(purchase.str('RatePerLesson')),
+      lessonCount: _int(purchase.str('LessonCount')),
+      subtotal: _string(purchase.str('SubtotalAmount')),
       discountPercent: _discountPercent(
-        purchase.colByName('DiscountPercent'),
+        purchase.str('DiscountPercent'),
       ),
-      discount: _string(purchase.colByName('DiscountAmount')),
-      total: _string(purchase.colByName('TotalAmount')),
+      discount: _string(purchase.str('DiscountAmount')),
+      total: _string(purchase.str('TotalAmount')),
       lessons: lessons,
       replayed: replayed,
     );

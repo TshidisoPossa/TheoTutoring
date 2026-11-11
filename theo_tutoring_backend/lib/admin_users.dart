@@ -2,8 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:mysql_client/exception.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/exception.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/admin_refunds.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/firebase_admin.dart';
@@ -174,12 +175,12 @@ class MySqlAdminUsersRepository implements AdminUsersRepository {
       return [
         for (final row in result.rows)
           {
-            'adminId': int.parse(row.colByName('AdminID')!),
-            'name': row.colByName('Name'),
-            'email': row.colByName('Email'),
-            'role': row.colByName('RoleKey'),
-            'accountStatus': row.colByName('AccountStatus'),
-            'createdAt': row.colByName('Created_at'),
+            'adminId': int.parse(row.reqStr('AdminID')),
+            'name': row.str('Name'),
+            'email': row.str('Email'),
+            'role': row.str('RoleKey'),
+            'accountStatus': row.str('AccountStatus'),
+            'createdAt': row.str('Created_at'),
           },
       ];
     } finally {

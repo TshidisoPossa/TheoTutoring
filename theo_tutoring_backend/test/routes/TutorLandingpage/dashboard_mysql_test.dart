@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/database.dart';
 // Same import as the routes, so it is the same TutorSession type.
@@ -25,7 +26,8 @@ final _tutorId = int.tryParse(
 );
 
 const _meetLink = 'https://meet.google.com/aaa-bbbb-ccc';
-const _ownLink = 'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
+const _ownLink =
+    'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
 
 void main() {
   if (_tutorId == null) {
@@ -72,7 +74,8 @@ void main() {
 
   // Our bookings on today's schedule, by name, in the order returned.
   List<String> ours(Map<String, dynamic> body) => [
-    for (final row in (body['todaysSchedule'] as List).cast<Map<String, dynamic>>())
+    for (final row
+        in (body['todaysSchedule'] as List).cast<Map<String, dynamic>>())
       for (final e in ids.entries)
         if ('${row['Booking_id']}' == '${e.value}') e.key,
   ];
@@ -100,9 +103,9 @@ void main() {
         'StartTime, EndTime, Note, Status) '
         'VALUES (:st, :t, :subj, :d, :s, :e, :note, :status)',
         {
-          'st': student.rows.first.colByName('StudentID'),
+          'st': student.rows.first.str('StudentID'),
           't': _tutorId,
-          'subj': subject.rows.first.colByName('subjectId'),
+          'subj': subject.rows.first.str('subjectId'),
           'd': date,
           's': start,
           'e': end,
@@ -119,20 +122,50 @@ void main() {
     final earlierEnd = now.subtract(const Duration(minutes: 10));
 
     // Only this one is "upcoming today"
-    await add('later today', status: 'Confirmed', date: day(0),
-        start: clock(later), end: clock(laterEnd));
+    await add(
+      'later today',
+      status: 'Confirmed',
+      date: day(0),
+      start: clock(later),
+      end: clock(laterEnd),
+    );
     // Today, but not counted
-    await add('ended today', status: 'Confirmed', date: day(0),
-        start: clock(earlier), end: clock(earlierEnd));
-    await add('cancelled today', status: 'Cancelled', date: day(0),
-        start: clock(later), end: clock(laterEnd));
-    await add('pending today', status: 'Pending', date: day(0),
-        start: clock(later), end: clock(laterEnd));
+    await add(
+      'ended today',
+      status: 'Confirmed',
+      date: day(0),
+      start: clock(earlier),
+      end: clock(earlierEnd),
+    );
+    await add(
+      'cancelled today',
+      status: 'Cancelled',
+      date: day(0),
+      start: clock(later),
+      end: clock(laterEnd),
+    );
+    await add(
+      'pending today',
+      status: 'Pending',
+      date: day(0),
+      start: clock(later),
+      end: clock(laterEnd),
+    );
     // Not today
-    await add('tomorrow', status: 'Confirmed', date: day(1),
-        start: '10:00:00', end: '11:00:00');
-    await add('yesterday', status: 'Confirmed', date: day(-1),
-        start: '10:00:00', end: '11:00:00');
+    await add(
+      'tomorrow',
+      status: 'Confirmed',
+      date: day(1),
+      start: '10:00:00',
+      end: '11:00:00',
+    );
+    await add(
+      'yesterday',
+      status: 'Confirmed',
+      date: day(-1),
+      start: '10:00:00',
+      end: '11:00:00',
+    );
   });
 
   tearDownAll(() async {
@@ -152,7 +185,7 @@ void main() {
       "WHERE u.Role = 'student' AND u.AccountStatus = 'Active'",
     );
     final body = await dashboard();
-    final students = int.parse(expected.rows.first.colByName('n')!);
+    final students = int.parse(expected.rows.first.reqStr('n'));
     expect(body['activeStudents'], students);
     // Adding bookings does not change it: it is not per tutor
     expect(body['activeStudents'], before['activeStudents']);
@@ -187,13 +220,14 @@ void main() {
       'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
       {'t': _tutorId},
     );
-    final savedMeetLink = saved.rows.first.colByName('MeetLink');
+    final savedMeetLink = saved.rows.first.str('MeetLink');
     Future<Object?> link() async {
       final body = await dashboard();
       return (body['todaysSchedule'] as List)
           .cast<Map<String, dynamic>>()
-          .firstWhere((r) => '${r['Booking_id']}' == '${ids['later today']}')
-          ['Link'];
+          .firstWhere(
+            (r) => '${r['Booking_id']}' == '${ids['later today']}',
+          )['Link'];
     }
 
     try {

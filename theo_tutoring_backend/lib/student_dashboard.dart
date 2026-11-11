@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/tutor_search.dart';
 
 /// Loads a student's live dashboard data from MySQL.
@@ -25,7 +26,7 @@ class MySqlStudentDashboardRepository {
     );
     if (student.rows.isEmpty) throw const StudentDashboardDenied();
 
-    final studentId = int.parse(student.rows.first.colByName('StudentID')!);
+    final studentId = int.parse(student.rows.first.reqStr('StudentID'));
     final sessionsResult = await connection.execute(
       '''
       SELECT b.Booking_id, s.subjectName, tu.Name AS TutorName,
@@ -49,13 +50,13 @@ class MySqlStudentDashboardRepository {
     final sessions = [
       for (final row in sessionsResult.rows)
         <String, Object?>{
-          'bookingId': int.parse(row.colByName('Booking_id')!),
-          'subject': row.colByName('subjectName'),
-          'tutorName': row.colByName('TutorName'),
-          'tutorPhoto': row.colByName('TutorPhoto'),
-          'date': row.colByName('SessionDate'),
-          'startTime': row.colByName('StartTime'),
-          'endTime': row.colByName('EndTime'),
+          'bookingId': int.parse(row.reqStr('Booking_id')),
+          'subject': row.str('subjectName'),
+          'tutorName': row.str('TutorName'),
+          'tutorPhoto': row.str('TutorPhoto'),
+          'date': row.str('SessionDate'),
+          'startTime': row.str('StartTime'),
+          'endTime': row.str('EndTime'),
           // The Meet link only comes from the join route, at lesson time.
         },
     ];
@@ -64,12 +65,12 @@ class MySqlStudentDashboardRepository {
       const TutorSearchOptions(query: '', subjectId: null, page: 1, limit: 3),
     );
     return {
-      'studentName': student.rows.first.colByName('Name'),
+      'studentName': student.rows.first.str('Name'),
       // Cloudinary URL saved at registration, null if none was uploaded
-      'studentPhoto': student.rows.first.colByName('ProfilePhoto'),
+      'studentPhoto': student.rows.first.str('ProfilePhoto'),
       // For the Profile tab
-      'studentEmail': student.rows.first.colByName('Email'),
-      'studentInstitution': student.rows.first.colByName('Institution'),
+      'studentEmail': student.rows.first.str('Email'),
+      'studentInstitution': student.rows.first.str('Institution'),
       'upcomingSessions': sessions,
       'tutors': tutorPage.tutors,
     };

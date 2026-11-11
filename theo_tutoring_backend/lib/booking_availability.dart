@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/session_rate.dart';
@@ -79,7 +80,7 @@ class MySqlBookingAvailabilityRepository
     );
     if (tutor.rows.isEmpty) return null;
     final resolvedTutorId = _databaseInt(
-      tutor.rows.first.colByName('TutorID'),
+      tutor.rows.first.str('TutorID'),
     );
     if (resolvedTutorId != request.tutorId) {
       throw const BookingAvailabilityUnavailable();
@@ -103,13 +104,13 @@ class MySqlBookingAvailabilityRepository
       for (final row in availabilityResult.rows)
         WeeklyAvailability(
           weekday: _weekdayNumber(
-            _requiredDatabaseString(row.colByName('Day')),
+            _requiredDatabaseString(row.str('Day')),
           ),
           startMinutes: parseClockTime(
-            _requiredDatabaseString(row.colByName('StartTime')),
+            _requiredDatabaseString(row.str('StartTime')),
           ),
           endMinutes: parseClockTime(
-            _requiredDatabaseString(row.colByName('end_Time')),
+            _requiredDatabaseString(row.str('end_Time')),
           ),
         ),
     ];
@@ -134,13 +135,13 @@ class MySqlBookingAvailabilityRepository
       for (final row in bookingResult.rows)
         LessonInterval(
           date: BookingDate.parse(
-            _requiredDatabaseString(row.colByName('Date')),
+            _requiredDatabaseString(row.date('Date')),
           ),
           startMinutes: parseClockTime(
-            _requiredDatabaseString(row.colByName('StartTime')),
+            _requiredDatabaseString(row.str('StartTime')),
           ),
           endMinutes: parseClockTime(
-            _requiredDatabaseString(row.colByName('EndTime')),
+            _requiredDatabaseString(row.str('EndTime')),
           ),
         ),
     ];
@@ -161,13 +162,13 @@ class MySqlBookingAvailabilityRepository
       for (final row in holdResult.rows)
         LessonInterval(
           date: BookingDate.parse(
-            _requiredDatabaseString(row.colByName('LessonDate')),
+            _requiredDatabaseString(row.date('LessonDate')),
           ),
           startMinutes: parseClockTime(
-            _requiredDatabaseString(row.colByName('StartTime')),
+            _requiredDatabaseString(row.str('StartTime')),
           ),
           endMinutes: parseClockTime(
-            _requiredDatabaseString(row.colByName('EndTime')),
+            _requiredDatabaseString(row.str('EndTime')),
           ),
         ),
     ]);

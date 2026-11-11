@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/database.dart';
 // Same import as the routes, so it is the same TutorSession type.
@@ -24,7 +25,8 @@ final _tutorId = int.tryParse(
 );
 
 const _meetLink = 'https://meet.google.com/aaa-bbbb-ccc';
-const _ownLink = 'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
+const _ownLink =
+    'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
 
 void main() {
   if (_tutorId == null) {
@@ -109,15 +111,15 @@ void main() {
     final subjects = await conn.execute(
       'SELECT subjectId, subjectName FROM Subjects ORDER BY subjectId LIMIT 2',
     );
-    subjectA = int.parse(subjects.rows.first.colByName('subjectId')!);
-    subjectB = int.parse(subjects.rows.last.colByName('subjectId')!);
-    subjectBName = subjects.rows.last.colByName('subjectName')!;
+    subjectA = int.parse(subjects.rows.first.reqStr('subjectId'));
+    subjectB = int.parse(subjects.rows.last.reqStr('subjectId'));
+    subjectBName = subjects.rows.last.reqStr('subjectName');
     final student = await conn.execute(
       'SELECT s.StudentID, u.Name FROM StudentProfile s '
       'JOIN `User` u ON u.UserId = s.UserID ORDER BY s.StudentID LIMIT 1',
     );
-    final studentId = student.rows.first.colByName('StudentID');
-    studentName = student.rows.first.colByName('Name')!;
+    final studentId = student.rows.first.str('StudentID');
+    studentName = student.rows.first.reqStr('Name');
 
     Future<void> add(
       String name, {
@@ -303,13 +305,12 @@ void main() {
     expect(todayGroup['count'], (todayGroup['sessions'] as List).length);
   });
 
-  test("link: the tutor's Meet room, unless the booking has its own",
-      () async {
+  test("link: the tutor's Meet room, unless the booking has its own", () async {
     final saved = await conn.execute(
       'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
       {'t': _tutorId},
     );
-    final savedMeetLink = saved.rows.first.colByName('MeetLink');
+    final savedMeetLink = saved.rows.first.str('MeetLink');
     try {
       await conn.execute(
         'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',

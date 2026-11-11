@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/tutor_presence.dart';
 import 'package:theo_tutoring_backend/tutor_search.dart';
 
@@ -65,30 +66,30 @@ class MySqlTutorPublicProfileRepository {
 
     return {
       ...tutor,
-      'availableNow': presence.rows.first.colByName('AvailableNow') == '1',
+      'availableNow': presence.rows.first.str('AvailableNow') == '1',
       'qualifications': [
         for (final row in qualifications.rows)
           {
-            'degree': row.colByName('Degree'),
-            'institution': row.colByName('Institution'),
+            'degree': row.str('Degree'),
+            'institution': row.str('Institution'),
           },
       ],
       'availability': [
         for (final row in availability.rows)
           {
-            'day': row.colByName('Day'),
-            'startTime': row.colByName('StartTime'),
-            'endTime': row.colByName('EndTime'),
+            'day': row.str('Day'),
+            'startTime': row.str('StartTime'),
+            'endTime': row.str('EndTime'),
           },
       ],
       'reviews': [
         for (final row in reviews.rows)
           {
-            'reviewId': int.parse(row.colByName('Reviewid')!),
-            'studentName': reviewerName(row.colByName('StudentName')),
-            'rating': int.parse(row.colByName('Rating')!),
-            'comment': row.colByName('comment'),
-            'createdAt': row.colByName('CreatedAt'),
+            'reviewId': int.parse(row.reqStr('Reviewid')),
+            'studentName': reviewerName(row.str('StudentName')),
+            'rating': int.parse(row.reqStr('Rating')),
+            'comment': row.str('comment'),
+            'createdAt': row.str('CreatedAt'),
           },
       ],
     };

@@ -1,4 +1,6 @@
+import 'package:mysql_dart/mysql_dart.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 /// Roster filters sent by the Flutter app (lower case) -> User.AccountStatus.
 const tutorRosterStatusFilters = {
@@ -50,21 +52,20 @@ const _tutorSelect =
     "AND b.Status = 'Completed') AS TotalLessons "
     'FROM `User` u JOIN TutorProfile tp ON tp.UserID = u.UserId ';
 
-Map<String, Object?> _tutor(dynamic r) => {
-  'tutorId': int.parse(r.colByName('TutorID')! as String),
-  'name': r.colByName('Name'),
-  'email': r.colByName('Email'),
-  'phone': r.colByName('PhoneNum'),
-  'photoUrl': r.colByName('ProfilePhoto'),
-  'subjects': r.colByName('SubjectNames'),
-  'experience': r.colByName('Experience'),
-  'verification': r.colByName('VerificationStat'),
-  'averageRating': double.tryParse(r.colByName('AveRate') as String? ?? '') ??
-      0.0,
-  'reviewCount': int.parse(r.colByName('ReviewCount')! as String),
-  'totalLessons': int.parse(r.colByName('TotalLessons')! as String),
-  'joinedAt': r.colByName('Created_at'),
-  'status': r.colByName('AccountStatus'),
+Map<String, Object?> _tutor(ResultSetRow r) => {
+  'tutorId': int.parse(r.reqStr('TutorID')),
+  'name': r.str('Name'),
+  'email': r.str('Email'),
+  'phone': r.str('PhoneNum'),
+  'photoUrl': r.str('ProfilePhoto'),
+  'subjects': r.str('SubjectNames'),
+  'experience': r.str('Experience'),
+  'verification': r.str('VerificationStat'),
+  'averageRating': double.tryParse(r.str('AveRate') ?? '') ?? 0.0,
+  'reviewCount': int.parse(r.reqStr('ReviewCount')),
+  'totalLessons': int.parse(r.reqStr('TotalLessons')),
+  'joinedAt': r.str('Created_at'),
+  'status': r.str('AccountStatus'),
 };
 
 class MySqlTutorRosterRepository implements TutorRosterRepository {
@@ -108,19 +109,19 @@ class MySqlTutorRosterRepository implements TutorRosterRepository {
       "WHERE u.Role = 'tutor'",
     );
     final s = summary.rows.first;
-    final totalTutors = int.parse(s.colByName('total')!);
-    final lessons = int.parse(s.colByName('lessons')!);
+    final totalTutors = int.parse(s.reqStr('total'));
+    final lessons = int.parse(s.reqStr('lessons'));
     return {
-      'total': int.parse(total.rows.first.colByName('n')!),
+      'total': int.parse(total.rows.first.reqStr('n')),
       'page': page,
       'pageSize': pageSize,
       'summary': {
         'totalTutors': totalTutors,
-        'activeThisMonth': int.parse(s.colByName('activeMonth')!),
+        'activeThisMonth': int.parse(s.reqStr('activeMonth')),
         'avgLessonsPerTutor': totalTutors == 0
             ? 0.0
             : double.parse((lessons / totalTutors).toStringAsFixed(1)),
-        'suspendedAccounts': int.parse(s.colByName('suspended')!),
+        'suspendedAccounts': int.parse(s.reqStr('suspended')),
       },
       'tutors': [for (final r in rows.rows) _tutor(r)],
     };
@@ -135,14 +136,14 @@ class MySqlTutorRosterRepository implements TutorRosterRepository {
       {'id': tutorId},
     );
     if (found.rows.isEmpty) throw const TutorNotFound();
-    final current = found.rows.first.colByName('AccountStatus') ?? '';
+    final current = found.rows.first.str('AccountStatus') ?? '';
     // Activating a tutor in review would skip the application approval.
     if (!tutorRosterSettableStatuses.contains(current)) {
       throw TutorStatusLocked(current);
     }
     await conn.execute(
       'UPDATE `User` SET AccountStatus = :status WHERE UserId = :uid',
-      {'status': status, 'uid': found.rows.first.colByName('UserId')},
+      {'status': status, 'uid': found.rows.first.str('UserId')},
     );
     final row = await conn.execute(
       '$_tutorSelect WHERE tp.TutorID = :id',

@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 // ---------------------------------------------------------------------------
 // FIXED SESSION RATE
@@ -22,5 +23,5 @@ Future<String?> getCurrentSessionRate(MySQLConnection connection) async {
     'SELECT $currentSessionRateSubquery AS Amount',
   );
   if (result.rows.isEmpty) return null;
-  return result.rows.first.colByName('Amount');
+  return result.rows.first.str('Amount');
 }

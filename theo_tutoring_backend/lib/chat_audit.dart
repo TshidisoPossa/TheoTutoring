@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/chat.dart';
 
 // The MySQL Messaging table as an audit copy of Firestore chat messages
@@ -130,7 +131,7 @@ class MySqlChatAudit implements ChatAuditSink {
     );
     return {
       for (final row in result.rows)
-        if (row.colByName('FirestoreMessageID') case final id?) id,
+        if (row.str('FirestoreMessageID') case final id?) id,
     };
   }
 

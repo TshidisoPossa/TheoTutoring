@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/session_rate.dart';
 
 class TutorSearchOptions {
@@ -40,7 +41,7 @@ class MySqlTutorSearchRepository implements TutorSearchRepository {
       buildTutorSearchCountSql(filter),
       filter.parameters,
     );
-    final total = int.parse(countResult.rows.first.colByName('total')!);
+    final total = int.parse(countResult.rows.first.reqStr('total'));
 
     final tutorResult = await connection.execute(
       buildTutorSearchPageSql(filter),
@@ -73,20 +74,20 @@ class MySqlTutorSearchRepository implements TutorSearchRepository {
   }
 
   Map<String, Object?> _tutorFromRow(ResultSetRow row) {
-    final hourlyRate = row.colByName('HourlyRate');
-    final averageRating = row.colByName('AverageRating');
+    final hourlyRate = row.str('HourlyRate');
+    final averageRating = row.str('AverageRating');
     return {
-      'tutorId': int.parse(row.colByName('TutorID')!),
-      'name': row.colByName('Name'),
-      'profilePhoto': row.colByName('ProfilePhoto'),
-      'bio': row.colByName('Bio'),
-      'experience': row.colByName('Experience'),
-      'qualification': row.colByName('Qualification'),
+      'tutorId': int.parse(row.reqStr('TutorID')),
+      'name': row.str('Name'),
+      'profilePhoto': row.str('ProfilePhoto'),
+      'bio': row.str('Bio'),
+      'experience': row.str('Experience'),
+      'qualification': row.str('Qualification'),
       'hourlyRate': hourlyRate == null ? null : double.parse(hourlyRate),
       'averageRating': averageRating == null
           ? null
           : double.parse(averageRating),
-      'reviewCount': int.parse(row.colByName('ReviewCount') ?? '0'),
+      'reviewCount': int.parse(row.str('ReviewCount') ?? '0'),
       'subjects': <Map<String, Object?>>[],
     };
   }
@@ -113,10 +114,10 @@ class MySqlTutorSearchRepository implements TutorSearchRepository {
       for (final tutor in tutors) tutor['tutorId']! as int: tutor,
     };
     for (final row in subjectResult.rows) {
-      final tutor = tutorsById[int.parse(row.colByName('TutorID')!)];
+      final tutor = tutorsById[int.parse(row.reqStr('TutorID'))];
       (tutor!['subjects']! as List<Map<String, Object?>>).add({
-        'subjectId': int.parse(row.colByName('subjectId')!),
-        'subjectName': row.colByName('subjectName'),
+        'subjectId': int.parse(row.reqStr('subjectId')),
+        'subjectName': row.str('subjectName'),
       });
     }
   }

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
 import 'package:theo_tutoring_backend/chat.dart';
 import 'package:theo_tutoring_backend/chat_audit.dart';
 import 'package:theo_tutoring_backend/chat_outbox.dart';

@@ -1,7 +1,8 @@
 import 'dart:io';
 
-import 'package:mysql_client/exception.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/exception.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 
 /// MySQL "table doesn't exist": migration 007 has not been run yet.
@@ -43,9 +44,9 @@ Future<List<AvailabilityOverride>> loadAvailabilityOverrides(
   return [
     for (final row in result.rows)
       AvailabilityOverride(
-        date: BookingDate.parse(row.colByName('OverrideDate')!),
-        startMinutes: _minutesOrNull(row.colByName('StartTime')),
-        endMinutes: _minutesOrNull(row.colByName('EndTime')),
+        date: BookingDate.parse(row.reqStr('OverrideDate')),
+        startMinutes: _minutesOrNull(row.str('StartTime')),
+        endMinutes: _minutesOrNull(row.str('EndTime')),
       ),
   ];
 }

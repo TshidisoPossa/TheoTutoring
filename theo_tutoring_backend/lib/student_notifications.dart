@@ -1,6 +1,7 @@
 import 'dart:io';
 
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/booking_tutor.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/notifications.dart';
@@ -49,7 +50,7 @@ Future<StudentSession?> findActiveStudent(
   if (result.rows.isEmpty) return null;
   return StudentSession(
     firebaseUid,
-    int.parse(result.rows.first.colByName('StudentID')!),
+    int.parse(result.rows.first.reqStr('StudentID')),
   );
 }
 
@@ -174,7 +175,7 @@ Future<bool> notifyStudentOfPaidPurchase(int purchaseId) async {
       ''',
       {'purchaseId': purchaseId},
     );
-    final rows = result.rows.map((r) => r.assoc()).toList();
+    final rows = result.rows.map((r) => r.textAssoc()).toList();
     if (rows.isEmpty) return false;
     final studentUid = rows.first['StudentUid'];
     if (studentUid == null || studentUid.isEmpty) return false;
@@ -228,7 +229,7 @@ Future<bool> notifyStudentOfRefund(int refundId, {String? reason}) async {
       {'refundId': refundId},
     );
     if (result.rows.isEmpty) return false;
-    final row = result.rows.first.assoc();
+    final row = result.rows.first.textAssoc();
     final status = row['RefundStatus'];
     final studentUid = row['StudentUid'];
     if (status != 'Approved' && status != 'Denied') return false;
@@ -286,7 +287,7 @@ Future<void> syncStudentNotifications(
   );
 
   final notices = [
-    for (final row in upcoming.rows.map((r) => r.assoc()))
+    for (final row in upcoming.rows.map((r) => r.textAssoc()))
       studentUpcomingNotice(
         bookingId: int.parse(row['Booking_id']!),
         tutorName: row['TutorName'] ?? 'your tutor',

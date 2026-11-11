@@ -1,5 +1,6 @@
 import 'package:theo_tutoring_backend/admin_refunds.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 
 // ignore_for_file: public_member_api_docs
@@ -61,7 +62,7 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
 
       final tutorIds = <int>{};
       for (final row in rows) {
-        final tutorId = int.parse(row.colByName('TutorID')!);
+        final tutorId = int.parse(row.reqStr('TutorID'));
         tutorIds.add(tutorId);
       }
       final parameters = <String, dynamic>{
@@ -82,9 +83,9 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
       );
       final qualificationsByTutor = <int, List<String>>{};
       for (final row in qualificationResult.rows) {
-        final tutorId = int.parse(row.colByName('TutorID')!);
-        final degree = row.colByName('Degree')!;
-        final institution = row.colByName('Institution')!;
+        final tutorId = int.parse(row.reqStr('TutorID'));
+        final degree = row.reqStr('Degree');
+        final institution = row.reqStr('Institution');
         qualificationsByTutor
             .putIfAbsent(tutorId, () => [])
             .add('$degree — $institution');
@@ -102,16 +103,16 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
       );
       final subjectsByTutor = <int, List<String>>{};
       for (final row in subjectsResult.rows) {
-        final tutorId = int.parse(row.colByName('TutorID')!);
+        final tutorId = int.parse(row.reqStr('TutorID'));
         subjectsByTutor
             .putIfAbsent(tutorId, () => [])
-            .add(row.colByName('subjectName')!);
+            .add(row.reqStr('subjectName'));
       }
 
       return [
         for (final row in rows)
           _applicationJson(
-            row.colByName,
+            row.str,
             qualificationsByTutor,
             subjectsByTutor,
           ),
@@ -146,12 +147,12 @@ class MySqlAdminApplicationsRepository implements AdminApplicationsRepository {
           {'applicationId': applicationId},
         );
         if (current.rows.isEmpty) throw const AdminApplicationNotFound();
-        if (current.rows.first.colByName('Status') != 'Pending') {
+        if (current.rows.first.str('Status') != 'Pending') {
           throw const AdminApplicationConflict(
             'This application has already been reviewed.',
           );
         }
-        final tutorId = int.parse(current.rows.first.colByName('TutorID')!);
+        final tutorId = int.parse(current.rows.first.reqStr('TutorID'));
 
         final update = await transaction.execute(
           '''

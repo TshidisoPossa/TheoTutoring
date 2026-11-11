@@ -5,7 +5,8 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/notifications.dart';
@@ -37,7 +38,8 @@ final _tutorId = int.tryParse(
 );
 
 const _meetLink = 'https://meet.google.com/aaa-bbbb-ccc';
-const _ownLink = 'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
+const _ownLink =
+    'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
 
 void main() {
   if (_tutorId == null) {
@@ -57,9 +59,11 @@ void main() {
 
   // Sessions start 8 days out, so every one of them is in the future.
   final base = DateTime.now().add(const Duration(days: 8));
-  String day(int offset) => DateTime(base.year, base.month, base.day + offset)
-      .toIso8601String()
-      .substring(0, 10);
+  String day(int offset) => DateTime(
+    base.year,
+    base.month,
+    base.day + offset,
+  ).toIso8601String().substring(0, 10);
   String today() => DateTime.now().toIso8601String().substring(0, 10);
   const weekdays = [
     'Monday', 'Tuesday', 'Wednesday', 'Thursday', //
@@ -73,7 +77,8 @@ void main() {
       firestoreRequests.add(request);
       return http.Response(
         jsonEncode({
-          'name': 'projects/demo/databases/(default)/documents/'
+          'name':
+              'projects/demo/databases/(default)/documents/'
               'notifications/u/items/n1',
           'fields': <String, dynamic>{},
         }),
@@ -148,13 +153,13 @@ void main() {
     final subject = await conn.execute(
       'SELECT subjectId FROM Subjects ORDER BY subjectId LIMIT 1',
     );
-    final subjectId = subject.rows.first.colByName('subjectId');
+    final subjectId = subject.rows.first.str('subjectId');
     final student = await conn.execute(
       'SELECT s.StudentID, u.Name FROM StudentProfile s '
       'JOIN `User` u ON u.UserId = s.UserID ORDER BY s.StudentID LIMIT 1',
     );
-    final studentId = student.rows.first.colByName('StudentID');
-    studentName = student.rows.first.colByName('Name')!;
+    final studentId = student.rows.first.str('StudentID');
+    studentName = student.rows.first.reqStr('Name');
 
     // Availability on the series weekday is split in two touching ranges.
     Future<void> available(int offset, String start, String end) async {
@@ -332,7 +337,7 @@ void main() {
       'WHERE b.Booking_id = :id',
       {'id': ids['week1']},
     );
-    final row = given.rows.first.assoc();
+    final row = given.rows.first.textAssoc();
     expect(student['rating'], double.tryParse(row['avg'] ?? ''));
     expect(student['reviewCount'], int.parse(row['n']!));
 
@@ -375,7 +380,7 @@ void main() {
       'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
       {'t': _tutorId},
     );
-    final savedMeetLink = saved.rows.first.colByName('MeetLink');
+    final savedMeetLink = saved.rows.first.str('MeetLink');
     try {
       await conn.execute(
         'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
@@ -435,8 +440,8 @@ void main() {
       'SELECT Status, StartTime FROM Booking WHERE Booking_id = :id',
       {'id': ids['request']},
     );
-    expect(row.rows.first.colByName('Status'), 'Pending');
-    expect(row.rows.first.colByName('StartTime'), '10:00:00');
+    expect(row.rows.first.str('Status'), 'Pending');
+    expect(row.rows.first.str('StartTime'), '10:00:00');
   });
 
   test('postpone: moves the session and notifies the student', () async {
@@ -466,7 +471,7 @@ void main() {
       'WHERE Booking_id = :id',
       {'id': ids['week1']},
     );
-    final r = row.rows.first.assoc();
+    final r = row.rows.first.textAssoc();
     expect(r['Status'], 'Postponed');
     expect(r['StartTime'], '11:00:00');
     expect(r['EndTime'], '13:00:00');
@@ -504,9 +509,9 @@ void main() {
       'SELECT Status, CancellationReason FROM Booking WHERE Booking_id = :id',
       {'id': ids['paid']},
     );
-    expect(booking.rows.first.colByName('Status'), 'Cancelled');
+    expect(booking.rows.first.str('Status'), 'Cancelled');
     expect(
-      booking.rows.first.colByName('CancellationReason'),
+      booking.rows.first.str('CancellationReason'),
       'Cancelled by your tutor.',
     );
     final refund = await conn.execute(
@@ -514,7 +519,7 @@ void main() {
       'WHERE BookingID = :id',
       {'id': ids['paid']},
     );
-    final r = refund.rows.single.assoc();
+    final r = refund.rows.single.textAssoc();
     expect(double.parse(r['RefundPercentage']!), 100);
     expect(r['RefundAmount'], '250.00');
     expect(r['RefundStatus'], 'Pending');
@@ -541,9 +546,9 @@ void main() {
       'SELECT Status, CancellationReason FROM Booking WHERE Booking_id = :id',
       {'id': ids['unpaid']},
     );
-    expect(booking.rows.first.colByName('Status'), 'Cancelled');
+    expect(booking.rows.first.str('Status'), 'Cancelled');
     expect(
-      booking.rows.first.colByName('CancellationReason'),
+      booking.rows.first.str('CancellationReason'),
       contains('reschedule'),
     );
     final refund = await conn.execute(

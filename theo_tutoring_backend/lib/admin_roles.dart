@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/admin_refunds.dart';
 import 'package:theo_tutoring_backend/database.dart';
 
@@ -55,7 +56,7 @@ class MySqlAdminRoleRepository implements AdminRoleRepository {
           {'id': targetAdminId},
         );
         if (target.rows.isEmpty) throw AdminRoleNotFound();
-        final previousRole = target.rows.first.colByName('RoleKey') ?? '';
+        final previousRole = target.rows.first.str('RoleKey') ?? '';
         if (!isKnownAdminRole(previousRole)) {
           throw const AdminRoleConflict(
             'The target account has an unknown role.',
@@ -70,8 +71,7 @@ class MySqlAdminRoleRepository implements AdminRoleRepository {
           final count = await transaction.execute(
             "SELECT COUNT(*) AS total FROM Admin WHERE RoleKey = 'super_admin'",
           );
-          final total =
-              int.tryParse(count.rows.first.colByName('total') ?? '') ?? 0;
+          final total = int.tryParse(count.rows.first.str('total') ?? '') ?? 0;
           if (total <= 1) {
             throw const AdminRoleConflict(
               'The last Super Admin cannot be demoted.',

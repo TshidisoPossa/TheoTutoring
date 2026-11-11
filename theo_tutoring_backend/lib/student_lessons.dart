@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/student_dashboard.dart';
 import 'package:theo_tutoring_backend/student_reviews.dart';
 
@@ -36,7 +37,7 @@ class MySqlStudentLessonsRepository {
       {'uid': firebaseUid},
     );
     if (student.rows.isEmpty) throw const StudentDashboardDenied();
-    return int.parse(student.rows.first.colByName('StudentID')!);
+    return int.parse(student.rows.first.reqStr('StudentID'));
   }
 
   /// Loads the student's upcoming and cancelled bookings, each with the
@@ -76,19 +77,19 @@ class MySqlStudentLessonsRepository {
     final upcoming = <Map<String, Object?>>[];
     final cancelled = <Map<String, Object?>>[];
     for (final row in result.rows) {
-      final status = row.colByName('Status')!;
+      final status = row.reqStr('Status');
       final lesson = <String, Object?>{
-        'bookingId': int.parse(row.colByName('Booking_id')!),
+        'bookingId': int.parse(row.reqStr('Booking_id')),
         'status': status,
-        'subject': row.colByName('subjectName'),
-        'tutorName': row.colByName('TutorName'),
-        'tutorPhoto': row.colByName('TutorPhoto'),
-        'date': row.colByName('SessionDate'),
-        'startTime': row.colByName('StartTime'),
-        'endTime': row.colByName('EndTime'),
+        'subject': row.str('subjectName'),
+        'tutorName': row.str('TutorName'),
+        'tutorPhoto': row.str('TutorPhoto'),
+        'date': row.str('SessionDate'),
+        'startTime': row.str('StartTime'),
+        'endTime': row.str('EndTime'),
         // No 'link' here: students only get the Meet link from the join
         // route (POST /students/lessons/<id>/join), at lesson time.
-        'cancellationReason': row.colByName('CancellationReason'),
+        'cancellationReason': row.str('CancellationReason'),
       };
       (status == 'Cancelled' ? cancelled : upcoming).add(lesson);
     }
@@ -125,21 +126,21 @@ class MySqlStudentLessonsRepository {
     final completed = [
       for (final row in completedResult.rows)
         <String, Object?>{
-          'bookingId': int.parse(row.colByName('Booking_id')!),
+          'bookingId': int.parse(row.reqStr('Booking_id')),
           'status': 'Completed',
-          'subject': row.colByName('subjectName'),
-          'tutorName': row.colByName('TutorName'),
-          'tutorPhoto': row.colByName('TutorPhoto'),
-          'date': row.colByName('SessionDate'),
-          'startTime': row.colByName('StartTime'),
-          'endTime': row.colByName('EndTime'),
-          'myRating': int.tryParse(row.colByName('MyRating') ?? ''),
+          'subject': row.str('subjectName'),
+          'tutorName': row.str('TutorName'),
+          'tutorPhoto': row.str('TutorPhoto'),
+          'date': row.str('SessionDate'),
+          'startTime': row.str('StartTime'),
+          'endTime': row.str('EndTime'),
+          'myRating': int.tryParse(row.str('MyRating') ?? ''),
           // For the Leave a Review page's header
-          'tutorRating': double.tryParse(row.colByName('TutorRating') ?? ''),
+          'tutorRating': double.tryParse(row.str('TutorRating') ?? ''),
           'tutorReviewCount':
-              int.tryParse(row.colByName('TutorReviewCount') ?? '') ?? 0,
-          'tutorVerified': row.colByName('TutorVerification') == 'Approved',
-          'tutorSubjects': row.colByName('TutorSubjects'),
+              int.tryParse(row.str('TutorReviewCount') ?? '') ?? 0,
+          'tutorVerified': row.str('TutorVerification') == 'Approved',
+          'tutorSubjects': row.str('TutorSubjects'),
         },
     ];
 
@@ -160,9 +161,9 @@ class MySqlStudentLessonsRepository {
       'completed': completed,
       'cancelled': cancelled.reversed.toList(),
       'student': {
-        'name': meRow?.colByName('Name'),
-        'year': meRow?.colByName('InstitutionYear'),
-        'institution': meRow?.colByName('Institution'),
+        'name': meRow?.str('Name'),
+        'year': meRow?.str('InstitutionYear'),
+        'institution': meRow?.str('Institution'),
       },
     };
   }
@@ -205,13 +206,13 @@ class MySqlStudentLessonsRepository {
         throw const LessonActionException(404, 'Lesson not found.');
       }
       final row = booking.rows.first;
-      if (!upcomingLessonStatuses.contains(row.colByName('Status'))) {
+      if (!upcomingLessonStatuses.contains(row.str('Status'))) {
         throw const LessonActionException(
           409,
           'This lesson can no longer be cancelled.',
         );
       }
-      final minutesBefore = int.parse(row.colByName('MinutesBefore')!);
+      final minutesBefore = int.parse(row.reqStr('MinutesBefore'));
       if (minutesBefore <= 0) {
         throw const LessonActionException(
           409,
@@ -224,8 +225,8 @@ class MySqlStudentLessonsRepository {
       final paid = await lessonAmountPaid(
         tx,
         bookingId: bookingId,
-        purchaseId: row.colByName('PurchaseID'),
-        lessonPrice: row.colByName('LessonPriceAtPurchase'),
+        purchaseId: row.str('PurchaseID'),
+        lessonPrice: row.str('LessonPriceAtPurchase'),
       );
       if (paid != null) {
         refundPercent = refundPercentFor(minutesBefore);
@@ -248,11 +249,11 @@ class MySqlStudentLessonsRepository {
 
       return LessonCancellation(
         bookingId: bookingId,
-        subject: row.colByName('subjectName')!,
-        date: row.colByName('SessionDate')!,
-        startTime: row.colByName('StartTime')!,
-        studentName: row.colByName('StudentName')!,
-        tutorFirebaseUid: row.colByName('TutorUid'),
+        subject: row.reqStr('subjectName'),
+        date: row.reqStr('SessionDate'),
+        startTime: row.reqStr('StartTime'),
+        studentName: row.reqStr('StudentName'),
+        tutorFirebaseUid: row.str('TutorUid'),
         refundPercentage: refundPercent,
         refundAmount: refundAmount,
       );
@@ -303,29 +304,29 @@ class MySqlStudentLessonsRepository {
       409,
       "This lesson can't be joined.",
     );
-    final status = row.colByName('Status');
+    final status = row.str('Status');
     if (status != 'Confirmed' && status != 'Postponed') throw cannotJoin;
     if (status == 'Postponed') {
       final paidAmount = await lessonAmountPaid(
         connection,
         bookingId: bookingId,
-        purchaseId: row.colByName('PurchaseID'),
-        lessonPrice: row.colByName('LessonPriceAtPurchase'),
+        purchaseId: row.str('PurchaseID'),
+        lessonPrice: row.str('LessonPriceAtPurchase'),
       );
       if (paidAmount == null) throw cannotJoin;
     }
 
-    if (int.parse(row.colByName('SecondsToStart')!) > joinWindowSeconds) {
+    if (int.parse(row.reqStr('SecondsToStart')) > joinWindowSeconds) {
       throw const LessonActionException(
         409,
         'This session opens 15 minutes before it starts.',
       );
     }
-    if (int.parse(row.colByName('SecondsToEnd')!) <= 0) {
+    if (int.parse(row.reqStr('SecondsToEnd')) <= 0) {
       throw const LessonActionException(409, 'This session has ended.');
     }
 
-    final link = row.colByName('Link')?.trim();
+    final link = row.str('Link')?.trim();
     if (link == null || link.isEmpty) {
       throw const LessonActionException(
         409,
@@ -360,7 +361,7 @@ Future<String?> lessonAmountPaid(
           ''',
           {'purchaseId': purchaseId, 'price': lessonPrice},
         );
-  return paid.rows.isEmpty ? null : paid.rows.first.colByName('Amount');
+  return paid.rows.isEmpty ? null : paid.rows.first.str('Amount');
 }
 
 /// Saves a Pending Refund of [percent] of [paidAmount] for the admin to

@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/admin_refunds.dart';
 import 'package:theo_tutoring_backend/database.dart';
 
@@ -84,10 +85,10 @@ class MySqlAdminSessionRateRepository implements AdminSessionRateRepository {
     'current': row == null
         ? null
         : {
-            'id': row.colByName('SettingsID'),
-            'amount': row.colByName('TutoringRate'),
-            'effectiveFrom': row.colByName('UpdatedAt'),
-            'setBy': row.colByName('SetBy'),
+            'id': row.str('SettingsID'),
+            'amount': row.str('TutoringRate'),
+            'effectiveFrom': row.str('UpdatedAt'),
+            'setBy': row.str('SetBy'),
           },
     // The existing schema stores only the current rate, not rate history.
     'history': <Object?>[],

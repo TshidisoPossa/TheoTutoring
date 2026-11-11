@@ -7,7 +7,8 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/booking_availability.dart';
 import 'package:theo_tutoring_backend/booking_purchase_repository.dart';
@@ -21,7 +22,8 @@ import '../../routes/TutorLandingpage/LandingPageScreen.dart' as dashboard;
 import '../../routes/StudentlandingPage/availability.dart' as availability;
 import '../../routes/StudentlandingPage/booking-purchases/[purchaseId]/payment-attempts.dart'
     as payments;
-import '../../routes/StudentlandingPage/booking-purchases/index.dart' as purchases;
+import '../../routes/StudentlandingPage/booking-purchases/index.dart'
+    as purchases;
 
 class _MockRequestContext extends Mock implements RequestContext {}
 
@@ -73,7 +75,7 @@ void main() {
       ]) async => (await admin.execute(
         sql,
         params,
-      )).rows.map((row) => row.assoc()).toList();
+      )).rows.map((row) => row.textAssoc()).toList();
 
       Future<int> insert(String sql, Map<String, dynamic> params) async =>
           (await admin.execute(sql, params)).lastInsertID.toInt();

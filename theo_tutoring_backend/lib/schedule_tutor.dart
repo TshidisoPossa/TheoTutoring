@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
 
 // ---------------------------------------------------------------------------
@@ -136,7 +137,7 @@ Future<Map<String, int>> getScheduleCounts(
     'FROM Booking b WHERE b.TutorID = :tid',
     {'tid': tutorId},
   );
-  final c = result.rows.first.assoc();
+  final c = result.rows.first.textAssoc();
   int n(String key) => int.tryParse(c[key] ?? '') ?? 0;
   return {
     'upcoming': n('Upcoming'),
@@ -190,7 +191,7 @@ Future<List<Map<String, dynamic>>> getScheduleSessions(
     params,
   );
 
-  return [for (final row in result.rows) _sessionCard(row.assoc())];
+  return [for (final row in result.rows) _sessionCard(row.textAssoc())];
 }
 
 // One database row -> one session card.

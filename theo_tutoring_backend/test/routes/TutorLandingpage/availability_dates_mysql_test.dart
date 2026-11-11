@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
@@ -96,9 +97,9 @@ void main() {
       availability: [
         for (final row in weekly.rows)
           WeeklyAvailability(
-            weekday: days.indexOf(row.colByName('Day')!) + 1,
-            startMinutes: parseClockTime(row.colByName('StartTime')!),
-            endMinutes: parseClockTime(row.colByName('end_Time')!),
+            weekday: days.indexOf(row.reqStr('Day')) + 1,
+            startMinutes: parseClockTime(row.reqStr('StartTime')),
+            endMinutes: parseClockTime(row.reqStr('end_Time')),
           ),
       ],
       busyIntervals: const [],
@@ -117,7 +118,7 @@ void main() {
       'WHERE TutorID = :t AND `Date` = :d ORDER BY StartTime',
       {'t': tutorId, 'd': date.iso},
     );
-    return rows.rows.map((r) => r.assoc()).toList();
+    return rows.rows.map((r) => r.textAssoc()).toList();
   }
 
   Future<int> addBooking(BookingDate date, String start, String end) async {
@@ -133,9 +134,9 @@ void main() {
       "VALUES (:s, :t, :subj, :d, :start, :end, 'availability-dates-test', "
       "'Confirmed', NOW())",
       {
-        's': student.rows.first.colByName('StudentID'),
+        's': student.rows.first.str('StudentID'),
         't': tutorId,
-        'subj': subject.rows.first.colByName('subjectId'),
+        'subj': subject.rows.first.str('subjectId'),
         'd': date.iso,
         'start': start,
         'end': end,
@@ -152,12 +153,12 @@ void main() {
     weeklyBefore = (await conn.execute(
       'SELECT Day, StartTime, end_Time FROM TutAvailability WHERE TutorID = :t',
       p,
-    )).rows.map((r) => r.assoc()).toList();
+    )).rows.map((r) => r.textAssoc()).toList();
     changesBefore = (await conn.execute(
       "SELECT DATE_FORMAT(`Date`, '%Y-%m-%d') AS D, StartTime, EndTime "
       'FROM TutAvailabilityOverride WHERE TutorID = :t',
       p,
-    )).rows.map((r) => r.assoc()).toList();
+    )).rows.map((r) => r.textAssoc()).toList();
 
     // A known weekly pattern for the tests: Monday-Saturday 08:00-17:00.
     await conn.execute('DELETE FROM TutAvailability WHERE TutorID = :t', p);
@@ -180,7 +181,7 @@ void main() {
       "SELECT DISTINCT DATE_FORMAT(`Date`, '%Y-%m-%d') AS D FROM Booking "
       'WHERE TutorID = :t AND `Date` >= CURDATE()',
       p,
-    )).rows.map((r) => r.colByName('D')).toSet();
+    )).rows.map((r) => r.str('D')).toSet();
     final today = johannesburgDate(DateTime.now().toUtc());
     freeDates = [
       for (var i = 3; i <= 80; i++)
@@ -236,8 +237,8 @@ void main() {
     final response = await putDate({'date': date.iso, 'mode': 'off'});
     expect(response.statusCode, 200);
     final body = await response.json() as Map<String, dynamic>;
-    final changes = (body['availabilityCalendar'] as Map)['dateChanges']
-        as List;
+    final changes =
+        (body['availabilityCalendar'] as Map)['dateChanges'] as List;
     expect(changes, [
       {'date': date.iso, 'dayOff': true, 'times': <Object>[]},
     ]);
@@ -249,29 +250,31 @@ void main() {
     expect(await studentSlots(weekLater), hasLength(9)); // other weeks stay
   });
 
-  test('custom hours replace the weekly hours, usual brings them back',
-      () async {
-    final date = freeDates[1];
-    final custom = await putDate({
-      'date': date.iso,
-      'mode': 'custom',
-      'times': [
-        {'startTime': '18:00', 'endTime': '20:00'}, // after the weekly 17:00
-        {'startTime': '09:00', 'endTime': '10:00'},
-      ],
-    });
-    expect(custom.statusCode, 200);
-    expect(await changeRows(date), [
-      {'StartTime': '09:00:00', 'EndTime': '10:00:00'},
-      {'StartTime': '18:00:00', 'EndTime': '20:00:00'},
-    ]);
-    expect(await studentSlots(date), ['09:00', '18:00', '19:00']);
+  test(
+    'custom hours replace the weekly hours, usual brings them back',
+    () async {
+      final date = freeDates[1];
+      final custom = await putDate({
+        'date': date.iso,
+        'mode': 'custom',
+        'times': [
+          {'startTime': '18:00', 'endTime': '20:00'}, // after the weekly 17:00
+          {'startTime': '09:00', 'endTime': '10:00'},
+        ],
+      });
+      expect(custom.statusCode, 200);
+      expect(await changeRows(date), [
+        {'StartTime': '09:00:00', 'EndTime': '10:00:00'},
+        {'StartTime': '18:00:00', 'EndTime': '20:00:00'},
+      ]);
+      expect(await studentSlots(date), ['09:00', '18:00', '19:00']);
 
-    final usual = await putDate({'date': date.iso, 'mode': 'usual'});
-    expect(usual.statusCode, 200);
-    expect(await changeRows(date), isEmpty);
-    expect(await studentSlots(date), hasLength(9));
-  });
+      final usual = await putDate({'date': date.iso, 'mode': 'usual'});
+      expect(usual.statusCode, 200);
+      expect(await changeRows(date), isEmpty);
+      expect(await studentSlots(date), hasLength(9));
+    },
+  );
 
   test('a booked lesson keeps its time open', () async {
     final date = quietDate ?? freeDates[2];
@@ -283,8 +286,8 @@ void main() {
       'GET',
       '/TutorLandingpage/Profile',
     );
-    final calendar = (await profile.json() as Map)['availabilityCalendar']
-        as Map;
+    final calendar =
+        (await profile.json() as Map)['availabilityCalendar'] as Map;
     expect(
       calendar['bookings'],
       contains(
@@ -319,34 +322,36 @@ void main() {
     ]);
   });
 
-  test('the weekly grid can change around a lesson kept by a date change',
-      () async {
-    // quietDate has the 10:00 lesson, now covered by its own 10-12 hours,
-    // so its weekday no longer needs the weekly hours.
-    final date = quietDate;
-    if (date == null) {
-      markTestSkipped('Every weekday has a real lesson in this database');
-      return;
-    }
-    const names = [
-      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', //
-    ];
-    final others = [
-      for (final d in names)
-        if (d != names[date.weekday - 1]) d,
-    ];
-    // Keep every other weekday so other lessons in the database stay covered.
-    final response = await call(
-      availability_route.onRequest,
-      'PUT',
-      '/TutorLandingpage/Profile/availability',
-      body: {
-        'availability': {
-          for (final d in others) d: ['Morning', 'Afternoon', 'Evening'],
+  test(
+    'the weekly grid can change around a lesson kept by a date change',
+    () async {
+      // quietDate has the 10:00 lesson, now covered by its own 10-12 hours,
+      // so its weekday no longer needs the weekly hours.
+      final date = quietDate;
+      if (date == null) {
+        markTestSkipped('Every weekday has a real lesson in this database');
+        return;
+      }
+      const names = [
+        'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', //
+      ];
+      final others = [
+        for (final d in names)
+          if (d != names[date.weekday - 1]) d,
+      ];
+      // Keep every other weekday so other lessons in the database stay covered.
+      final response = await call(
+        availability_route.onRequest,
+        'PUT',
+        '/TutorLandingpage/Profile/availability',
+        body: {
+          'availability': {
+            for (final d in others) d: ['Morning', 'Afternoon', 'Evening'],
+          },
         },
-      },
-    );
-    expect(response.statusCode, 200, reason: await response.body());
-    expect(await studentSlots(date), ['10:00', '11:00']);
-  });
+      );
+      expect(response.statusCode, 200, reason: await response.body());
+      expect(await studentSlots(date), ['10:00', '11:00']);
+    },
+  );
 }

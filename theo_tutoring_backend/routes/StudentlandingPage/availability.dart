@@ -4,6 +4,7 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:theo_tutoring_backend/booking_availability.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 
 typedef StudentIdResolver = Future<int> Function(String? authorization);
@@ -210,13 +211,13 @@ Future<int> _resolveStudentId(String? authorization) async {
       'Student account or profile not found.',
     );
   }
-  if (result.rows.first.colByName('AccountStatus') != 'Active') {
+  if (result.rows.first.str('AccountStatus') != 'Active') {
     throw const StudentAccountException(
       HttpStatus.forbidden,
       'An active student account is required.',
     );
   }
-  final studentId = result.rows.first.colByName('StudentID');
+  final studentId = result.rows.first.str('StudentID');
   final resolvedStudentId = int.tryParse(studentId ?? '');
   if (resolvedStudentId == null || resolvedStudentId < 1) {
     throw const BookingAvailabilityUnavailable();

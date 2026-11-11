@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/exception.dart';
+import 'package:mysql_dart/exception.dart';
 
 import '../../../lib/database.dart';
 import '../../../lib/firebase_auth.dart';

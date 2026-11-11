@@ -1,10 +1,11 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/exception.dart';
+import 'package:mysql_dart/exception.dart';
 import 'package:theo_tutoring_backend/booking_purchase.dart';
 import 'package:theo_tutoring_backend/booking_purchase_repository.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 
 typedef PurchaseStudentIdResolver = Future<int> Function(String? authorization);
@@ -164,13 +165,13 @@ Future<int> _resolveStudentId(String? authorization) async {
       'Student account or profile not found.',
     );
   }
-  if (result.rows.first.colByName('AccountStatus') != 'Active') {
+  if (result.rows.first.str('AccountStatus') != 'Active') {
     throw const PurchaseStudentException(
       HttpStatus.forbidden,
       'An active student account is required.',
     );
   }
-  final id = int.tryParse(result.rows.first.colByName('StudentID') ?? '');
+  final id = int.tryParse(result.rows.first.str('StudentID') ?? '');
   if (id == null || id < 1) {
     throw const BookingPurchaseServiceUnavailable();
   }

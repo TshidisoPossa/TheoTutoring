@@ -1,4 +1,4 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
 
 // ---------------------------------------------------------------------------
 // TUTOR PRESENCE ("Available Now" on the student's Tutor Profile)

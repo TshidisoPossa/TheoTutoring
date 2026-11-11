@@ -1,6 +1,7 @@
 import 'package:dart_frog/dart_frog.dart';
 
 import '../../../lib/database.dart';
+import '../../../lib/db_row.dart';
 import '../../../lib/env.dart';
 import '../../../lib/firebase_auth.dart';
 import '../../../lib/request_utils.dart';
@@ -132,9 +133,9 @@ Future<Response> onRequest(RequestContext context) async {
     }
 
     final row = tutorResult.rows.first;
-    final tutorId = int.parse(row.colByName('TutorID')!);
-    final userId = int.parse(row.colByName('UserId')!);
-    final accountStatus = row.colByName('AccountStatus');
+    final tutorId = int.parse(row.reqStr('TutorID'));
+    final userId = int.parse(row.reqStr('UserId'));
+    final accountStatus = row.str('AccountStatus');
 
     if (!canUpdateTutorRegistrationProfile(accountStatus)) {
       return jsonError(

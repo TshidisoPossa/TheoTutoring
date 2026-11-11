@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 
 // ignore_for_file: public_member_api_docs
@@ -127,10 +128,10 @@ class MySqlAdminMonitorRepository implements AdminMonitorRepository {
           'p95LatencyMs': null,
         },
         'operationalMetrics': {
-          'activeUsers': int.tryParse(row.colByName('activeUsers') ?? ''),
-          'activeTutors': int.tryParse(row.colByName('activeTutors') ?? ''),
+          'activeUsers': int.tryParse(row.str('activeUsers') ?? ''),
+          'activeTutors': int.tryParse(row.str('activeTutors') ?? ''),
           'pendingApplications': int.tryParse(
-            row.colByName('pendingApplications') ?? '',
+            row.str('pendingApplications') ?? '',
           ),
         },
         // No request telemetry or baseline is stored by this backend.
@@ -211,28 +212,28 @@ class MySqlAdminMonitorRepository implements AdminMonitorRepository {
         ..sort(
           (left, right) => compareAdminMonitorAuditOrder(
             leftCreatedAt: DateTime.parse(
-              _utcIso(left.colByName('createdAt'))!,
+              _utcIso(left.str('createdAt'))!,
             ),
-            leftSortKey: left.colByName('sortKey')!,
+            leftSortKey: left.reqStr('sortKey'),
             rightCreatedAt: DateTime.parse(
-              _utcIso(right.colByName('createdAt'))!,
+              _utcIso(right.str('createdAt'))!,
             ),
-            rightSortKey: right.colByName('sortKey')!,
+            rightSortKey: right.reqStr('sortKey'),
           ),
         );
       final hasMore = rows.length > limit;
       final selected = hasMore ? rows.take(limit) : rows;
       final entries = selected.map((row) {
-        final createdAt = _utcIso(row.colByName('createdAt'));
+        final createdAt = _utcIso(row.str('createdAt'));
         return adminMonitorAuditEntryJson(
-          id: row.colByName('id')!,
-          actorName: row.colByName('actorName') ?? 'System',
-          actorType: row.colByName('actorType') ?? 'system',
-          category: row.colByName('category') ?? 'other',
-          action: row.colByName('action') ?? '',
-          detail: row.colByName('detail'),
+          id: row.reqStr('id'),
+          actorName: row.str('actorName') ?? 'System',
+          actorType: row.str('actorType') ?? 'system',
+          category: row.str('category') ?? 'other',
+          action: row.str('action') ?? '',
+          detail: row.str('detail'),
           createdAt: createdAt!,
-          recordType: row.colByName('recordType') ?? 'current_state_summary',
+          recordType: row.str('recordType') ?? 'current_state_summary',
         );
       }).toList();
 
@@ -246,8 +247,8 @@ class MySqlAdminMonitorRepository implements AdminMonitorRepository {
   }
 
   AdminMonitorCursor _cursorFor(ResultSetRow row) => AdminMonitorCursor(
-    createdAt: DateTime.parse(_utcIso(row.colByName('createdAt'))!).toUtc(),
-    sortKey: row.colByName('sortKey')!,
+    createdAt: DateTime.parse(_utcIso(row.str('createdAt'))!).toUtc(),
+    sortKey: row.reqStr('sortKey'),
   );
 
   String? _utcIso(String? value) {

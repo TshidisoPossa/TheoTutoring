@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 /// Public reference data only; no user or private records are returned.
 /// The catalogue must be readable before a tutor has a Firebase account.
@@ -23,8 +24,8 @@ Future<Response> onRequest(RequestContext context) async {
         'subjects': [
           for (final row in result.rows)
             {
-              'subjectId': int.parse(row.colByName('subjectId')!),
-              'subjectName': row.colByName('subjectName'),
+              'subjectId': int.parse(row.reqStr('subjectId')),
+              'subjectName': row.str('subjectName'),
             },
         ],
       },

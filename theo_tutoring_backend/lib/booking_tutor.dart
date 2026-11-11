@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
@@ -213,7 +214,7 @@ Future<Map<String, dynamic>?> getBookingDetail(
     {'id': bookingId, 'tid': tutorId},
   );
   if (result.rows.isEmpty) return null;
-  final r = result.rows.first.assoc();
+  final r = result.rows.first.textAssoc();
 
   int? number(String? v) => v == null ? null : int.tryParse(v);
   final status = r['Status'] ?? '';
@@ -280,11 +281,11 @@ Future<Map<String, dynamic>?> _getRecurring(
   final run = weeklyRun([
     for (final row in result.rows)
       {
-        'bookingId': int.parse(row.colByName('Booking_id')!),
-        'date': row.colByName('Date')!.substring(0, 10),
-        'status': row.colByName('Status'),
-        'startTime': _clock(row.colByName('StartTime')),
-        'endTime': _clock(row.colByName('EndTime')),
+        'bookingId': int.parse(row.reqStr('Booking_id')),
+        'date': row.reqStr('Date').substring(0, 10),
+        'status': row.str('Status'),
+        'startTime': _clock(row.str('StartTime')),
+        'endTime': _clock(row.str('EndTime')),
       },
   ]);
   if (run.isEmpty) return null;
@@ -331,7 +332,7 @@ Future<PostponedBooking> postponeBooking(
     if (found.rows.isEmpty) {
       throw const PostponeException(404, 'Booking not found.');
     }
-    final b = found.rows.first.assoc();
+    final b = found.rows.first.textAssoc();
     final status = b['Status'] ?? '';
 
     if (!postponableStatuses.contains(status)) {
@@ -383,8 +384,8 @@ Future<PostponedBooking> postponeBooking(
       dayRanges = [
         for (final row in ranges.rows)
           (
-            start: _toMinutes(row.colByName('StartTime')!),
-            end: _toMinutes(row.colByName('end_Time')!),
+            start: _toMinutes(row.reqStr('StartTime')),
+            end: _toMinutes(row.reqStr('end_Time')),
           ),
       ];
     }
@@ -507,7 +508,7 @@ Future<TutorCancellation> tutorCancelBooking(
     if (found.rows.isEmpty) {
       throw const PostponeException(404, 'Booking not found.');
     }
-    final b = found.rows.first.assoc();
+    final b = found.rows.first.textAssoc();
     final action = kind == TutorCancelKind.cancel ? 'cancelled' : 'rescheduled';
     if (!tutorCancellableStatuses.contains(b['Status'])) {
       throw PostponeException(409, 'This session can no longer be $action.');

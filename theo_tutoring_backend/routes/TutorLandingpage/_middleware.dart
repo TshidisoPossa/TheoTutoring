@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import '../../lib/database.dart';
+import '../../lib/db_row.dart';
 import '../../lib/firebase_auth.dart';
 import '../../lib/tutor_account_status.dart';
 import '../../lib/tutor_presence.dart';
@@ -39,7 +40,7 @@ Future<({int tutorId, String status})?> _findTutor(String firebaseUid) async {
     {'uid': firebaseUid},
   );
   if (result.rows.isEmpty) return null; // this user is not a tutor
-  final row = result.rows.first.assoc();
+  final row = result.rows.first.textAssoc();
   return (
     tutorId: int.parse(row['TutorID']!),
     status: row['AccountStatus'] ?? '',
@@ -49,9 +50,7 @@ Future<({int tutorId, String status})?> _findTutor(String firebaseUid) async {
 // Runs before every route under /tutor
 Handler middleware(Handler handler) {
   return (context) async {
-    final header =
-        context.request.headers['Authorization'] ??
-        '';
+    final header = context.request.headers['Authorization'] ?? '';
     if (!header.startsWith('Bearer ')) {
       return Response.json(
         statusCode: 401,

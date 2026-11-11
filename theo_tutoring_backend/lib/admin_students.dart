@@ -1,4 +1,6 @@
+import 'package:mysql_dart/mysql_dart.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 /// Roster filters sent by the Flutter app (lower case) -> User.AccountStatus.
 const rosterStatusFilters = {
@@ -36,18 +38,18 @@ const _studentSelect =
     "AND b.Status = 'Completed') AS TotalLessons "
     'FROM `User` u JOIN StudentProfile sp ON sp.UserID = u.UserId ';
 
-Map<String, Object?> _student(dynamic r) => {
-  'studentId': int.parse(r.colByName('StudentID')! as String),
-  'name': r.colByName('Name'),
-  'email': r.colByName('Email'),
-  'phone': r.colByName('PhoneNum'),
-  'photoUrl': r.colByName('ProfilePhoto'),
-  'course': r.colByName('Course'),
-  'institutionYear': r.colByName('InstitutionYear'),
-  'subjectOfInterest': r.colByName('Subject_of_interest'),
-  'totalLessons': int.parse(r.colByName('TotalLessons')! as String),
-  'joinedAt': r.colByName('Created_at'),
-  'status': r.colByName('AccountStatus'),
+Map<String, Object?> _student(ResultSetRow r) => {
+  'studentId': int.parse(r.reqStr('StudentID')),
+  'name': r.str('Name'),
+  'email': r.str('Email'),
+  'phone': r.str('PhoneNum'),
+  'photoUrl': r.str('ProfilePhoto'),
+  'course': r.str('Course'),
+  'institutionYear': r.str('InstitutionYear'),
+  'subjectOfInterest': r.str('Subject_of_interest'),
+  'totalLessons': int.parse(r.reqStr('TotalLessons')),
+  'joinedAt': r.str('Created_at'),
+  'status': r.str('AccountStatus'),
 };
 
 class MySqlStudentRosterRepository implements StudentRosterRepository {
@@ -91,19 +93,19 @@ class MySqlStudentRosterRepository implements StudentRosterRepository {
       "WHERE u.Role = 'student'",
     );
     final s = summary.rows.first;
-    final totalStudents = int.parse(s.colByName('total')!);
-    final lessons = int.parse(s.colByName('lessons')!);
+    final totalStudents = int.parse(s.reqStr('total'));
+    final lessons = int.parse(s.reqStr('lessons'));
     return {
-      'total': int.parse(total.rows.first.colByName('n')!),
+      'total': int.parse(total.rows.first.reqStr('n')),
       'page': page,
       'pageSize': pageSize,
       'summary': {
         'totalStudents': totalStudents,
-        'activeThisMonth': int.parse(s.colByName('activeMonth')!),
+        'activeThisMonth': int.parse(s.reqStr('activeMonth')),
         'avgLessonsPerStudent': totalStudents == 0
             ? 0.0
             : double.parse((lessons / totalStudents).toStringAsFixed(1)),
-        'suspendedAccounts': int.parse(s.colByName('suspended')!),
+        'suspendedAccounts': int.parse(s.reqStr('suspended')),
       },
       'students': [for (final r in rows.rows) _student(r)],
     };
@@ -120,7 +122,7 @@ class MySqlStudentRosterRepository implements StudentRosterRepository {
     if (found.rows.isEmpty) throw const StudentNotFound();
     await conn.execute(
       'UPDATE `User` SET AccountStatus = :status WHERE UserId = :uid',
-      {'status': status, 'uid': found.rows.first.colByName('UserId')},
+      {'status': status, 'uid': found.rows.first.str('UserId')},
     );
     final row = await conn.execute(
       '$_studentSelect WHERE sp.StudentID = :id',

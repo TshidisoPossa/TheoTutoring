@@ -1,7 +1,8 @@
 import 'dart:io';
 
-import 'package:mysql_client/exception.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/exception.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/header_tutor.dart';
@@ -29,7 +30,7 @@ Future<String?> getTutorAbout(
 
   if (result.rows.isEmpty) return null; // no such tutor
 
-  final data = result.rows.first.assoc();
+  final data = result.rows.first.textAssoc();
 
   return data['Bio']; // null if the tutor hasn't written a bio yet
 }
@@ -52,8 +53,8 @@ Future<List<Map<String, dynamic>>> getTutorSubjects(
   return [
     for (final row in result.rows)
       {
-        'subjectId': int.parse(row.colByName('subjectId')!),
-        'subjectName': row.colByName('subjectName'),
+        'subjectId': int.parse(row.reqStr('subjectId')),
+        'subjectName': row.str('subjectName'),
       },
   ];
 }
@@ -75,9 +76,9 @@ Future<List<Map<String, dynamic>>> getTutorQualifications(
   return [
     for (final row in result.rows)
       {
-        'qualificationId': int.parse(row.colByName('QualificationID')!),
-        'degree': row.colByName('Degree'),
-        'institution': row.colByName('Institution'),
+        'qualificationId': int.parse(row.reqStr('QualificationID')),
+        'degree': row.str('Degree'),
+        'institution': row.str('Institution'),
       },
   ];
 }
@@ -112,7 +113,7 @@ Future<({double average, int count})> getTutorRating(
     {'tutorId': tutorId},
   );
   if (result.rows.isEmpty) return (average: 0.0, count: 0);
-  final row = result.rows.first.assoc();
+  final row = result.rows.first.textAssoc();
   return (
     average: double.tryParse(row['AveRate'] ?? '') ?? 0.0, // "4.50" -> 4.5
     count: int.tryParse(row['ReviewCount'] ?? '') ?? 0,
@@ -132,7 +133,7 @@ Future<bool> getTutorMeetConnected(MySQLConnection conn, int tutorId) async {
     {'tutorId': tutorId},
   );
   if (result.rows.isEmpty) return false;
-  return (result.rows.first.colByName('MeetLink') ?? '').isNotEmpty;
+  return (result.rows.first.str('MeetLink') ?? '').isNotEmpty;
 }
 
 // ONE call for the whole Profile page.
@@ -332,7 +333,7 @@ Future<Set<int>> getLockedSubjectIds(MySQLConnection conn, int tutorId) async {
     {'tutorId': tutorId},
   );
   return {
-    for (final row in result.rows) int.parse(row.colByName('SubjectID')!),
+    for (final row in result.rows) int.parse(row.reqStr('SubjectID')),
   };
 }
 
@@ -368,7 +369,7 @@ Future<void> updateTutorSubjects(
     );
     final name = names.rows.isEmpty
         ? 'That subject'
-        : names.rows.first.colByName('subjectName');
+        : names.rows.first.str('subjectName');
     throw SubjectInUseException(
       '$name has an upcoming booking, so you cannot remove it yet.',
     );
@@ -584,8 +585,7 @@ List<String> lockedPeriods(
     for (final p in _availabilityPeriods.entries)
       if (ticked.contains(p.key) &&
           bookings.any(
-            (b) =>
-                b.day == day && b.start < p.value[1] && b.end > p.value[0],
+            (b) => b.day == day && b.start < p.value[1] && b.end > p.value[0],
           ))
         p.key,
   ];
@@ -603,7 +603,7 @@ Future<List<DayRange>> _loadRanges(MySQLConnection conn, int tutorId) async {
   );
   final ranges = <DayRange>[];
   for (final row in result.rows) {
-    final r = row.assoc();
+    final r = row.textAssoc();
     final day = _fullDayName(r['Day'] ?? ''); // normalise "Mon" -> "Monday"
     if (day == null) continue;
     ranges.add((
@@ -634,7 +634,7 @@ Future<List<UpcomingBooking>> getUpcomingBookings(
   );
   final bookings = <UpcomingBooking>[];
   for (final row in result.rows) {
-    final r = row.assoc();
+    final r = row.textAssoc();
     final date = DateTime.tryParse(r['Date'] ?? '');
     if (date == null) continue;
     bookings.add((
@@ -911,8 +911,7 @@ Future<Map<String, dynamic>> getAvailabilityCalendar(
     ],
     'bookings': [
       for (final b in booked)
-        if (b.date.compareTo(today.iso) >= 0 &&
-            b.date.compareTo(last.iso) <= 0)
+        if (b.date.compareTo(today.iso) >= 0 && b.date.compareTo(last.iso) <= 0)
           {
             'date': b.date,
             'startTime': _toClock(b.start),

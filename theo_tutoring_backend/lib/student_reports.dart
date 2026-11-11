@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/student_dashboard.dart';
 import 'package:theo_tutoring_backend/student_lessons.dart';
 
@@ -35,7 +36,7 @@ class MySqlStudentReportsRepository {
     return _file(
       reporterId: student.userId,
       reportedUserId: int.parse(
-        booking.rows.first.colByName('ReportedUserID')!,
+        booking.rows.first.reqStr('ReportedUserID'),
       ),
       bookingId: bookingId,
       reason: reason,
@@ -62,7 +63,7 @@ class MySqlStudentReportsRepository {
     }
     return _file(
       reporterId: student.userId,
-      reportedUserId: int.parse(tutor.rows.first.colByName('UserID')!),
+      reportedUserId: int.parse(tutor.rows.first.reqStr('UserID')),
       bookingId: null,
       reason: reason,
       alreadyReported:
@@ -87,8 +88,8 @@ class MySqlStudentReportsRepository {
     if (result.rows.isEmpty) throw const StudentDashboardDenied();
     final row = result.rows.first;
     return (
-      userId: int.parse(row.colByName('UserId')!),
-      studentId: int.parse(row.colByName('StudentID')!),
+      userId: int.parse(row.reqStr('UserId')),
+      studentId: int.parse(row.reqStr('StudentID')),
     );
   }
 

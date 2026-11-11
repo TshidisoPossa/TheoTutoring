@@ -3,7 +3,8 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/cloudinary_url.dart';
 import 'package:theo_tutoring_backend/database.dart';
@@ -133,7 +134,7 @@ void main() {
       final subject = await conn.execute(
         'SELECT subjectId, subjectName FROM Subjects ORDER BY subjectId LIMIT 1',
       );
-      final subjectId = int.parse(subject.rows.first.colByName('subjectId')!);
+      final subjectId = int.parse(subject.rows.first.reqStr('subjectId'));
       await conn.execute(
         'DELETE FROM TutorSubjects WHERE TutorID = :t',
         {'t': _tutorId},
@@ -156,7 +157,7 @@ void main() {
       expect(profile['subjects'], [
         {
           'subjectId': subjectId,
-          'subjectName': subject.rows.first.colByName('subjectName'),
+          'subjectName': subject.rows.first.str('subjectName'),
         },
       ]);
       final qualification =
@@ -175,7 +176,7 @@ void main() {
     Future<String?> savedMeetLink() async => (await conn.execute(
       'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
       {'t': _tutorId},
-    )).rows.single.colByName('MeetLink');
+    )).rows.single.str('MeetLink');
 
     Future<Response> connect(String room) {
       final context = _MockRequestContext();
@@ -288,7 +289,7 @@ void main() {
         'WHERE TutorID = :t ORDER BY Day, StartTime',
         {'t': _tutorId},
       );
-      expect(rows.rows.map((r) => r.assoc()).toList(), [
+      expect(rows.rows.map((r) => r.textAssoc()).toList(), [
         {'Day': 'Monday', 'StartTime': '08:00:00', 'end_Time': '17:00:00'},
         {'Day': 'Tuesday', 'StartTime': '12:00:00', 'end_Time': '17:00:00'},
         {'Day': 'Saturday', 'StartTime': '17:00:00', 'end_Time': '20:00:00'},
@@ -322,9 +323,9 @@ void main() {
         "VALUES (:s, :t, :subj, :d, '14:00:00', '15:00:00', "
         "'profile-mysql-test', 'Confirmed', NOW())",
         {
-          's': student.rows.first.colByName('StudentID'),
+          's': student.rows.first.str('StudentID'),
           't': _tutorId,
-          'subj': subject.rows.first.colByName('subjectId'),
+          'subj': subject.rows.first.str('subjectId'),
           'd': date,
         },
       );
@@ -400,7 +401,7 @@ class _Snapshot {
       p,
     );
     if (tutor.rows.isEmpty) throw StateError('No tutor with TutorID $tutorId');
-    final t = tutor.rows.first.assoc();
+    final t = tutor.rows.first.textAssoc();
     final availability = await conn.execute(
       'SELECT Day, StartTime, end_Time FROM TutAvailability WHERE TutorID = :t',
       p,
@@ -419,9 +420,9 @@ class _Snapshot {
       t['ProfilePhoto'],
       t['Bio'],
       t['MeetLink'],
-      availability.rows.map((r) => r.assoc()).toList(),
-      subjects.rows.map((r) => r.colByName('SubjectID')).toList(),
-      qualifications.rows.map((r) => r.assoc()).toList(),
+      availability.rows.map((r) => r.textAssoc()).toList(),
+      subjects.rows.map((r) => r.str('SubjectID')).toList(),
+      qualifications.rows.map((r) => r.textAssoc()).toList(),
     );
   }
 

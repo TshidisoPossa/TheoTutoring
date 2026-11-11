@@ -1,5 +1,6 @@
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
 import 'package:theo_tutoring_backend/header_tutor.dart';
@@ -53,7 +54,7 @@ Future<Response> onRequest(RequestContext context) async {
       ''',
       p,
     );
-    final a = app.rows.isEmpty ? null : app.rows.first.assoc();
+    final a = app.rows.isEmpty ? null : app.rows.first.textAssoc();
     return Response.json(
       body: tutorApplicationStatusPayload(
         tutor: header,
@@ -115,12 +116,12 @@ Future<Response> onRequest(RequestContext context) async {
   );
 
   // COUNT(*) comes back as a string, e.g. '3'
-  int count(IResultSet r) => int.parse(r.rows.first.assoc()['n'] ?? '0');
+  int count(IResultSet r) => int.parse(r.rows.first.textAssoc()['n'] ?? '0');
 
   // AveRate is DECIMAL(3,2), also returned as a string, e.g. '4.50'
   final aveRate = rating.rows.isEmpty
       ? null
-      : rating.rows.first.assoc()['AveRate'];
+      : rating.rows.first.textAssoc()['AveRate'];
 
   return Response.json(
     body: {
@@ -130,10 +131,10 @@ Future<Response> onRequest(RequestContext context) async {
       'upcomingToday': schedule.rows.length, // card 2
       'averageRating': double.tryParse(aveRate ?? '') ?? 0, // rating card
       'todaysSchedule': schedule.rows
-          .map((r) => r.assoc())
+          .map((r) => r.textAssoc())
           .toList(), // schedule cards
       'latestReviews': reviews.rows
-          .map((r) => r.assoc())
+          .map((r) => r.textAssoc())
           .toList(), // review cards
     },
   );

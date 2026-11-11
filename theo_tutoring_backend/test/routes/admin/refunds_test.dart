@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/exception.dart';
+import 'package:mysql_dart/exception.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/admin_refunds.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
