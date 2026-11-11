@@ -1,5 +1,6 @@
-import 'package:mysql_client/exception.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/exception.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/request_utils.dart';
 import 'package:theo_tutoring_backend/student_dashboard.dart';
 import 'package:theo_tutoring_backend/student_lessons.dart';
@@ -173,7 +174,7 @@ class MySqlStudentReviewsRepository implements StudentReviewsRepository {
       {'uid': firebaseUid},
     );
     if (student.rows.isEmpty) throw const StudentDashboardDenied();
-    final studentId = int.parse(student.rows.first.colByName('StudentID')!);
+    final studentId = int.parse(student.rows.first.reqStr('StudentID'));
 
     try {
       return await connection.transactional((tx) async {
@@ -193,19 +194,19 @@ class MySqlStudentReviewsRepository implements StudentReviewsRepository {
           throw const LessonActionException(404, 'Lesson not found.');
         }
         final row = booking.rows.first;
-        if (row.colByName('ExistingReview') != null) {
+        if (row.str('ExistingReview') != null) {
           throw const LessonActionException(
             409,
             'You have already reviewed this lesson.',
           );
         }
-        if (row.colByName('IsOver') != '1') {
+        if (row.str('IsOver') != '1') {
           throw const LessonActionException(
             409,
             'You can review this lesson once it has taken place.',
           );
         }
-        final tutorId = int.parse(row.colByName('TutorID')!);
+        final tutorId = int.parse(row.reqStr('TutorID'));
 
         final inserted = await tx.execute(
           '''
@@ -256,9 +257,8 @@ class MySqlStudentReviewsRepository implements StudentReviewsRepository {
           bookingId: bookingId,
           rating: input.rating,
           comment: input.comment,
-          tutorAverage:
-              double.tryParse(ratingRow.colByName('AveRate') ?? '') ?? 0,
-          tutorReviewCount: int.parse(ratingRow.colByName('ReviewCount')!),
+          tutorAverage: double.tryParse(ratingRow.str('AveRate') ?? '') ?? 0,
+          tutorReviewCount: int.parse(ratingRow.reqStr('ReviewCount')),
         );
       });
     } on MySQLServerException catch (error) {

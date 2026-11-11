@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 
 // The admin Reviews page (documentation: the administrator can "view
@@ -103,23 +104,23 @@ int _int(String? value) => int.tryParse(value ?? '') ?? 0;
 double _double(String? value) => double.tryParse(value ?? '') ?? 0;
 
 Map<String, Object?> _review(ResultSetRow row) => {
-  'reviewId': _int(row.colByName('Reviewid')),
-  'rating': _int(row.colByName('Rating')),
-  'comment': _blankToNull(row.colByName('Comment')),
-  'bookingId': int.tryParse(row.colByName('BookingID') ?? ''),
-  'createdAt': row.colByName('CreatedAt'),
-  'subject': row.colByName('subjectName'),
+  'reviewId': _int(row.str('Reviewid')),
+  'rating': _int(row.str('Rating')),
+  'comment': _blankToNull(row.str('Comment')),
+  'bookingId': int.tryParse(row.str('BookingID') ?? ''),
+  'createdAt': row.str('CreatedAt'),
+  'subject': row.str('subjectName'),
   'tutor': {
-    'tutorId': _int(row.colByName('TutorID')),
-    'name': row.colByName('TutorName'),
-    'photoUrl': _blankToNull(row.colByName('TutorPhoto')),
+    'tutorId': _int(row.str('TutorID')),
+    'name': row.str('TutorName'),
+    'photoUrl': _blankToNull(row.str('TutorPhoto')),
   },
   'student': {
-    'studentId': _int(row.colByName('StudentID')),
-    'name': row.colByName('StudentName'),
-    'photoUrl': _blankToNull(row.colByName('StudentPhoto')),
+    'studentId': _int(row.str('StudentID')),
+    'name': row.str('StudentName'),
+    'photoUrl': _blankToNull(row.str('StudentPhoto')),
   },
-  'reportCount': _int(row.colByName('ReportCount')),
+  'reportCount': _int(row.str('ReportCount')),
 };
 
 /// [AdminReviewsRepository] on MySQL.
@@ -203,28 +204,28 @@ class MySqlAdminReviewsRepository implements AdminReviewsRepository {
     );
 
     return {
-      'total': _int(total.rows.first.colByName('n')),
+      'total': _int(total.rows.first.str('n')),
       'page': query.page,
       'pageSize': query.pageSize,
       'summary': {
-        'totalReviews': _int(s.colByName('Total')),
-        'averageRating': _double(s.colByName('Average')),
-        'lowRatingsLast30Days': _int(s.colByName('LowRecent')),
-        'reviewsThisMonth': _int(s.colByName('ThisMonth')),
+        'totalReviews': _int(s.str('Total')),
+        'averageRating': _double(s.str('Average')),
+        'lowRatingsLast30Days': _int(s.str('LowRecent')),
+        'reviewsThisMonth': _int(s.str('ThisMonth')),
       },
       'distribution': {
         for (var stars = 5; stars >= 1; stars--)
-          '$stars': _int(s.colByName('Stars$stars')),
+          '$stars': _int(s.str('Stars$stars')),
       },
       'needsAttention': [
         for (final row in attention.rows)
           {
-            'tutorId': _int(row.colByName('TutorID')),
-            'name': row.colByName('Name'),
-            'photoUrl': _blankToNull(row.colByName('ProfilePhoto')),
-            'status': row.colByName('AccountStatus'),
-            'averageRating': _double(row.colByName('Average')),
-            'reviewCount': _int(row.colByName('ReviewCount')),
+            'tutorId': _int(row.str('TutorID')),
+            'name': row.str('Name'),
+            'photoUrl': _blankToNull(row.str('ProfilePhoto')),
+            'status': row.str('AccountStatus'),
+            'averageRating': _double(row.str('Average')),
+            'reviewCount': _int(row.str('ReviewCount')),
           },
       ],
       'reviews': [for (final row in rows.rows) _review(row)],
@@ -276,41 +277,41 @@ class MySqlAdminReviewsRepository implements AdminReviewsRepository {
       ...review,
       // From the Leave a Review page; admin only (migration 011)
       'highlights': [
-        for (final part in (row.colByName('Highlights') ?? '').split(','))
+        for (final part in (row.str('Highlights') ?? '').split(','))
           if (part.trim().isNotEmpty) part.trim(),
       ],
-      'privateNote': _blankToNull(row.colByName('PrivateNote')),
+      'privateNote': _blankToNull(row.str('PrivateNote')),
       'tutor': {
         ...review['tutor']! as Map<String, Object?>,
-        'email': row.colByName('TutorEmail'),
-        'status': row.colByName('TutorStatus'),
-        'averageRating': _double(row.colByName('TutorAverage')),
-        'reviewCount': _int(row.colByName('TutorReviewCount')),
+        'email': row.str('TutorEmail'),
+        'status': row.str('TutorStatus'),
+        'averageRating': _double(row.str('TutorAverage')),
+        'reviewCount': _int(row.str('TutorReviewCount')),
       },
       'student': {
         ...review['student']! as Map<String, Object?>,
-        'email': row.colByName('StudentEmail'),
-        'institution': _blankToNull(row.colByName('StudentInstitution')),
+        'email': row.str('StudentEmail'),
+        'institution': _blankToNull(row.str('StudentInstitution')),
       },
       'booking': bookingId == null
           ? null
           : {
               'bookingId': bookingId,
-              'date': row.colByName('SessionDate'),
-              'startTime': row.colByName('StartTime'),
-              'endTime': row.colByName('EndTime'),
-              'status': row.colByName('BookingStatus'),
+              'date': row.str('SessionDate'),
+              'startTime': row.str('StartTime'),
+              'endTime': row.str('EndTime'),
+              'status': row.str('BookingStatus'),
             },
       'reports': [
         for (final report in reports?.rows ?? const <ResultSetRow>[])
           {
-            'reportId': _int(report.colByName('ReportID')),
-            'category': report.colByName('Category'),
-            'reason': report.colByName('Reason'),
-            'status': report.colByName('Status'),
-            'createdAt': report.colByName('CreatedAt'),
-            'reporterName': report.colByName('ReporterName'),
-            'reporterRole': report.colByName('ReporterRole'),
+            'reportId': _int(report.str('ReportID')),
+            'category': report.str('Category'),
+            'reason': report.str('Reason'),
+            'status': report.str('Status'),
+            'createdAt': report.str('CreatedAt'),
+            'reporterName': report.str('ReporterName'),
+            'reporterRole': report.str('ReporterRole'),
           },
       ],
     };

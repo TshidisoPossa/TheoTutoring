@@ -1,6 +1,7 @@
 import 'dart:io';
 
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/student_lessons.dart';
@@ -35,7 +36,11 @@ void main() {
   // time), so none of them may cross midnight.
   final sast = DateTime.now().toUtc().add(const Duration(hours: 2));
   if (sast.hour < 3 || sast.hour >= 21) {
-    test('Join rules against MySQL', () {}, skip: 'Run between 03:00 and 21:00');
+    test(
+      'Join rules against MySQL',
+      () {},
+      skip: 'Run between 03:00 and 21:00',
+    );
     return;
   }
 
@@ -117,21 +122,21 @@ void main() {
       "WHERE u.Role = 'student' AND u.AccountStatus = 'Active' "
       'ORDER BY sp.StudentID LIMIT 2',
     );
-    studentId = int.parse(students.rows.first.colByName('StudentID')!);
-    studentUid = students.rows.first.colByName('FirebaseUid')!;
+    studentId = int.parse(students.rows.first.reqStr('StudentID'));
+    studentUid = students.rows.first.reqStr('FirebaseUid');
     if (students.rows.length > 1) {
-      otherStudentId = int.parse(students.rows.last.colByName('StudentID')!);
+      otherStudentId = int.parse(students.rows.last.reqStr('StudentID'));
     }
     final subject = await conn.execute(
       'SELECT subjectId FROM Subjects ORDER BY subjectId LIMIT 1',
     );
-    subjectId = int.parse(subject.rows.first.colByName('subjectId')!);
+    subjectId = int.parse(subject.rows.first.reqStr('subjectId'));
 
     final tutor = await conn.execute(
       'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
       {'t': _tutorId},
     );
-    savedMeetLink = tutor.rows.first.colByName('MeetLink');
+    savedMeetLink = tutor.rows.first.str('MeetLink');
     await conn.execute(
       'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
       {'link': _tutorLink, 't': _tutorId},

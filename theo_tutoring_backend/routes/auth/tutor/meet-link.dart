@@ -1,5 +1,6 @@
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 import '../../../lib/database.dart';
 import '../../../lib/firebase_auth.dart';
@@ -63,7 +64,7 @@ Future<Response> handleTutorMeetLink(
     }
 
     final row = tutorResult.rows.first;
-    if (!canSubmitTutorAvailability(row.colByName('AccountStatus'))) {
+    if (!canSubmitTutorAvailability(row.str('AccountStatus'))) {
       return jsonError(
         403,
         'This account cannot continue tutor registration.',
@@ -73,7 +74,7 @@ Future<Response> handleTutorMeetLink(
     return await connectTutorMeet(
       context,
       db,
-      int.parse(row.colByName('TutorID')!),
+      int.parse(row.reqStr('TutorID')),
       roomCreator: roomCreator,
     );
   } catch (e) {

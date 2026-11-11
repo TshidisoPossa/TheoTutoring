@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
 import 'package:theo_tutoring_backend/tutor_account_status.dart';

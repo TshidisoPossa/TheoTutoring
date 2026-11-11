@@ -1,7 +1,8 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/cloudinary_url.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
@@ -129,12 +130,12 @@ Future<_Profile?> _loadProfile(MySQLConnection db, String uid) async {
   if (result.rows.isEmpty) return null;
 
   final row = result.rows.first;
-  return _Profile(row.colByName('UserId') ?? '', {
-    'name': row.colByName('Name'),
-    'email': row.colByName('Email'),
-    'photo': _blankToNull(row.colByName('ProfilePhoto')),
-    'institution': _blankToNull(row.colByName('Institution')),
-    'subjectsOfInterest': _splitList(row.colByName('Subject_of_interest')),
+  return _Profile(row.str('UserId') ?? '', {
+    'name': row.str('Name'),
+    'email': row.str('Email'),
+    'photo': _blankToNull(row.str('ProfilePhoto')),
+    'institution': _blankToNull(row.str('Institution')),
+    'subjectsOfInterest': _splitList(row.str('Subject_of_interest')),
   });
 }
 

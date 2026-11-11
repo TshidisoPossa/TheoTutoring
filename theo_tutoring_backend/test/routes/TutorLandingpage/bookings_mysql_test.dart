@@ -1,6 +1,7 @@
 import 'dart:io';
 
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/tutor_bookings.dart';
@@ -17,7 +18,8 @@ final _tutorId = int.tryParse(
 );
 
 const _meetLink = 'https://meet.google.com/aaa-bbbb-ccc';
-const _ownLink = 'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
+const _ownLink =
+    'https://zoom.us/j/123456789'; // an older lesson's Booking.Link
 
 void main() {
   if (_tutorId == null) {
@@ -40,7 +42,7 @@ void main() {
       'SELECT MeetLink FROM TutorProfile WHERE TutorID = :t',
       {'t': _tutorId},
     );
-    savedMeetLink = tutor.rows.first.colByName('MeetLink');
+    savedMeetLink = tutor.rows.first.str('MeetLink');
     await conn.execute(
       'UPDATE TutorProfile SET MeetLink = :link WHERE TutorID = :t',
       {'link': _meetLink, 't': _tutorId},
@@ -61,9 +63,9 @@ void main() {
         "VALUES (:st, :t, :subj, '2099-01-01', '10:00:00', '11:00:00', "
         ":note, :link, 'Confirmed')",
         {
-          'st': student.rows.first.colByName('StudentID'),
+          'st': student.rows.first.str('StudentID'),
           't': _tutorId,
-          'subj': subject.rows.first.colByName('subjectId'),
+          'subj': subject.rows.first.str('subjectId'),
           'note': 'bookings-mysql-test $name',
           'link': link,
         },
@@ -89,13 +91,16 @@ void main() {
     await conn.close();
   });
 
-  test("link is the tutor's Meet room, unless the booking has its own",
-      () async {
-    final bookings =
-        await MySqlTutorBookingsRepository(conn).listForTutor(_tutorId!);
-    String? linkOf(String name) =>
-        bookings.firstWhere((b) => b.bookingId == ids[name]).link;
-    expect(linkOf('meet room'), _meetLink);
-    expect(linkOf('own link'), _ownLink);
-  });
+  test(
+    "link is the tutor's Meet room, unless the booking has its own",
+    () async {
+      final bookings = await MySqlTutorBookingsRepository(
+        conn,
+      ).listForTutor(_tutorId!);
+      String? linkOf(String name) =>
+          bookings.firstWhere((b) => b.bookingId == ids[name]).link;
+      expect(linkOf('meet room'), _meetLink);
+      expect(linkOf('own link'), _ownLink);
+    },
+  );
 }

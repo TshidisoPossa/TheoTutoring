@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
 import 'package:test/test.dart';
 // Same import as the route, so AuthTokenException is the same type.
 import 'package:theo_tutoring_backend/firebase_auth.dart';
@@ -242,7 +242,6 @@ void main() {
       expect(db.updates, hasLength(1));
       expect(db.updates.single.sql, isNot(contains('Name')));
     });
-
 
     final invalid = <String, (Object?, String)>{
       'a blank name': ({'name': '  '}, 'Your name cannot be empty.'),

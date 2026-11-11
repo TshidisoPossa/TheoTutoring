@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
 import 'package:test/test.dart';
 
 // Same imports as the routes, so they are the same types.
@@ -147,7 +147,10 @@ void main() {
     });
 
     test('a missing Google token is a 400 and nothing is saved', () async {
-      for (final body in [<String, dynamic>{}, {'accessToken': '  '}]) {
+      for (final body in [
+        <String, dynamic>{},
+        {'accessToken': '  '},
+      ]) {
         final db = _FakeDb(_tutor('Incomplete'));
         final response = await connect(db, body: body);
         expect(response.statusCode, 400);

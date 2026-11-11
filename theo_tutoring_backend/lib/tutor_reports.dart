@@ -1,7 +1,8 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/request_utils.dart';
 
@@ -81,9 +82,9 @@ class MySqlTutorReportRepository implements TutorReportRepository {
     return [
       for (final row in result.rows)
         (
-          userId: int.parse(row.colByName('UserId')!),
-          name: row.colByName('Name') ?? 'Student',
-          photo: row.colByName('ProfilePhoto'),
+          userId: int.parse(row.reqStr('UserId')),
+          name: row.str('Name') ?? 'Student',
+          photo: row.str('ProfilePhoto'),
         ),
     ];
   }
@@ -106,7 +107,7 @@ class MySqlTutorReportRepository implements TutorReportRepository {
         'No tutor profile was found for this account.',
       );
     }
-    final reporterId = int.parse(tutor.rows.first.colByName('UserID')!);
+    final reporterId = int.parse(tutor.rows.first.reqStr('UserID'));
 
     if (studentUserId != null) {
       final booked = await conn.execute(

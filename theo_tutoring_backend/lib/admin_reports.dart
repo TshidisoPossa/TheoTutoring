@@ -1,4 +1,5 @@
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 
 /// The ?status= values GET /admin/reports accepts, and the Report.Status
@@ -68,31 +69,31 @@ class MySqlAdminReportRepository implements AdminReportRepository {
     );
 
     Map<String, Object?>? person(ResultSetRow row, String prefix) {
-      final id = row.colByName('${prefix}UserId');
+      final id = row.str('${prefix}UserId');
       if (id == null) return null;
       return {
         'userId': int.parse(id),
-        'name': row.colByName('${prefix}Name'),
-        'email': row.colByName('${prefix}Email'),
-        'role': row.colByName('${prefix}Role'),
+        'name': row.str('${prefix}Name'),
+        'email': row.str('${prefix}Email'),
+        'role': row.str('${prefix}Role'),
       };
     }
 
     return {
-      'total': int.parse(count.rows.first.colByName('Total') ?? '0'),
+      'total': int.parse(count.rows.first.str('Total') ?? '0'),
       'page': page,
       'pageSize': pageSize,
       'reports': [
         for (final row in rows.rows)
           {
-            'reportId': int.parse(row.colByName('ReportID')!),
+            'reportId': int.parse(row.reqStr('ReportID')),
             // null for the students' lesson/tutor reports made before
             // categories (migration 010)
-            'category': row.colByName('Category'),
-            'description': row.colByName('Reason'),
-            'status': row.colByName('Status'),
-            'bookingId': int.tryParse(row.colByName('BookingID') ?? ''),
-            'createdAt': row.colByName('CreatedAt'),
+            'category': row.str('Category'),
+            'description': row.str('Reason'),
+            'status': row.str('Status'),
+            'bookingId': int.tryParse(row.str('BookingID') ?? ''),
+            'createdAt': row.str('CreatedAt'),
             'reporter': person(row, 'Reporter'),
             // null when the report is not about another user
             'reportedUser': person(row, 'Reported'),

@@ -5,7 +5,8 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:http/http.dart' as http;
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/env.dart';
 import 'package:theo_tutoring_backend/firebase_admin.dart';
@@ -98,8 +99,8 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
     if (result.rows.isEmpty) return null;
     final row = result.rows.first;
     return (
-      userId: int.parse(row.colByName('UserId')!),
-      name: row.colByName('Name') ?? '',
+      userId: int.parse(row.reqStr('UserId')),
+      name: row.str('Name') ?? '',
     );
   }
 
@@ -124,10 +125,9 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
     );
     final row = result.rows.first;
     return (
-      secondsSinceLast: int.tryParse(row.colByName('SinceLast') ?? ''),
-      sentLastHour: int.tryParse(row.colByName('LastHour') ?? '') ?? 0,
-      secondsUntilHourFrees:
-          int.tryParse(row.colByName('HourFreesIn') ?? '') ?? 0,
+      secondsSinceLast: int.tryParse(row.str('SinceLast') ?? ''),
+      sentLastHour: int.tryParse(row.str('LastHour') ?? '') ?? 0,
+      secondsUntilHourFrees: int.tryParse(row.str('HourFreesIn') ?? '') ?? 0,
     );
   }
 
@@ -170,11 +170,11 @@ class MySqlVerificationCodeStore implements VerificationCodeStore {
     if (result.rows.isEmpty) return null;
     final row = result.rows.first;
     return (
-      codeId: int.parse(row.colByName('CodeID')!),
-      codeHash: row.colByName('CodeHash')!,
-      attempts: int.parse(row.colByName('Attempts')!),
-      used: row.colByName('Used') == '1',
-      expired: row.colByName('Expired') == '1',
+      codeId: int.parse(row.reqStr('CodeID')),
+      codeHash: row.reqStr('CodeHash'),
+      attempts: int.parse(row.reqStr('Attempts')),
+      used: row.str('Used') == '1',
+      expired: row.str('Expired') == '1',
     );
   }
 
@@ -362,7 +362,8 @@ class ConsoleEmailSender implements VerificationEmailSender {
 }
 
 /// The plain-text email, for inboxes that do not show HTML.
-String verificationEmailText(String firstName, String code) => '''
+String verificationEmailText(String firstName, String code) =>
+    '''
 Hi${firstName.isEmpty ? '' : ' $firstName'},
 
 Your TheoTutoring verification code is: $code

@@ -1,6 +1,6 @@
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
 import 'package:test/test.dart';
 // Same import as the route, so AuthTokenException is the same type.
 import 'package:theo_tutoring_backend/firebase_auth.dart';

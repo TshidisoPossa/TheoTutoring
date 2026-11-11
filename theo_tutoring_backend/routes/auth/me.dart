@@ -1,7 +1,8 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
-import 'package:mysql_client/mysql_client.dart';
+import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 import 'package:theo_tutoring_backend/request_utils.dart';
@@ -72,13 +73,13 @@ Future<Response> handleAuthMe(
     }
 
     final row = result.rows.first;
-    final role = row.colByName('Role');
+    final role = row.str('Role');
     // The profile row that goes with the role (missing if registration
     // stopped before it was created).
     final profileKey = switch (role) {
-      'student' => ('studentId', row.colByName('StudentID')),
-      'tutor' => ('tutorId', row.colByName('TutorID')),
-      'admin' => ('adminId', row.colByName('AdminID')),
+      'student' => ('studentId', row.str('StudentID')),
+      'tutor' => ('tutorId', row.str('TutorID')),
+      'admin' => ('adminId', row.str('AdminID')),
       _ => null,
     };
     if (profileKey == null || profileKey.$2 == null) {
@@ -87,11 +88,11 @@ Future<Response> handleAuthMe(
 
     return Response.json(
       body: {
-        'userId': int.parse(row.colByName('UserId')!),
+        'userId': int.parse(row.reqStr('UserId')),
         'role': role,
-        'accountStatus': row.colByName('AccountStatus'),
-        'name': row.colByName('Name'),
-        'email': row.colByName('Email'),
+        'accountStatus': row.str('AccountStatus'),
+        'name': row.str('Name'),
+        'email': row.str('Email'),
         'emailVerified': firebaseUser.emailVerified,
         profileKey.$1: int.parse(profileKey.$2!),
       },
