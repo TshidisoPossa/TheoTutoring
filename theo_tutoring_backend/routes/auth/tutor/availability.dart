@@ -112,6 +112,9 @@ Future<Response> handleTutorAvailability(
         'Please complete your teaching profile (Step 2) first.',
       );
     }
+    if ((row.str('MeetLink') ?? '').isEmpty) {
+      return jsonError(400, 'Please connect Google Meet first.');
+    }
 
     // ── Lessons need the tutor's Meet room (POST /auth/tutor/meet-link) ──
     if ((row.str('MeetLink') ?? '').isEmpty) {

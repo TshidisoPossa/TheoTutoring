@@ -3,6 +3,9 @@
 //                        "admins": [ { "adminId", "name", "email", "role",
 //                                      "accountStatus", "createdAt" } ] }
 // POST /admin/users   { "name", "email", "password", "role" } -> 201 admin
+// Requires `admin.roles.manage`:
+// PUT /admin/roles/{adminId}  { "role", "reason" (3-500 chars) }
+//   -> { "adminId", "previousRole", "role" }; 409 for the last Super Admin
 
 class AdminAccount {
   final int adminId;
@@ -25,6 +28,24 @@ class AdminAccount {
     email: (j['email'] ?? '').toString(),
     role: (j['role'] ?? '').toString(),
     accountStatus: (j['accountStatus'] ?? '').toString(),
+  );
+}
+
+class AdminRoleChange {
+  final int adminId;
+  final String previousRole;
+  final String role;
+
+  const AdminRoleChange({
+    required this.adminId,
+    required this.previousRole,
+    required this.role,
+  });
+
+  factory AdminRoleChange.fromJson(Map<String, dynamic> j) => AdminRoleChange(
+    adminId: (j['adminId'] as num).toInt(),
+    previousRole: (j['previousRole'] ?? '').toString(),
+    role: (j['role'] ?? '').toString(),
   );
 }
 

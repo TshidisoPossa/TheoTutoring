@@ -4,11 +4,12 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:mysql_dart/mysql_dart.dart';
-import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
+import 'package:theo_tutoring_backend/env.dart';
 // Same import as the routes, so it is the same TutorSession type.
 import '../../../lib/tutorlanding_session.dart';
 
@@ -18,9 +19,10 @@ import '../../../routes/TutorLandingpage/Profile/availability.dart'
     as availability_route;
 import '../../../routes/TutorLandingpage/Profile/index.dart' as profile_route;
 
-// The availability calendar (one-off date changes) against the real database
-// from .env, as one tutor. Needs migration 007. Opt in, so a normal
-// `dart test` never touches the database:
+// The availability calendar (one-off date changes) against the real
+// theotutoring_test database from .env, as one tutor. Needs migration 007.
+// Opt in with PROFILE_MYSQL_TEST_TUTOR_ID, and set DB_NAME=theotutoring_test;
+// a normal `dart test` never touches the database:
 //   PROFILE_MYSQL_TEST_TUTOR_ID=1 dart test test/routes/TutorLandingpage/availability_dates_mysql_test.dart
 // The tutor's weekly hours and date changes are put back afterwards, and the
 // bookings it adds are deleted. The Firebase login check (middleware) is
@@ -31,8 +33,17 @@ class _MockRequestContext extends Mock implements RequestContext {}
 final _tutorId = int.tryParse(
   Platform.environment['PROFILE_MYSQL_TEST_TUTOR_ID'] ?? '',
 );
+const _testDatabase = 'theotutoring_test';
 
 void main() {
+  if (env['DB_NAME'] != _testDatabase) {
+    test(
+      'Availability calendar against MySQL',
+      () {},
+      skip: 'Set DB_NAME to $_testDatabase in a test-only configuration',
+    );
+    return;
+  }
   if (_tutorId == null) {
     test(
       'Availability calendar against MySQL',

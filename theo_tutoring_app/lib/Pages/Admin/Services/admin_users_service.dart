@@ -86,4 +86,23 @@ class AdminUsersService {
       jsonDecode(response.body) as Map<String, dynamic>,
     );
   }
+
+  /// The backend records [reason] in the append-only role audit.
+  Future<AdminRoleChange> changeRole({
+    required int adminId,
+    required String role,
+    required String reason,
+  }) async {
+    final response = await _client
+        .put(
+          Uri.parse('$apiBaseUrl/admin/roles/$adminId'),
+          headers: await _headers(),
+          body: jsonEncode({'role': role, 'reason': reason}),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) throw _failure(response);
+    return AdminRoleChange.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
 }

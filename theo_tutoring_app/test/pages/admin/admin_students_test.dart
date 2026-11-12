@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ class _Backend {
   final requests = <http.Request>[];
   bool missingEndpoints = false;
   http.Response? patchResponse;
+  Future<List<Map<String, dynamic>>?> Function(http.Request)? studentsFor;
   final students = [
     _student(
       12,
@@ -58,6 +60,7 @@ class _Backend {
       student['status'] = status;
       return http.Response(jsonEncode(student), 200);
     }
+    final override = await studentsFor?.call(request);
     return http.Response(
       jsonEncode({
         'adminName': 'Admin Tester',
@@ -67,7 +70,7 @@ class _Backend {
           'avgLessonsPerStudent': 8.33,
           'suspendedAccounts': 1,
         },
-        'students': students,
+        'students': override ?? students,
         'total': total ?? students.length,
         'page': int.parse(request.url.queryParameters['page'] ?? '1'),
         'pageSize': 10,
@@ -261,5 +264,64 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(AlertDialog), findsOneWidget);
+  });
+
+  testWidgets('a PATCH 404 shows the backend message, not "unavailable"', (
+    tester,
+  ) async {
+    final backend = _Backend()
+      ..patchResponse = http.Response(
+        jsonEncode({'error': 'Student not found.'}),
+        404,
+      );
+    await _pump(tester, backend);
+
+    await _openActions(tester, 1);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Active'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Save status'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Student not found.'), findsOneWidget);
+    expect(find.textContaining('not available'), findsNothing);
+  });
+
+  testWidgets('a slower older roster response cannot overwrite a newer one', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pump(tester, backend);
+
+    final slow = Completer<void>();
+    backend.studentsFor = (request) async {
+      if (request.url.queryParameters['status'] == 'all') {
+        await slow.future;
+        return [_student(20, 'Stale Student', 'Active')];
+      }
+      return [_student(21, 'Fresh Student', 'Suspended')];
+    };
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Search by name or email...'),
+      'sipho',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(InkWell),
+            matching: find.text('Suspended'),
+          )
+          .first,
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump();
+    expect(find.text('Fresh Student'), findsOneWidget);
+
+    slow.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Fresh Student'), findsOneWidget);
+    expect(find.text('Stale Student'), findsNothing);
   });
 }

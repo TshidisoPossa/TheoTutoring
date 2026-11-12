@@ -1,6 +1,6 @@
 import 'package:mysql_dart/mysql_dart.dart';
-import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/chat.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 // The MySQL Messaging table as an audit copy of Firestore chat messages
 // (schema.sql: "Firestore remains the primary chat store"). Rows are keyed

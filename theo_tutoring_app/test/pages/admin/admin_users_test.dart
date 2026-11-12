@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:theo_tutoring_app/Pages/Admin/Services/admin_access_service.dart';
 import 'package:theo_tutoring_app/Pages/Admin/Services/admin_users_service.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_users.dart';
 import 'package:theo_tutoring_app/Pages/Admin/models/admin_user_models.dart';
@@ -82,18 +83,40 @@ Map<String, dynamic> _admin(int id, String name, String email, String role) => {
   'createdAt': '2026-10-20 10:00:00',
 };
 
-/// Simulates GET/POST /admin/users with an in-memory admin list.
+/// Simulates GET/POST /admin/users and PUT /admin/roles/{id} with an
+/// in-memory admin list.
 class _Backend {
   final admins = [
     _admin(1, 'Admin Tester', 'admin@example.com', 'super_admin'),
   ];
   final posts = <Map<String, dynamic>>[];
+  final roleChanges = <(String path, Map<String, dynamic> body)>[];
   http.Response? nextPostResponse;
+  http.Response? nextRoleResponse;
   bool failGet = false;
 
   late final client = MockClient((request) async {
-    expect(request.url.path, '/admin/users');
     expect(request.headers['Authorization'], 'Bearer admin-token');
+    if (request.url.path.startsWith('/admin/roles/')) {
+      expect(request.method, 'PUT');
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      roleChanges.add((request.url.path, body));
+      final override = nextRoleResponse;
+      if (override != null) return override;
+      final id = int.parse(request.url.pathSegments.last);
+      final target = admins.firstWhere((a) => a['adminId'] == id);
+      final previous = target['role'];
+      target['role'] = body['role'];
+      return http.Response(
+        jsonEncode({
+          'adminId': id,
+          'previousRole': previous,
+          'role': body['role'],
+        }),
+        200,
+      );
+    }
+    expect(request.url.path, '/admin/users');
     if (request.method == 'GET') {
       if (failGet) {
         return http.Response(jsonEncode({'error': 'Database offline'}), 500);
@@ -128,15 +151,48 @@ class _Backend {
   );
 }
 
-Future<void> _pump(WidgetTester tester, _Backend backend) async {
+AdminAccessResult _accessAs(String role, {int adminId = 1}) =>
+    AdminAccessResult.allowed(
+      'Admin Tester',
+      adminId: adminId,
+      roleKey: role,
+      permissions: _rolePermissions[role]!,
+    );
+
+Future<void> _pump(
+  WidgetTester tester,
+  _Backend backend, {
+  AdminAccessResult? access,
+}) async {
   // Below the shell's 900px sidebar breakpoint (its fixed-width header
   // overflows with the wide Ahem test font, which real fonts do not).
   tester.view.physicalSize = const Size(880, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
-    MaterialApp(home: AdminUsersScreen(service: backend.service())),
+    MaterialApp(
+      home: AdminUsersScreen(
+        service: backend.service(),
+        loadAccess: () async => access ?? _accessAs('super_admin'),
+      ),
+    ),
   );
+  await tester.pumpAndSettle();
+}
+
+/// Opens the role dialog for the row whose email is [email].
+Future<void> _openRoleDialog(WidgetTester tester, String email) async {
+  final row = find.ancestor(of: find.text(email), matching: find.byType(Row));
+  await tester.tap(
+    find.descendant(of: row.first, matching: find.byTooltip('Change role')),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pickRole(WidgetTester tester, String from, String to) async {
+  await tester.tap(find.text(from).last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(to).last);
   await tester.pumpAndSettle();
 }
 
@@ -313,5 +369,155 @@ void main() {
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
     expect(find.text('admin@example.com'), findsOneWidget);
+  });
+
+  group('role changes', () {
+    _Backend withOps() =>
+        _Backend()
+          ..admins.add(_admin(2, 'Ops Person', 'ops@example.com', 'admin'));
+
+    test('service sends PUT /admin/roles/{id} with role and reason', () async {
+      final backend = withOps();
+      final change = await backend.service().changeRole(
+        adminId: 2,
+        role: 'finance_admin',
+        reason: 'Moving to finance',
+      );
+
+      expect(backend.roleChanges.single.$1, '/admin/roles/2');
+      expect(backend.roleChanges.single.$2, {
+        'role': 'finance_admin',
+        'reason': 'Moving to finance',
+      });
+      expect(change.previousRole, 'admin');
+      expect(change.role, 'finance_admin');
+    });
+
+    test('service surfaces the backend error message', () async {
+      final backend = withOps()
+        ..nextRoleResponse = http.Response(
+          jsonEncode({'error': 'The last Super Admin cannot be demoted.'}),
+          409,
+        );
+      await expectLater(
+        backend.service().changeRole(
+          adminId: 1,
+          role: 'admin',
+          reason: 'Testing',
+        ),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('The last Super Admin cannot be demoted.'),
+          ),
+        ),
+      );
+    });
+
+    testWidgets('a Super Admin changes a role with an audit reason', (
+      tester,
+    ) async {
+      final backend = withOps();
+      await _pump(tester, backend);
+      expect(find.byTooltip('Change role'), findsNWidgets(2));
+      expect(find.byKey(const Key('roles-read-only-note')), findsNothing);
+
+      await _openRoleDialog(tester, 'ops@example.com');
+      expect(find.text('Change role for Ops Person'), findsOneWidget);
+      expect(find.byKey(const Key('self-role-warning')), findsNothing);
+
+      await _pickRole(tester, 'Admin', 'Finance Admin');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Reason'),
+        'Moving to finance',
+      );
+      await tester.tap(find.text('Save role'));
+      await tester.pumpAndSettle();
+
+      expect(backend.roleChanges.single.$2, {
+        'role': 'finance_admin',
+        'reason': 'Moving to finance',
+      });
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.text('Ops Person is now Finance Admin (was Admin).'),
+        findsOneWidget,
+      );
+      // The list reloads with the new role.
+      expect(find.text('Finance Admin'), findsOneWidget);
+    });
+
+    testWidgets('nothing is sent for an unchanged role or a short reason', (
+      tester,
+    ) async {
+      final backend = withOps();
+      await _pump(tester, backend);
+      await _openRoleDialog(tester, 'ops@example.com');
+
+      // Save stays disabled until a different role is picked.
+      final save = find.widgetWithText(FilledButton, 'Save role');
+      expect(tester.widget<FilledButton>(save).onPressed, isNull);
+
+      await _pickRole(tester, 'Admin', 'Support Admin');
+      expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+      await tester.enterText(find.widgetWithText(TextFormField, 'Reason'), 'x');
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enter 3 to 500 characters.'), findsOneWidget);
+      expect(backend.roleChanges, isEmpty);
+    });
+
+    testWidgets('backend refusals stay in the dialog', (tester) async {
+      final backend = withOps()
+        ..nextRoleResponse = http.Response(
+          jsonEncode({'error': 'The last Super Admin cannot be demoted.'}),
+          409,
+        );
+      await _pump(tester, backend);
+      await _openRoleDialog(tester, 'admin@example.com');
+      expect(find.byKey(const Key('self-role-warning')), findsOneWidget);
+
+      await _pickRole(tester, 'Super Admin', 'Admin');
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Reason'),
+        'Stepping down',
+      );
+      await tester.tap(find.text('Save role'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('The last Super Admin cannot be demoted.'),
+        findsOneWidget,
+      );
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(backend.admins.first['role'], 'super_admin');
+    });
+
+    testWidgets('role controls are hidden without admin.roles.manage', (
+      tester,
+    ) async {
+      await _pump(tester, withOps(), access: _accessAs('admin'));
+
+      expect(find.byTooltip('Change role'), findsNothing);
+      expect(find.byKey(const Key('roles-read-only-note')), findsOneWidget);
+      // Viewing and creating admins are unchanged.
+      expect(find.text('ops@example.com'), findsOneWidget);
+      expect(find.text('Add Administrator'), findsOneWidget);
+    });
+
+    testWidgets('role controls are hidden when access cannot be verified', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        withOps(),
+        access: const AdminAccessResult.unavailable(),
+      );
+
+      expect(find.byTooltip('Change role'), findsNothing);
+      expect(find.text('ops@example.com'), findsOneWidget);
+    });
   });
 }

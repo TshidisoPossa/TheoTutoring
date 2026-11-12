@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import 'Pages/Admin/admin_subjects.dart';
+
 import 'Pages/auth_gate.dart';
 import 'Pages/Admin/admin_shell.dart';
 import 'Pages/Admin/admin_refunds.dart';
@@ -13,6 +15,7 @@ import 'Pages/Admin/admin_tutors.dart';
 import 'Pages/Admin/admin_unavailable.dart';
 import 'Pages/Admin/admin_users.dart';
 import 'Pages/Admin/application_screen.dart';
+import 'Pages/Admin/admin_reports.dart';
 import 'Pages/Admin/admin_reviews.dart';
 import 'Pages/Admin/application_review_screen.dart';
 import 'Pages/Admin/models/Tutapplication.dart';
@@ -62,11 +65,7 @@ class MyApp extends StatelessWidget {
 
 /// Admin sidebar sections that have no page yet. Each opens a guarded
 /// "not available yet" page that keeps the sidebar item highlighted.
-const unavailableAdminSections = {
-  AdminRoutes.subjects: 'Subjects',
-  AdminRoutes.payouts: 'Payouts',
-  AdminRoutes.reports: 'Reports',
-};
+const unavailableAdminSections = {AdminRoutes.payouts: 'Payouts'};
 
 final Map<String, WidgetBuilder> appRoutes = {
   AdminRoutes.dashboard: (_) => const AdminAccessGuard(
@@ -100,6 +99,10 @@ final Map<String, WidgetBuilder> appRoutes = {
     requiredPermissions: {'admin.students.read', 'admin.students.manage'},
     child: AdminStudentsScreen(),
   ),
+  AdminRoutes.subjects: (_) => const AdminAccessGuard(
+    requiredPermissions: {'admin.subjects.manage'},
+    child: AdminSubjectsScreen(),
+  ),
   AdminRoutes.tutors: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.tutors.read', 'admin.tutors.manage'},
     child: AdminTutorsScreen(),
@@ -107,6 +110,10 @@ final Map<String, WidgetBuilder> appRoutes = {
   AdminRoutes.reviews: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.reviews.read'},
     child: AdminReviewsScreen(),
+  ),
+  AdminRoutes.reports: (_) => const AdminAccessGuard(
+    requiredPermissions: {'admin.reports.read'},
+    child: AdminReportsScreen(),
   ),
   AdminRoutes.users: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.users.manage'},

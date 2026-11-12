@@ -52,6 +52,7 @@ class _AdminStudentsScreenState extends State<AdminStudentsScreen> {
   AdminStudentsPage? _data;
   bool _loading = true;
   Object? _error;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -70,6 +71,7 @@ class _AdminStudentsScreenState extends State<AdminStudentsScreen> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -81,13 +83,13 @@ class _AdminStudentsScreenState extends State<AdminStudentsScreen> {
         page: _page,
         pageSize: widget.pageSize,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e;
         _loading = false;

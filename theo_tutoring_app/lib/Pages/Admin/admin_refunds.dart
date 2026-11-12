@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'models/refund_models.dart';
 import 'Services/refund_services.dart';
+import 'admin_access_guard.dart';
 import 'admin_shell.dart';
 
 const _surface2 = Color(0xFFF8F9FB);
@@ -115,9 +116,8 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
     try {
       await action();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(success)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(success)));
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -142,8 +142,8 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
         title: const Text('Approve refund?'),
         content: Text(
           'Approve a refund decision of $amount for ${c.studentName} '
-            '(${c.reference})? This records approval; payment processing '
-            'is separate.',
+          '(${c.reference})? This records approval; payment processing '
+          'is separate.',
         ),
         actions: [
           TextButton(
@@ -513,7 +513,8 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
                     iconColor: _grey,
                     iconBg: _greyBg,
                     title: 'No cases match these filters',
-                    message: 'Try another case type or status to see more cases.',
+                    message:
+                        'Try another case type or status to see more cases.',
                     action: TextButton(
                       onPressed: () {
                         setState(() {
@@ -645,7 +646,9 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
             _DetailRow(label: 'Reported', value: formatCaseDate(c.createdAt!)),
           _DetailRow(
             label: 'Amount paid',
-            value: c.amountPaid == null ? 'Not paid' : formatRand(c.amountPaid!),
+            value: c.amountPaid == null
+                ? 'Not paid'
+                : formatRand(c.amountPaid!),
           ),
           if (c.paymentMethod != null)
             _DetailRow(label: 'Payment method', value: c.paymentMethod!),
@@ -716,8 +719,15 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
   }
 
   List<Widget> _buildActions(RefundCase c) {
+    // Fail closed: without the verified scope no privileged action is shown.
+    final scope = AdminPermissionScope.maybeOf(context);
+    final canDecide = scope?.has('admin.refunds.decide') ?? false;
+    final canResolvePermission = scope?.has('admin.reports.resolve') ?? false;
+    final showApproveDeny = c.canApproveOrDeny && canDecide;
+    final showOverride = c.canOverride && canDecide;
+    final showResolve = c.canResolve && canResolvePermission;
     final buttons = <Widget>[
-      if (c.canApproveOrDeny)
+      if (showApproveDeny)
         ElevatedButton(
           onPressed: _busy ? null : () => _approve(c),
           style: ElevatedButton.styleFrom(
@@ -733,7 +743,7 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
-      if (c.canApproveOrDeny)
+      if (showApproveDeny)
         OutlinedButton(
           onPressed: _busy ? null : () => _deny(c),
           style: OutlinedButton.styleFrom(
@@ -749,7 +759,7 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
-      if (c.canResolve)
+      if (showResolve)
         ElevatedButton(
           onPressed: _busy ? null : () => _resolve(c),
           style: ElevatedButton.styleFrom(
@@ -765,15 +775,13 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
-      if (c.canOverride)
+      if (showOverride)
         OutlinedButton(
           onPressed: _busy ? null : () => _override(c),
           style: OutlinedButton.styleFrom(
             foregroundColor: AdminColors.primary,
             backgroundColor: AdminColors.selected,
-            side: BorderSide(
-              color: AdminColors.primary.withValues(alpha: 0.3),
-            ),
+            side: BorderSide(color: AdminColors.primary.withValues(alpha: 0.3)),
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(9),
@@ -786,10 +794,14 @@ class _AdminRefundsIssuesScreenState extends State<AdminRefundsIssuesScreen> {
         ),
     ];
     if (buttons.isEmpty) {
+      final blockedByPermission =
+          c.canApproveOrDeny || c.canOverride || c.canResolve;
       return [
         Text(
           c.status.isClosed
               ? 'This case is closed. No further action is needed.'
+              : blockedByPermission
+              ? 'Your administrator role cannot take action on this case.'
               : 'No refund applies to this case.',
           style: const TextStyle(color: AdminColors.textMuted, fontSize: 12),
         ),

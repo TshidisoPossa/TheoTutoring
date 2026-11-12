@@ -1,6 +1,6 @@
 import 'package:mysql_dart/mysql_dart.dart';
-import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 
 // The audit API is consumed by route handlers and their focused tests.
@@ -38,6 +38,7 @@ const _permissionKeys = <String>{
   'admin.settings.rate.write',
   'admin.students.manage',
   'admin.students.read',
+  'admin.subjects.manage',
   'admin.tutors.manage',
   'admin.tutors.read',
   'admin.users.manage',
@@ -464,7 +465,9 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
       'cancelledAt': null,
       'createdAt': _johannesburgIso(row.str('CreatedAtUtc')),
       'reportedBy': row.str('ReporterRole'),
-      'reason': category == null ? description : '$category: $description',
+      'reason': category == null || category.trim().isEmpty
+          ? description
+          : '$category: $description',
       'amountPaid': _double(row.str('AmountPaid')),
       'paymentMethod': row.str('PaymentMethod'),
       'refundPercentage': null,
@@ -478,11 +481,11 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
 
   @override
   Future<void> approve(int refundId, AdminIdentity admin) =>
-      _decide(refundId, admin, 'Approved');
+      _decide(refundId, admin, 'Approved', action: 'Approved');
 
   @override
   Future<void> deny(int refundId, AdminIdentity admin, String reason) =>
-      _decide(refundId, admin, 'Denied', reason: reason);
+      _decide(refundId, admin, 'Rejected', action: 'Denied', reason: reason);
 
   @override
   Future<void> overrideDecision(
@@ -493,7 +496,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
   ) async {
     final connection = await _connectionFactory();
     try {
-      await connection.transactional((transaction) async {
+      await connection.transactional<void>((transaction) async {
         final record = await _selectForUpdate(transaction, refundId);
         final amountPaid = _double(record.str('AmountPaid'));
         if (amountPaid == null || amountPaid <= 0) {
@@ -544,7 +547,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
   ) async {
     final connection = await _connectionFactory();
     try {
-      await connection.transactional((transaction) async {
+      await connection.transactional<void>((transaction) async {
         final current = await transaction.execute(
           'SELECT Status FROM report WHERE ReportID = :id FOR UPDATE',
           {'id': reportId},
@@ -579,11 +582,12 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     int refundId,
     AdminIdentity admin,
     String decision, {
+    required String action,
     String? reason,
   }) async {
     final connection = await _connectionFactory();
     try {
-      await connection.transactional((transaction) async {
+      await connection.transactional<void>((transaction) async {
         final record = await _selectForUpdate(transaction, refundId);
         if (record.str('RefundStatus') != 'Pending') {
           throw const AdminRefundConflict('This refund is already closed.');
@@ -625,7 +629,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
           transaction,
           refundId,
           admin.id,
-          decision,
+          action,
           reason: reason,
           percentage: amount == null ? null : percentage,
           amount: amount,

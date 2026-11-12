@@ -3,6 +3,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'admin_access_guard.dart';
+
 class AdminColors {
   static const primary = Color(0xFF0A3FA6);
   static const accent = Color(0xFF0052D4);
@@ -35,7 +37,8 @@ class AdminRoutes {
 class _NavItem {
   final String label;
   final String route;
-  const _NavItem(this.label, this.route);
+  final Set<String> permissions;
+  const _NavItem(this.label, this.route, [this.permissions = const {}]);
 }
 
 class _NavSection {
@@ -45,24 +48,42 @@ class _NavSection {
 }
 
 const _sections = [
-  _NavSection('OVERVIEW', [_NavItem('Dashboard', AdminRoutes.dashboard)]),
-  _NavSection('USERS', [
-    _NavItem('Students', AdminRoutes.students),
-    _NavItem('Tutors', AdminRoutes.tutors),
-    _NavItem('Applications', AdminRoutes.applications),
-    _NavItem('Users', AdminRoutes.users),
+  _NavSection('OVERVIEW', [
+    _NavItem('Dashboard', AdminRoutes.dashboard, {'admin.dashboard.read'}),
   ]),
+  _NavSection('USERS', [
+    _NavItem('Students', AdminRoutes.students, {
+      'admin.students.read',
+      'admin.students.manage',
+    }),
+    _NavItem('Tutors', AdminRoutes.tutors, {
+      'admin.tutors.read',
+      'admin.tutors.manage',
+    }),
+    _NavItem('Applications', AdminRoutes.applications, {
+      'admin.applications.read',
+    }),
+    _NavItem('Users', AdminRoutes.users, {'admin.users.manage'}),
+  ]),
+  // Subjects and Payouts are hidden while they are placeholder sections.
+  // Payouts remains hidden until its page is implemented.
   _NavSection('CONTENT', [
-    _NavItem('Subjects', AdminRoutes.subjects),
-    _NavItem('Reviews', AdminRoutes.reviews),
+    _NavItem('Subjects', AdminRoutes.subjects, {
+      'admin.subjects.manage',
+    }),
+    _NavItem('Reviews', AdminRoutes.reviews, {'admin.reviews.read'}),
   ]),
   _NavSection('FINANCIALS', [
-    _NavItem('Payouts', AdminRoutes.payouts),
-    _NavItem('Refunds & Issues', AdminRoutes.refunds),
+    _NavItem('Refunds & Issues', AdminRoutes.refunds, {
+      'admin.refunds.read',
+      'admin.reports.read',
+    }),
   ]),
-  _NavSection('ANALYTICS', [_NavItem('Reports', AdminRoutes.reports)]),
+  _NavSection('ANALYTICS', [
+    _NavItem('Reports', AdminRoutes.reports, {'admin.reports.read'}),
+  ]),
   _NavSection('SYSTEM', [
-    _NavItem('Monitor Platform', AdminRoutes.monitor),
+    _NavItem('Monitor Platform', AdminRoutes.monitor, {'admin.monitor.read'}),
     _NavItem('Settings', AdminRoutes.settings),
   ]),
 ];
@@ -113,6 +134,11 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scope = AdminPermissionScope.maybeOf(context);
+    // No scope means no verified permissions, so restricted items stay hidden.
+    bool allowed(_NavItem item) =>
+        item.permissions.isEmpty ||
+        (scope != null && item.permissions.every(scope.has));
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -142,21 +168,25 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
             ),
-            for (final section in _sections) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-                child: Text(
-                  section.title,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 1.2,
-                    color: AdminColors.textMuted,
+            for (final section in _sections)
+              if (section.items.any(allowed)) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                  child: Text(
+                    section.title,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      letterSpacing: 1.2,
+                      color: AdminColors.textMuted,
+                    ),
                   ),
                 ),
-              ),
-              for (final item in section.items)
-                _SidebarItem(item: item, selected: item.route == currentRoute),
-            ],
+                for (final item in section.items.where(allowed))
+                  _SidebarItem(
+                    item: item,
+                    selected: item.route == currentRoute,
+                  ),
+              ],
           ],
         ),
       ),

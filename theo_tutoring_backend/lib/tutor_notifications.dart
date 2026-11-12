@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:mysql_dart/mysql_dart.dart';
-import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/booking_tutor.dart';
 import 'package:theo_tutoring_backend/database.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/notifications.dart';
 
 // Where the tutor's bell notifications come from:

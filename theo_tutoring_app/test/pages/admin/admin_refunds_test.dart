@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:theo_tutoring_app/Pages/Admin/Services/admin_access_service.dart';
 import 'package:theo_tutoring_app/Pages/Admin/Services/refund_services.dart';
+import 'package:theo_tutoring_app/Pages/Admin/admin_access_guard.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_refunds.dart';
 import 'package:theo_tutoring_app/Pages/Admin/models/refund_models.dart';
 
@@ -121,5 +123,110 @@ void main() {
       findsOneWidget,
     );
     expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+  });
+
+  group('action permissions', () {
+    RefundCasesResult withCase(Map<String, Object?> c) =>
+        RefundCasesResult.fromJson({
+          'adminName': 'Admin Tester',
+          'summary': const <String, Object?>{},
+          'cases': [c],
+        });
+
+    final cancellation = withCase({
+      'id': 1,
+      'type': 'cancellation',
+      'status': 'pending',
+      'amountPaid': 200,
+    });
+    final report = withCase({'id': 2, 'type': 'report', 'status': 'open'});
+
+    Future<void> pumpAs(
+      WidgetTester tester,
+      RefundCasesResult data,
+      List<String>? permissions,
+    ) async {
+      tester.view.physicalSize = const Size(880, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(const SizedBox());
+      final screen = AdminRefundsIssuesScreen(
+        service: _FakeRefundsService([() async => data]),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: permissions == null
+              ? screen
+              : AdminPermissionScope(
+                  access: AdminAccessResult.allowed(
+                    'Admin Tester',
+                    permissions: permissions,
+                  ),
+                  child: screen,
+                ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    const decide = 'admin.refunds.decide';
+    const resolve = 'admin.reports.resolve';
+    final approve = find.text('Approve Refund');
+    final deny = find.text('Deny Refund');
+    final override = find.text('Override Decision');
+    final markResolved = find.text('Mark Resolved');
+
+    testWidgets('finance sees refund decisions but not report resolution', (
+      tester,
+    ) async {
+      await pumpAs(tester, cancellation, [decide]);
+      expect(approve, findsOneWidget);
+      expect(deny, findsOneWidget);
+      expect(override, findsOneWidget);
+
+      await pumpAs(tester, report, [decide]);
+      expect(markResolved, findsNothing);
+      expect(
+        find.text('Your administrator role cannot take action on this case.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('support resolves reports but cannot decide refunds', (
+      tester,
+    ) async {
+      await pumpAs(tester, report, [resolve]);
+      expect(markResolved, findsOneWidget);
+
+      await pumpAs(tester, cancellation, [resolve]);
+      expect(approve, findsNothing);
+      expect(deny, findsNothing);
+      expect(override, findsNothing);
+      expect(
+        find.text('Your administrator role cannot take action on this case.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an admin with both permissions sees applicable actions', (
+      tester,
+    ) async {
+      await pumpAs(tester, cancellation, [decide, resolve]);
+      expect(approve, findsOneWidget);
+      expect(markResolved, findsNothing);
+
+      await pumpAs(tester, report, [decide, resolve]);
+      expect(markResolved, findsOneWidget);
+      expect(approve, findsNothing);
+    });
+
+    testWidgets('fails closed without a scope or permissions', (tester) async {
+      await pumpAs(tester, cancellation, null);
+      expect(approve, findsNothing);
+      expect(override, findsNothing);
+
+      await pumpAs(tester, report, const []);
+      expect(markResolved, findsNothing);
+    });
   });
 }

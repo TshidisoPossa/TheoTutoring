@@ -5,14 +5,23 @@ There is no migration runner. Apply `001_booking_foundation.sql`, then
 `003_booking_cancellation_reason.sql`, then `004_report.sql`, then
 `005_tutor_presence.sql`, then `006_student_institution.sql` (adds the
 nullable `StudentProfile.Institution`, the student's university), then
-`007_tutor_availability_override.sql`, then `008_tutor_meet_link.sql`,
+`007_tutor_availability_override.sql`,
 then `009_email_verification_code.sql` (the emailed sign-up codes),
 then `010_report_category.sql` (Report a Problem categories),
-then `011_review_highlights_note.sql` (review badges and private note,
-both admin only),
-after the base `schema.sql`, from one
-deployment process with booking writes stopped. Each ledger version is written
-last by its migration.
+and finally `011_review_highlights_note.sql` (review badges and private note,
+both admin only). Apply
+these after the base `schema.sql`, from one deployment process with booking
+writes stopped.
+Each migration ledger version is written last.
+
+## Withdrawn migrations
+
+`withdrawn/008_tutor_meet_link.sql` and
+`withdrawn/008_user_report_consolidation.sql` must not be run. Each begins
+with a statement that makes the mysql client stop. Their replacement repair
+scripts, `theo_booking_status_aiven.sql` (booking status values) and
+`theo_import_userreport_aiven.sql` (legacy report import), are under review
+and not yet in the repository.
 
 `005_admin_rbac.sql` is an additive Admin authorization migration. Apply it
 after the base schema and the existing Admin tables are verified, before
@@ -23,6 +32,18 @@ back up first, run it once in a MySQL client supporting `DELIMITER`, then verify
 the RoleKey column, audit table, both triggers and the
 `20261022_01_admin_rbac` ledger row. Do not deploy RBAC code before verifying
 all of those objects.
+
+## Aiven-specific repair scripts
+
+`repair_admin_rbac_aiven.sql` (the `005_admin_rbac.sql` objects) and
+`repair_tutor_availability_override_aiven.sql` (the
+`007_tutor_availability_override.sql` table) repair existing installations on
+the shared Aiven database. They are not part of the numbered migration
+sequence above. Do not run them automatically on a fresh database; apply the
+numbered migrations there instead. Do not blindly rerun them against an
+existing database: first check its tables, columns, constraints, triggers and
+`SchemaMigrations` rows, and run a script only where that state shows the
+repair is needed.
 
 ## `001_booking_foundation.sql`
 
@@ -381,6 +402,41 @@ Adds the `Report` table from project documentation 11.1: `ReporterID` and
 Students create reports from My Schedule
 (`POST /students/lessons/<id>/report`); the admin dashboard reviews them.
 
+## `004_user_reports.sql`
+
+**Deleted in e905192 - not in the repository.** Kept for history. The
+live `userreport` table on Aiven was not created from this file.
+
+Historical: it created the legacy `UserReport` table used by older
+student-report code. It is not part of the active migration sequence. It was
+meant to run before `008_user_report_consolidation.sql`, which would have kept
+this table and its data.
+
+**`008_user_report_consolidation.sql` is withdrawn - do not run.** See Withdrawn migrations.
+
+## `008_user_report_consolidation.sql`
+
+**Withdrawn - do not run.** It is not part of the active migration sequence
+and now lives at `withdrawn/008_user_report_consolidation.sql`. See Withdrawn
+migrations. The notes below are kept for history and describe the file as
+written.
+
+It adds `ResolutionNote` and `ResolvedAtUtc` to `Report` if they do not
+already exist, then copies legacy `UserReport` rows after both report tables,
+`Admin`, and `SchemaMigrations` exist. It was intended to run last, after
+`011_review_highlights_note.sql` (and therefore `010_report_category.sql`).
+
+Each imported row gets a newly generated `ReportID`; the persistent
+`UserReportReportMap` table uniquely maps each legacy ID to that destination
+ID. The map is written in the same per-row transaction as the `Report` insert,
+so rerunning after interruption skips completed rows without relying on IDs or
+matching report text.
+
+Existing `Report` rows are not changed, and `UserReport` is retained intact.
+Legacy `CreatedAtUtc` values are UTC; they are converted to Johannesburg
+local time (UTC+2) when copied into `Report.Created_at`. `ResolvedAtUtc`
+remains UTC.
+
 ## `005_tutor_presence.sql`
 
 Adds nullable `TutorProfile.LastActiveAtUtc`. The tutor app pings
@@ -402,7 +458,12 @@ date changes.
 
 ## `008_tutor_meet_link.sql`
 
-Adds nullable `TutorProfile.MeetLink`: the tutor's one reusable Google Meet
+**Withdrawn - do not run.** It is not part of the active migration sequence
+and now lives at `withdrawn/008_tutor_meet_link.sql`. See Withdrawn
+migrations. The notes below are kept for history and describe the file as
+written.
+
+It adds nullable `TutorProfile.MeetLink`: the tutor's one reusable Google Meet
 room, created by the backend when the tutor connects Google Meet on
 registration Step 3 (`POST /auth/tutor/meet-link`) or the Profile page
 (`POST /TutorLandingpage/Profile/meet-link`). Connecting again replaces it.
@@ -410,8 +471,23 @@ Step 3 is refused until it is set. The Google token is used for that one call
 and never stored.
 
 It also adds the `Accepted` and `Postponed` statuses to `Booking.Status`,
-which the tutor booking routes already save. The `ALTER` fails if a booking
-holds any other status or NULL, so check with
-`SELECT Status, COUNT(*) FROM Booking GROUP BY Status;` first. `Booking.Link`
+which the tutor booking routes already save. Its `ALTER` fails if a booking
+holds any other status or NULL; the file's own note suggested checking with
+`SELECT Status, COUNT(*) FROM Booking GROUP BY Status;`. `Booking.Link`
 stays: tutor queries read `COALESCE(b.Link, MeetLink)` (`tutorMeetLinkSql` in
 `lib/google_meet.dart`), so older lessons keep their own link.
+
+## `009_email_verification_code.sql`
+
+Creates `EmailVerificationCode` for hashed, expiring email-verification codes.
+Apply after the base schema; it references `User`.
+
+## `010_report_category.sql`
+
+Adds nullable `Report.Category` and permits reports that do not identify
+another user. Apply after the active `004_report.sql` migration.
+
+## `011_review_highlights_note.sql`
+
+Adds nullable admin-only review highlights and private notes to `Reviews`.
+Apply after the base schema has created `Reviews`.

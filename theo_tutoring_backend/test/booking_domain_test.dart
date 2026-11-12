@@ -1,5 +1,15 @@
+import 'package:mocktail/mocktail.dart';
+import 'package:mysql_dart/exception.dart';
+import 'package:mysql_dart/mysql_dart.dart';
 import 'package:test/test.dart';
+import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
+
+class _MockConnection extends Mock implements MySQLConnection {}
+
+class _MockResult extends Mock implements IResultSet {}
+
+class _MockRow extends Mock implements ResultSetRow {}
 
 void main() {
   final now = DateTime.utc(2026, 10, 19, 0, 52);
@@ -282,6 +292,220 @@ void main() {
       ];
       expect(() => book(sunday, 10, extra), returnsNormally);
       expect(() => book(sunday, 12, extra), throwsFormatException);
+    });
+  });
+
+  group('loading availability overrides', () {
+    const date = BookingDate(2026, 10, 26);
+    late _MockConnection connection;
+
+    setUpAll(() => registerFallbackValue(<String, dynamic>{}));
+    setUp(() => connection = _MockConnection());
+
+    Future<List<AvailabilityOverride>> load({BookingDate? through}) =>
+        loadAvailabilityOverrides(
+          connection,
+          7,
+          from: date,
+          through: through ?? date,
+        );
+
+    void returnRowsForDates(List<(BookingDate, String?, String?)> times) {
+      final rows = <ResultSetRow>[];
+      for (final (rowDate, start, end) in times) {
+        final row = _MockRow();
+        when(() => row.colByName('OverrideDate')).thenReturn(rowDate.iso);
+        when(() => row.colByName('StartTime')).thenReturn(start);
+        when(() => row.colByName('EndTime')).thenReturn(end);
+        rows.add(row);
+      }
+      final result = _MockResult();
+      when(() => result.rows).thenReturn(rows);
+      when(
+        () => connection.execute(any(), any()),
+      ).thenAnswer((_) async => result);
+    }
+
+    void returnRows(List<(String?, String?)> times) {
+      returnRowsForDates([
+      for (final (start, end) in times) (date, start, end),
+      ]);
+    }
+
+    void returnRow(String? start, String? end) => returnRows([(start, end)]);
+
+    for (final code in [1146, 1213]) {
+      test('propagates database error $code', () async {
+        final error = MySQLServerException('database error', code);
+        when(() => connection.execute(any(), any())).thenThrow(error);
+        await expectLater(load(), throwsA(same(error)));
+      });
+    }
+
+    test('loads a full-day closure from the lowercase table', () async {
+      returnRow(null, null);
+      final overrides = await load();
+      expect(overrides.single.isDayOff, isTrue);
+      final sql =
+          verify(() => connection.execute(captureAny(), any())).captured.single
+              as String;
+      expect(sql, contains('FROM tutavailabilityoverride'));
+    });
+
+    test('loads custom hours without discarding seconds', () async {
+      returnRow('09:30:00', '11:00:00');
+      final overrides = await load();
+      expect(overrides.single.isDayOff, isFalse);
+      expect(overrides.single.startMinutes, 570);
+      expect(overrides.single.endMinutes, 660);
+      final sql =
+          verify(() => connection.execute(captureAny(), any())).captured.single
+              as String;
+      expect(sql, contains('CAST(StartTime AS CHAR)'));
+      expect(sql, contains('CAST(EndTime AS CHAR)'));
+    });
+
+    for (final pair in <(String?, String?)>[
+      (null, '11:00:00'),
+      ('09:00:00', null),
+      ('09:00:01', '11:00:00'),
+      ('09:00:00', '11:00:01'),
+      ('25:00:00', '26:00:00'),
+      ('11:00:00', '09:00:00'),
+      ('09:00:00', '09:00:00'),
+    ]) {
+      test('rejects invalid override times $pair', () async {
+        returnRow(pair.$1, pair.$2);
+        await expectLater(load(), throwsFormatException);
+      });
+    }
+
+    test('rejects a closure mixed with custom windows', () async {
+      returnRows([(null, null), ('09:00:00', '11:00:00')]);
+      await expectLater(load(), throwsFormatException);
+    });
+
+    test('duplicate persisted windows produce one effective window', () async {
+      returnRows([
+        ('09:00:00', '11:00:00'),
+        ('09:00:00', '11:00:00'),
+      ]);
+      final overrides = await load();
+      expect(
+        availabilityWindowsOn(date, weekly: const [], overrides: overrides),
+        [(startMinutes: 9 * 60, endMinutes: 11 * 60)],
+      );
+    });
+
+    test('overlapping persisted windows normalize to their union', () async {
+      returnRows([
+        ('09:00:00', '11:00:00'),
+        ('10:00:00', '12:00:00'),
+      ]);
+      final overrides = await load();
+      expect(
+        availabilityWindowsOn(date, weekly: const [], overrides: overrides),
+        [(startMinutes: 9 * 60, endMinutes: 12 * 60)],
+      );
+    });
+
+    test('touching persisted windows merge into one effective window',
+        () async {
+      returnRows([
+        ('09:00:00', '10:00:00'),
+        ('10:00:00', '11:00:00'),
+      ]);
+      final overrides = await load();
+      expect(
+        availabilityWindowsOn(date, weekly: const [], overrides: overrides),
+        [(startMinutes: 9 * 60, endMinutes: 11 * 60)],
+      );
+    });
+
+    test('normalizes persisted windows independently across dates', () async {
+      const secondDate = BookingDate(2026, 10, 27);
+      returnRowsForDates([
+        (date, '09:00:00', '11:00:00'),
+        (date, '10:00:00', '12:00:00'),
+        (secondDate, '14:00:00', '16:00:00'),
+        (secondDate, '15:00:00', '17:00:00'),
+      ]);
+      final overrides = await load(through: secondDate);
+
+      expect(
+        overrides.map((o) => o.date).toSet(),
+        {date, secondDate},
+      );
+      expect(
+        availabilityWindowsOn(date, weekly: const [], overrides: overrides),
+        [(startMinutes: 9 * 60, endMinutes: 12 * 60)],
+      );
+      expect(
+        availabilityWindowsOn(
+          secondDate,
+          weekly: const [],
+          overrides: overrides,
+        ),
+        [(startMinutes: 14 * 60, endMinutes: 17 * 60)],
+      );
+    });
+
+    test('disjoint persisted windows stay separate and reject gap bookings',
+        () async {
+      returnRows([
+        ('09:00:00', '10:00:00'),
+        ('12:00:00', '13:00:00'),
+      ]);
+      final overrides = await load();
+      expect(
+        availabilityWindowsOn(date, weekly: const [], overrides: overrides),
+        [
+          (startMinutes: 9 * 60, endMinutes: 10 * 60),
+          (startMinutes: 12 * 60, endMinutes: 13 * 60),
+        ],
+      );
+
+      void validate(int hour) => validateLessonSlot(
+        slot: LessonInterval(
+          date: date,
+          startMinutes: hour * 60,
+          endMinutes: (hour + 1) * 60,
+        ),
+        nowUtc: now,
+        availability: const [],
+        overrides: overrides,
+      );
+      expect(() => validate(9), returnsNormally);
+      expect(() => validate(11), throwsFormatException);
+      expect(() => validate(12), returnsNormally);
+    });
+
+    test('loaded closure and custom hours reject blocked bookings', () async {
+      const weekly = [
+        WeeklyAvailability(
+          weekday: DateTime.monday,
+          startMinutes: 8 * 60,
+          endMinutes: 17 * 60,
+        ),
+      ];
+      void validate(List<AvailabilityOverride> overrides, int hour) =>
+          validateLessonSlot(
+            slot: LessonInterval(
+              date: date,
+              startMinutes: hour * 60,
+              endMinutes: (hour + 1) * 60,
+            ),
+            nowUtc: now,
+            availability: weekly,
+            overrides: overrides,
+          );
+      returnRow(null, null);
+      final closure = await load();
+      expect(() => validate(closure, 10), throwsFormatException);
+      returnRow('10:00:00', '12:00:00');
+      final custom = await load();
+      expect(() => validate(custom, 9), throwsFormatException);
+      expect(() => validate(custom, 10), returnsNormally);
     });
   });
 

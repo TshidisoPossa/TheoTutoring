@@ -4,6 +4,27 @@ import 'Services/admin_access_service.dart';
 
 typedef AdminAccessCheck = Future<AdminAccessResult> Function();
 
+/// Exposes the access result the guard already verified, so descendants can
+/// check permissions without another /admin/me request.
+class AdminPermissionScope extends InheritedWidget {
+  const AdminPermissionScope({
+    super.key,
+    required this.access,
+    required super.child,
+  });
+
+  final AdminAccessResult access;
+
+  static AdminPermissionScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AdminPermissionScope>();
+
+  bool has(String permission) => access.permissions.contains(permission);
+
+  @override
+  bool updateShouldNotify(AdminPermissionScope oldWidget) =>
+      access != oldWidget.access;
+}
+
 class AdminAccessGuard extends StatefulWidget {
   const AdminAccessGuard({
     super.key,
@@ -42,7 +63,9 @@ class _AdminAccessGuardState extends State<AdminAccessGuard> {
       final missingPermission =
           result?.isAllowed == true &&
           !widget.requiredPermissions.every(result!.permissions.contains);
-      if (result?.isAllowed == true && !missingPermission) return widget.child;
+      if (result?.isAllowed == true && !missingPermission) {
+        return AdminPermissionScope(access: result!, child: widget.child);
+      }
 
       return _AdminAccessDenied(
         message: missingPermission

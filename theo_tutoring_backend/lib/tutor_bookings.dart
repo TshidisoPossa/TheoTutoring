@@ -108,7 +108,8 @@ class MySqlTutorBookingsRepository implements TutorBookingsRepository {
       'limit': limit,
     });
     return [
-      for (final row in result.rows) _fromRow(row.textAssoc()),
+      for (final row in result.rows)
+        _fromRow({...row.textAssoc(), 'Date': row.date('Date')}),
     ];
   }
 

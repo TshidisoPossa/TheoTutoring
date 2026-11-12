@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:theo_tutoring_app/Pages/Admin/Services/admin_access_service.dart';
+import 'package:theo_tutoring_app/Pages/Admin/admin_access_guard.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_dashboard.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_shell.dart';
 import 'package:theo_tutoring_app/Pages/Admin/models/monitor_models.dart';
@@ -68,11 +71,14 @@ Future<void> _pump(
 
   await tester.pumpWidget(
     MaterialApp(
-      home: AdminDashboardScreen(
-        loadAccess: () async => access,
-        loadMonitor: loadMonitor ?? () async => _snapshot,
-        loadActivity: loadActivity ?? () async => _activity,
-        loadRefunds: loadRefunds ?? () async => _refunds,
+      home: AdminPermissionScope(
+        access: access,
+        child: AdminDashboardScreen(
+          loadAccess: () async => access,
+          loadMonitor: loadMonitor ?? () async => _snapshot,
+          loadActivity: loadActivity ?? () async => _activity,
+          loadRefunds: loadRefunds ?? () async => _refunds,
+        ),
       ),
       onGenerateRoute: (settings) => MaterialPageRoute(
         settings: settings,
@@ -101,7 +107,7 @@ void main() {
     expect(find.text('R 450.50 awaiting a decision'), findsOneWidget);
 
     expect(find.text('7 pending applications'), findsOneWidget);
-    expect(find.text('3 requests waiting'), findsOneWidget);
+    expect(find.text('3 pending refunds'), findsOneWidget);
 
     expect(find.text('Recent Activity'), findsOneWidget);
     expect(find.text('Session rate updated'), findsOneWidget);
@@ -168,6 +174,196 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('route:${AdminRoutes.applications}'), findsOneWidget);
+  });
+
+  testWidgets('reuses the scope access without a second access request', (
+    tester,
+  ) async {
+    var accessCalls = 0;
+    var monitorCalls = 0;
+    tester.view.physicalSize = const Size(880, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AdminPermissionScope(
+          access: _access(_fullAdminPermissions),
+          child: AdminDashboardScreen(
+            loadAccess: () async {
+              accessCalls++;
+              return _access(const []);
+            },
+            loadMonitor: () async {
+              monitorCalls++;
+              return _snapshot;
+            },
+            loadActivity: () async => _activity,
+            loadRefunds: () async => _refunds,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(accessCalls, 0);
+    expect(monitorCalls, 1);
+    expect(find.text('Admin Tester'), findsOneWidget);
+    expect(find.text('1,234'), findsOneWidget);
+  });
+
+  testWidgets('without a scope or loader it fails closed', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: AdminDashboardScreen()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Administrator access could not be verified.'),
+      findsOneWidget,
+    );
+    expect(find.text('Quick Actions'), findsNothing);
+    expect(find.text('ACTIVE USERS'), findsNothing);
+  });
+
+  testWidgets('removing the scope fails closed and drops stale access', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(880, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final hasScope = ValueNotifier(true);
+    var accessCalls = 0;
+    final dashboardKey = GlobalKey();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ValueListenableBuilder<bool>(
+          valueListenable: hasScope,
+          builder: (_, value, _) {
+            final dashboard = AdminDashboardScreen(
+              key: dashboardKey,
+              loadAccess: () async {
+                accessCalls++;
+                return _access(_fullAdminPermissions);
+              },
+              loadMonitor: () async => _snapshot,
+              loadActivity: () async => _activity,
+              loadRefunds: () async => _refunds,
+            );
+            return value
+                ? AdminPermissionScope(
+                    access: _access(_fullAdminPermissions),
+                    child: dashboard,
+                  )
+                : dashboard;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Quick Actions'), findsOneWidget);
+
+    hasScope.value = false;
+    await tester.pumpAndSettle();
+
+    expect(accessCalls, 0);
+    expect(
+      find.text('Administrator access could not be verified.'),
+      findsOneWidget,
+    );
+    expect(find.text('Quick Actions'), findsNothing);
+    expect(find.text('ACTIVE USERS'), findsNothing);
+  });
+
+  testWidgets('an older monitor response cannot overwrite a newer one', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(880, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final access = ValueNotifier(_access(_fullAdminPermissions));
+    final older = Completer<MonitorSnapshot>();
+    var calls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ValueListenableBuilder<AdminAccessResult>(
+          valueListenable: access,
+          builder: (_, value, _) => AdminPermissionScope(
+            access: value,
+            child: AdminDashboardScreen(
+              loadMonitor: () => ++calls == 1
+                  ? older.future
+                  : Future.value(
+                      MonitorSnapshot.fromJson({
+                        'adminName': 'Admin Tester',
+                        'operationalMetrics': {
+                          'activeUsers': 4321,
+                          'activeTutors': 1,
+                          'pendingApplications': 1,
+                        },
+                      }),
+                    ),
+              loadActivity: () async => _activity,
+              loadRefunds: () async => _refunds,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    access.value = _access(_fullAdminPermissions);
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.text('4,321'), findsOneWidget);
+
+    older.complete(_snapshot);
+    await tester.pumpAndSettle();
+
+    expect(find.text('4,321'), findsOneWidget);
+    expect(find.text('1,234'), findsNothing);
+  });
+
+  testWidgets('revoking monitor access discards a pending response', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(880, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final access = ValueNotifier(_access(_fullAdminPermissions));
+    final pending = Completer<MonitorSnapshot>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ValueListenableBuilder<AdminAccessResult>(
+          valueListenable: access,
+          builder: (_, value, _) => AdminPermissionScope(
+            access: value,
+            child: AdminDashboardScreen(
+              loadMonitor: () => pending.future,
+              loadActivity: () async => _activity,
+              loadRefunds: () async => _refunds,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    access.value = _access(const [
+      'admin.dashboard.read',
+      'admin.refunds.read',
+      'admin.reports.read',
+    ]);
+    await tester.pump();
+    pending.complete(_snapshot);
+    await tester.pumpAndSettle();
+
+    expect(find.text('1,234'), findsNothing);
+    expect(find.text('ACTIVE USERS'), findsNothing);
+    expect(find.text('Recent Activity'), findsNothing);
+    expect(find.text('3 pending refunds'), findsOneWidget);
   });
 
   testWidgets('lays out without overflow on a phone-sized screen', (

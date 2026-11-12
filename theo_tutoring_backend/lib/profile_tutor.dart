@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:mysql_dart/exception.dart';
 import 'package:mysql_dart/mysql_dart.dart';
-import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/header_tutor.dart';
 import 'package:theo_tutoring_backend/session_rate.dart';
 

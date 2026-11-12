@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../auth_gate.dart';
 import 'Services/settings_services.dart';
+import 'admin_access_guard.dart';
 import 'admin_shell.dart';
 
 const _surface2 = Color(0xFFF8F9FB);
@@ -223,11 +224,32 @@ class _SessionRateSectionState extends State<_SessionRateSection> {
   bool _saving = false;
   String? _error;
   Map<String, dynamic>? _current;
+  bool _canRead = false;
+  bool _canWrite = false;
+  bool _loadStarted = false;
+  int _loadGeneration = 0;
 
+  // Permissions come from the verified AdminPermissionScope; no scope means
+  // no access. The rate is only requested once read access is confirmed.
   @override
-  void initState() {
-    super.initState();
-    _load();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scope = AdminPermissionScope.maybeOf(context);
+    _canRead = scope?.has('admin.settings.rate.read') ?? false;
+    _canWrite = _canRead && scope!.has('admin.settings.rate.write');
+    if (_canRead) {
+      if (!_loadStarted) {
+        _loadStarted = true;
+        _load();
+      }
+    } else {
+      _loadStarted = false;
+      _loadGeneration++;
+      _loading = false;
+      _current = null;
+      _error = null;
+      _amount.clear();
+    }
   }
 
   @override
@@ -237,20 +259,21 @@ class _SessionRateSectionState extends State<_SessionRateSection> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final result = await widget.service.fetchSessionRate();
-      if (!mounted) return;
+      if (!mounted || !_canRead || generation != _loadGeneration) return;
       setState(() {
         _current = result['current'] as Map<String, dynamic>?;
         _amount.text = _current?['amount']?.toString() ?? '';
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_canRead || generation != _loadGeneration) return;
       setState(() {
         _error = _msg(error);
         _loading = false;
@@ -259,6 +282,7 @@ class _SessionRateSectionState extends State<_SessionRateSection> {
   }
 
   Future<void> _save() async {
+    if (!_canWrite) return;
     final value = _amount.text.trim();
     if (!RegExp(r'^\d{1,8}(?:\.\d{1,2})?$').hasMatch(value) ||
         double.tryParse(value) == null ||
@@ -296,7 +320,12 @@ class _SessionRateSectionState extends State<_SessionRateSection> {
     title: 'Session Rate',
     subtitle: 'The fixed price students pay for one tutoring session',
     children: [
-      if (_loading)
+      if (!_canRead)
+        const Text(
+          'Access restricted: your administrator role cannot view the session rate.',
+          style: TextStyle(fontSize: 13, color: AdminColors.textDark),
+        )
+      else if (_loading)
         const Center(child: CircularProgressIndicator())
       else if (_error != null)
         Column(
@@ -314,29 +343,31 @@ class _SessionRateSectionState extends State<_SessionRateSection> {
           style: const TextStyle(fontSize: 13, color: AdminColors.textDark),
         ),
         const SizedBox(height: 12),
-        TextField(
-          controller: _amount,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'New session rate (R)',
-            helperText:
-                'Updates the shared rate used when new bookings are priced.',
+        if (_canWrite) ...[
+          TextField(
+            controller: _amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'New session rate (R)',
+              helperText:
+                  'Updates the shared rate used when new bookings are priced.',
+            ),
           ),
-        ),
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving || _current == null ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Update session rate'),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              onPressed: _saving || _current == null ? null : _save,
+              child: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Update session rate'),
+            ),
           ),
-        ),
+        ],
       ],
     ],
   );

@@ -4,8 +4,8 @@ import 'package:theo_tutoring_backend/student_dashboard.dart';
 import 'package:theo_tutoring_backend/student_lessons.dart';
 
 /// Students reporting tutors to the administrator (documentation 4.9).
-/// Each report is a Report row the admin dashboard reviews:
-/// Open -> Under review -> Resolved (AdminID = who handled it).
+/// Each report is a Report row the admin Refunds & Issues screen reviews:
+/// Open -> Resolved (AdminID = who handled it).
 class MySqlStudentReportsRepository {
   /// Creates a repository using the supplied MySQL connection.
   MySqlStudentReportsRepository(this.connection);
@@ -123,8 +123,10 @@ class MySqlStudentReportsRepository {
 
     final inserted = await connection.execute(
       '''
-      INSERT INTO report (ReporterID, ReportedUserID, BookingID, Reason)
-      VALUES (:reporterId, :reportedUserId, :bookingId, :reason)
+      INSERT INTO report
+        (ReporterID, ReportedUserID, BookingID, Reason, Status, Created_at)
+      VALUES (:reporterId, :reportedUserId, :bookingId, :reason, 'Open',
+              UTC_TIMESTAMP())
       ''',
       {
         'reporterId': reporterId,

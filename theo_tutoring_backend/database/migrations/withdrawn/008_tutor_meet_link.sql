@@ -1,3 +1,6 @@
+-- WITHDRAWN - DO NOT RUN. Replacement repair scripts are under review and
+-- not yet in the repository. See database/migrations/README.md.
+SELECT * FROM `withdrawn_migration_do_not_run`;
 USE theotutoring;
 
 -- Additive follow-up: each tutor's reusable Google Meet room, set when they

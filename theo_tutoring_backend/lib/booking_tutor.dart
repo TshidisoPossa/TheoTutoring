@@ -1,7 +1,7 @@
 import 'package:mysql_dart/mysql_dart.dart';
-import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
 import 'package:theo_tutoring_backend/student_lessons.dart';
 
@@ -526,14 +526,19 @@ Future<TutorCancellation> tutorCancelBooking(
       purchaseId: b['PurchaseID'],
       lessonPrice: b['LessonPriceAtPurchase'],
     );
-    final refundAmount = paid == null
-        ? null
-        : await recordPendingRefund(
-            tx,
-            bookingId: bookingId,
-            paidAmount: paid,
-            percent: 100,
-          );
+    String? refundAmount;
+    if (paid != null) {
+      try {
+        refundAmount = await recordPendingRefund(
+          tx,
+          bookingId: bookingId,
+          paidAmount: paid,
+          percent: 100,
+        );
+      } on RefundAlreadyExists catch (error) {
+        throw PostponeException(error.statusCode, error.message);
+      }
+    }
 
     await tx.execute(
       "UPDATE booking SET Status = 'Cancelled', CancellationReason = :reason "

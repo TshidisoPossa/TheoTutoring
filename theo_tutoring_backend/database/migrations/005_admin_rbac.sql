@@ -1,20 +1,30 @@
-USE `theotutoring_test`;
-
+-- Runs against the database selected when connecting, for example:
+--   mysql --default-character-set=utf8mb4 -u USER -p theotutoring < 005_admin_rbac.sql
+DROP PROCEDURE IF EXISTS assert_rbac_target_database;
 DELIMITER $$
 
-CREATE PROCEDURE assert_test_database()
+CREATE PROCEDURE assert_rbac_target_database()
 BEGIN
-    IF DATABASE() <> 'theotutoring_test' THEN
+    IF DATABASE() IS NULL
+       OR DATABASE() NOT IN ('theotutoring', 'theotutoring_test') THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Wrong database: expected theotutoring_test';
+            SET MESSAGE_TEXT = 'Select theotutoring or theotutoring_test first.';
+    END IF;
+    -- CREATE TRIGGER IF NOT EXISTS (below) needs MySQL 8.0.29 or later.
+    IF CAST(SUBSTRING_INDEX(VERSION(), '.', 1) AS UNSIGNED) < 8
+       OR (VERSION() LIKE '8.0.%'
+           AND CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(VERSION(), '-', 1), '.', -1)
+                    AS UNSIGNED) < 29) THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'MySQL 8.0.29 or later is required.';
     END IF;
 END$$
 
 DELIMITER ;
 
-CALL assert_test_database();
+CALL assert_rbac_target_database();
 
-DROP PROCEDURE assert_test_database;
+DROP PROCEDURE IF EXISTS assert_rbac_target_database;
 
 -- Additive Admin RBAC foundation. Existing Admin rows receive the standard
 -- role (preserves current feature access); no account receives super_admin.
@@ -89,13 +99,13 @@ CALL apply_20261022_01_admin_rbac();
 DROP PROCEDURE IF EXISTS apply_20261022_01_admin_rbac;
 
 -- Audit records are append-only even if another backend query is added later.
-DROP TRIGGER IF EXISTS trg_admin_role_audit_no_update;
-DROP TRIGGER IF EXISTS trg_admin_role_audit_no_delete;
+-- IF NOT EXISTS leaves existing triggers in place on reruns, so the audit
+-- table is never without them.
 DELIMITER $$
-CREATE TRIGGER trg_admin_role_audit_no_update
+CREATE TRIGGER IF NOT EXISTS trg_admin_role_audit_no_update
 BEFORE UPDATE ON AdminRoleChangeAudit FOR EACH ROW
 SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Admin role audit rows are immutable'$$
-CREATE TRIGGER trg_admin_role_audit_no_delete
+CREATE TRIGGER IF NOT EXISTS trg_admin_role_audit_no_delete
 BEFORE DELETE ON AdminRoleChangeAudit FOR EACH ROW
 SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Admin role audit rows are immutable'$$
 DELIMITER ;

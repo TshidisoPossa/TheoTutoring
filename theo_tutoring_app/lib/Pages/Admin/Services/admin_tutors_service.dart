@@ -12,7 +12,7 @@ Future<String?> _currentFirebaseToken() async {
   return user.getIdToken();
 }
 
-/// The Admin tutor endpoints are not on this backend yet (404).
+/// Raised when the roster endpoint itself is missing (GET returns 404).
 class AdminTutorsUnavailable implements Exception {
   const AdminTutorsUnavailable();
 
@@ -47,8 +47,15 @@ class AdminTutorsService {
     };
   }
 
-  Exception _failure(http.Response response) {
-    if (response.statusCode == 404) return const AdminTutorsUnavailable();
+  /// Only the genuinely missing roster endpoint means "unavailable"; a 404
+  /// from an update (e.g. unknown tutor) carries the backend's own message.
+  Exception _failure(
+    http.Response response, {
+    bool missingMeansUnavailable = false,
+  }) {
+    if (missingMeansUnavailable && response.statusCode == 404) {
+      return const AdminTutorsUnavailable();
+    }
     try {
       final body = jsonDecode(response.body);
       if (body is Map && body['error'] != null) {
@@ -76,7 +83,9 @@ class AdminTutorsService {
     final response = await _client
         .get(uri, headers: await _headers())
         .timeout(const Duration(seconds: 15));
-    if (response.statusCode != 200) throw _failure(response);
+    if (response.statusCode != 200) {
+      throw _failure(response, missingMeansUnavailable: true);
+    }
     return AdminTutorsPage.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );

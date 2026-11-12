@@ -1,9 +1,11 @@
 // Users: the Admin accounts on the platform and their roles, and a form to
 // create a new Admin (Firebase login + User/Admin records, created by the
-// backend). Requires the `admin.users.manage` permission.
+// backend). Requires the `admin.users.manage` permission. Changing an Admin's
+// role is shown only to Admins with `admin.roles.manage`.
 
 import 'package:flutter/material.dart';
 
+import 'Services/admin_access_service.dart';
 import 'Services/admin_users_service.dart';
 import 'admin_shell.dart';
 import 'models/admin_user_models.dart';
@@ -11,9 +13,12 @@ import 'models/admin_user_models.dart';
 String _msg(Object e) => e.toString().replaceFirst('Exception: ', '');
 
 class AdminUsersScreen extends StatefulWidget {
-  const AdminUsersScreen({super.key, this.service});
+  const AdminUsersScreen({super.key, this.service, this.loadAccess});
 
   final AdminUsersService? service;
+
+  // Injectable for tests; defaults to GET /admin/me.
+  final Future<AdminAccessResult> Function()? loadAccess;
 
   @override
   State<AdminUsersScreen> createState() => _AdminUsersScreenState();
@@ -26,13 +31,32 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   AdminUsersResult? _result;
   bool _loading = true;
   String? _error;
+  AdminAccessResult? _access;
 
   @override
   void initState() {
     super.initState();
     _service = widget.service ?? AdminUsersService();
     _ownsService = widget.service == null;
+    _loadAccess();
     _load();
+  }
+
+  bool get _canChangeRoles =>
+      _access?.permissions.contains('admin.roles.manage') ?? false;
+
+  // Without verified permissions the role controls stay hidden; the backend
+  // enforces the same permission on every change.
+  Future<void> _loadAccess() async {
+    AdminAccessResult access;
+    try {
+      access =
+          await (widget.loadAccess ??
+              () => AdminAccessService().checkCurrentUser())();
+    } catch (_) {
+      access = const AdminAccessResult.unavailable();
+    }
+    if (mounted) setState(() => _access = access);
   }
 
   @override
@@ -80,6 +104,32 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         content: Text(
           '${created.name} was added as ${adminRoleLabel(created.role)}. '
           'They can now sign in with the initial password.',
+        ),
+      ),
+    );
+    _load();
+  }
+
+  Future<void> _changeRole(AdminAccount admin) async {
+    final result = _result;
+    if (result == null || result.roles.isEmpty) return;
+    final change = await showDialog<AdminRoleChange>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _ChangeRoleDialog(
+        service: _service,
+        admin: admin,
+        roles: result.roles,
+        rolePermissions: result.rolePermissions,
+        isSelf: _access?.adminId == admin.adminId,
+      ),
+    );
+    if (change == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${admin.name} is now ${adminRoleLabel(change.role)} '
+          '(was ${adminRoleLabel(change.previousRole)}).',
         ),
       ),
     );
@@ -135,11 +185,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       spacing: 16,
       runSpacing: 12,
       children: [
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
+            const Text(
               'Users',
               style: TextStyle(
                 fontSize: 32,
@@ -147,11 +197,19 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 color: AdminColors.textDark,
               ),
             ),
-            SizedBox(height: 4),
-            Text(
+            const SizedBox(height: 4),
+            const Text(
               'Administrator accounts and their roles.',
               style: TextStyle(fontSize: 14, color: AdminColors.textMuted),
             ),
+            if (_access != null && !_canChangeRoles) ...[
+              const SizedBox(height: 4),
+              const Text(
+                'Only a Super Admin can change administrator roles.',
+                key: Key('roles-read-only-note'),
+                style: TextStyle(fontSize: 12, color: AdminColors.textMuted),
+              ),
+            ],
           ],
         ),
         FilledButton.icon(
@@ -192,7 +250,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           else
             for (var i = 0; i < admins.length; i++) ...[
               if (i > 0) const Divider(height: 1, color: AdminColors.border),
-              _AdminRow(admin: admins[i]),
+              _AdminRow(
+                admin: admins[i],
+                onChangeRole: _canChangeRoles
+                    ? () => _changeRole(admins[i])
+                    : null,
+              ),
             ],
         ],
       ),
@@ -201,8 +264,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 }
 
 class _AdminRow extends StatelessWidget {
-  const _AdminRow({required this.admin});
+  const _AdminRow({required this.admin, this.onChangeRole});
   final AdminAccount admin;
+
+  /// Null when the signed-in Admin cannot change roles.
+  final VoidCallback? onChangeRole;
 
   String get _initials {
     final parts = admin.name
@@ -282,6 +348,15 @@ class _AdminRow extends StatelessWidget {
               ),
             ],
           ),
+          if (onChangeRole != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Change role',
+              icon: const Icon(Icons.manage_accounts_outlined, size: 20),
+              color: AdminColors.primary,
+              onPressed: onChangeRole,
+            ),
+          ],
         ],
       ),
     );
@@ -434,44 +509,11 @@ class _CreateAdminDialogState extends State<_CreateAdminDialog> {
                 if (adminRoleAccessNote(_role, widget.rolePermissions)
                     case final note?) ...[
                   const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AdminColors.selected,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: AdminColors.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            note,
-                            key: const Key('role-access-note'),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AdminColors.textDark,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _RoleAccessNote(note: note),
                 ],
                 if (_error != null) ...[
                   const SizedBox(height: 14),
-                  Text(
-                    _error!,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFFC62828),
-                    ),
-                  ),
+                  _ErrorText(_error!),
                 ],
               ],
             ),
@@ -500,6 +542,203 @@ class _CreateAdminDialogState extends State<_CreateAdminDialog> {
       ],
     );
   }
+}
+
+class _ChangeRoleDialog extends StatefulWidget {
+  const _ChangeRoleDialog({
+    required this.service,
+    required this.admin,
+    required this.roles,
+    required this.rolePermissions,
+    required this.isSelf,
+  });
+
+  final AdminUsersService service;
+  final AdminAccount admin;
+  final List<String> roles;
+  final Map<String, List<String>> rolePermissions;
+  final bool isSelf;
+
+  @override
+  State<_ChangeRoleDialog> createState() => _ChangeRoleDialogState();
+}
+
+class _ChangeRoleDialogState extends State<_ChangeRoleDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _reason = TextEditingController();
+  late String _role = widget.admin.role;
+  bool _saving = false;
+  String? _error;
+
+  bool get _unchanged => _role == widget.admin.role;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_unchanged || !_formKey.currentState!.validate()) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final change = await widget.service.changeRole(
+        adminId: widget.admin.adminId,
+        role: _role,
+        reason: _reason.text.trim(),
+      );
+      if (mounted) Navigator.pop(context, change);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = _msg(e);
+        _saving = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Change role for ${widget.admin.name}'),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Current role: ${adminRoleLabel(widget.admin.role)}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AdminColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: widget.roles.contains(_role) ? _role : null,
+                  decoration: const InputDecoration(labelText: 'New role'),
+                  items: [
+                    for (final role in widget.roles)
+                      DropdownMenuItem(
+                        value: role,
+                        child: Text(adminRoleLabel(role)),
+                      ),
+                  ],
+                  onChanged: _saving
+                      ? null
+                      : (v) {
+                          if (v != null) setState(() => _role = v);
+                        },
+                ),
+                if (adminRoleAccessNote(_role, widget.rolePermissions)
+                    case final note?) ...[
+                  const SizedBox(height: 8),
+                  _RoleAccessNote(note: note),
+                ],
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _reason,
+                  enabled: !_saving,
+                  maxLength: 500,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason',
+                    helperText: 'Recorded in the role change audit.',
+                  ),
+                  validator: (v) {
+                    final length = v?.trim().length ?? 0;
+                    if (length < 3 || length > 500) {
+                      return 'Enter 3 to 500 characters.';
+                    }
+                    return null;
+                  },
+                ),
+                if (widget.isSelf) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'This is your own account. A role without administrator '
+                    'management will remove your access to this page.',
+                    key: Key('self-role-warning'),
+                    style: TextStyle(fontSize: 12, color: Color(0xFFB45309)),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  _ErrorText(_error!),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving || _unchanged ? null : _submit,
+          style: FilledButton.styleFrom(backgroundColor: AdminColors.primary),
+          child: _saving
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Save role'),
+        ),
+      ],
+    );
+  }
+}
+
+class _RoleAccessNote extends StatelessWidget {
+  const _RoleAccessNote({required this.note});
+  final String note;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: AdminColors.selected,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.info_outline, size: 16, color: AdminColors.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            note,
+            key: const Key('role-access-note'),
+            style: const TextStyle(fontSize: 12, color: AdminColors.textDark),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ErrorText extends StatelessWidget {
+  const _ErrorText(this.message);
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    message,
+    style: const TextStyle(fontSize: 13, color: Color(0xFFC62828)),
+  );
 }
 
 class _Card extends StatelessWidget {

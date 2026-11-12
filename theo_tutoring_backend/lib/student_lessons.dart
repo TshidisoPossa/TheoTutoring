@@ -220,6 +220,8 @@ class MySqlStudentLessonsRepository {
         );
       }
 
+      // What the student paid for this lesson, if anything: a direct
+      // Payment, or this lesson's price in a paid package.
       int? refundPercent;
       String? refundAmount;
       final paid = await lessonAmountPaid(
@@ -366,12 +368,19 @@ Future<String?> lessonAmountPaid(
 
 /// Saves a Pending Refund of [percent] of [paidAmount] for the admin to
 /// approve (documentation 4.6). Returns the refund amount, e.g. "125.00".
+/// Throws [RefundAlreadyExists] when the booking already has a refund.
 Future<String> recordPendingRefund(
   MySQLConnection tx, {
   required int bookingId,
   required String paidAmount,
   required int percent,
 }) async {
+  final existing = await tx.execute(
+    'SELECT RefundID FROM Refund WHERE BookingID = :bookingId FOR UPDATE',
+    {'bookingId': bookingId},
+  );
+  if (existing.rows.isNotEmpty) throw const RefundAlreadyExists();
+
   final amount = refundAmountOf(paidAmount, percent);
   await tx.execute(
     '''
@@ -451,4 +460,11 @@ class LessonActionException implements Exception {
 
   /// Message shown to the student.
   final String message;
+}
+
+/// A refund was already recorded for the booking.
+class RefundAlreadyExists extends LessonActionException {
+  /// Creates the exception.
+  const RefundAlreadyExists()
+    : super(409, 'A refund has already been recorded for this lesson.');
 }

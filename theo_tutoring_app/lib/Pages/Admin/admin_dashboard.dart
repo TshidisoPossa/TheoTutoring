@@ -16,6 +16,7 @@ import 'package:intl/intl.dart';
 import 'Services/admin_access_service.dart';
 import 'Services/monitor_services.dart';
 import 'Services/refund_services.dart';
+import 'admin_access_guard.dart';
 import 'admin_shell.dart';
 import 'models/monitor_models.dart';
 import 'models/refund_models.dart';
@@ -52,6 +53,15 @@ class _Section<T> {
   bool loading = false;
   T? data;
   String? error;
+  int generation = 0;
+
+  /// Drops data and invalidates any in-flight request.
+  void reset() {
+    generation++;
+    loading = false;
+    data = null;
+    error = null;
+  }
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
@@ -65,10 +75,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _activity = _Section<AuditLogPage>();
   final _refunds = _Section<RefundCasesResult>();
 
+  AdminAccessResult? _scopeAccess;
+  bool _accessRequested = false;
+
+  // The verified result comes from the AdminAccessGuard's scope; loadAccess
+  // is only used when there is no scope. Inherited widgets cannot be read in
+  // initState, so access is resolved here.
   @override
-  void initState() {
-    super.initState();
-    _loadAccess();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final access = AdminPermissionScope.maybeOf(context)?.access;
+    if (access != null) {
+      if (!identical(access, _scopeAccess)) {
+        _scopeAccess = access;
+        _loadAccess();
+      }
+    } else if (_scopeAccess != null) {
+      // The scope disappeared: drop its access rather than keep stale
+      // permissions.
+      _scopeAccess = null;
+      setState(() {
+        _resetSections();
+        _access = null;
+        _accessError = 'Administrator access could not be verified.';
+        _accessLoading = false;
+      });
+    } else if (!_accessRequested) {
+      _loadAccess();
+    }
   }
 
   @override
@@ -91,26 +125,52 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   // ------------------------------------------------------------ loading
 
+  void _resetSections() {
+    _monitor.reset();
+    _activity.reset();
+    _refunds.reset();
+  }
+
   Future<void> _loadAccess() async {
-    setState(() {
-      _accessLoading = true;
-      _accessError = null;
-    });
+    _accessRequested = true;
+    final scopeAccess = AdminPermissionScope.maybeOf(context)?.access;
+    final loader = widget.loadAccess;
     final AdminAccessResult access;
-    try {
-      access = await (widget.loadAccess ??
-          () => AdminAccessService().checkCurrentUser())();
-    } catch (e) {
-      if (!mounted) return;
+    if (scopeAccess != null) {
+      access = scopeAccess;
+    } else if (loader == null) {
+      // No verified scope and no injected loader: fail closed.
       setState(() {
-        _accessError = _msg(e);
+        _resetSections();
+        _access = null;
+        _accessError = 'Administrator access could not be verified.';
         _accessLoading = false;
       });
       return;
+    } else {
+      setState(() {
+        _accessLoading = true;
+        _accessError = null;
+      });
+      try {
+        access = await loader();
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _accessError = _msg(e);
+          _accessLoading = false;
+        });
+        return;
+      }
     }
     if (!mounted) return;
     setState(() {
       _access = access.isAllowed ? access : null;
+      if (!_canMonitor) {
+        _monitor.reset();
+        _activity.reset();
+      }
+      if (!_canRefunds) _refunds.reset();
       _accessError = access.isAllowed
           ? null
           : 'Administrator access could not be verified.';
@@ -125,19 +185,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _run<T>(_Section<T> section, Future<T> Function() load) async {
+    final generation = ++section.generation;
     setState(() {
       section.loading = true;
       section.error = null;
     });
     try {
       final data = await load();
-      if (!mounted) return;
+      if (!mounted || generation != section.generation) return;
       setState(() {
         section.data = data;
         section.loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != section.generation) return;
       setState(() {
         section.error = _msg(e);
         section.loading = false;
@@ -318,7 +379,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           subtitle: pendingRefunds == null
               ? 'Decide refunds and resolve reports'
               : '${_count.format(pendingRefunds)} '
-                    '${pendingRefunds == 1 ? 'request' : 'requests'} waiting',
+                    '${pendingRefunds == 1 ? 'pending refund' : 'pending refunds'}',
           icon: Icons.payments_outlined,
           onTap: () => _open(AdminRoutes.refunds),
         ),

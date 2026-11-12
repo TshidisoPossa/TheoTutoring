@@ -51,7 +51,12 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
 
   // Availability grid, Monday to Saturday (documentation 9.3 / 11.1)
   static const _days = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
   ];
   static const _slots = ['Morning', 'Afternoon', 'Evening'];
   Map<String, Set<String>> _ticked = {}; // day -> ticked periods
@@ -88,7 +93,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final p = await fetchTutorProfile();
       if (!mounted) return;
@@ -110,15 +118,19 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         _loading = false;
       });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
     }
   }
 
   // subjects: [{subjectId, subjectName}], locked: [3, 5]
   void _readSubjects(Object? subjects, Object? locked) {
     _subjects = [
-      for (final s in (subjects as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>())
+      for (final s
+          in (subjects as List<dynamic>? ?? []).cast<Map<String, dynamic>>())
         (
           id: (s['subjectId'] as num).toInt(),
           name: s['subjectName']?.toString() ?? '',
@@ -144,7 +156,9 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       };
     }
     _ticked = ticked;
-    _saved = {for (final e in ticked.entries) e.key: {...e.value}};
+    _saved = {
+      for (final e in ticked.entries) e.key: {...e.value},
+    };
     if (!keepLocks) _locked = locked;
   }
 
@@ -189,10 +203,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   }
 
   bool get _gridChanged => _days.any((d) {
-        final a = _ticked[d] ?? const {};
-        final b = _saved[d] ?? const {};
-        return a.length != b.length || !a.containsAll(b);
-      });
+    final a = _ticked[d] ?? const {};
+    final b = _saved[d] ?? const {};
+    return a.length != b.length || !a.containsAll(b);
+  });
 
   bool get _hasLocks => _locked.values.any((l) => l.isNotEmpty);
 
@@ -204,20 +218,23 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     final periods = _ticked.putIfAbsent(day, () => {});
     if (periods.contains(slot) && (_locked[day]?.contains(slot) ?? false)) {
       _showMessage(
-          'You have an upcoming booking on $day ($slot), so it must stay '
-          'available.');
+        'You have an upcoming booking on $day ($slot), so it must stay '
+        'available.',
+      );
       return;
     }
-    setState(() => periods.contains(slot)
-        ? periods.remove(slot)
-        : periods.add(slot));
+    setState(
+      () => periods.contains(slot) ? periods.remove(slot) : periods.add(slot),
+    );
   }
 
   void _cancelEditing() {
     setState(() {
       _editMode = false;
       // throw away unsaved changes
-      _ticked = {for (final e in _saved.entries) e.key: {...e.value}};
+      _ticked = {
+        for (final e in _saved.entries) e.key: {...e.value},
+      };
     });
   }
 
@@ -234,8 +251,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       });
       if (!mounted) return;
       setState(() {
-        _readGrid(result['availability'] as List<dynamic>? ?? [],
-            keepLocks: true);
+        _readGrid(
+          result['availability'] as List<dynamic>? ?? [],
+          keepLocks: true,
+        );
         _editMode = false;
         _saving = false;
       });
@@ -269,13 +288,11 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _uploading = false);
-      _showMessage(
-          switch (e) {
-            TutorApiException(:final message) => message,
-            CloudinaryUploadException(:final message) => message,
-            _ => 'Could not upload the photo.',
-          },
-          error: true);
+      _showMessage(switch (e) {
+        TutorApiException(:final message) => message,
+        CloudinaryUploadException(:final message) => message,
+        _ => 'Could not upload the photo.',
+      }, error: true);
     }
   }
 
@@ -306,8 +323,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
               try {
                 final result = await saveTutorAbout(controller.text.trim());
                 if (sheetContext.mounted) {
-                  Navigator.pop(sheetContext,
-                      result['about']?.toString() ?? controller.text.trim());
+                  Navigator.pop(
+                    sheetContext,
+                    result['about']?.toString() ?? controller.text.trim(),
+                  );
                 }
               } catch (e) {
                 setSheet(() {
@@ -318,74 +337,87 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             }
 
             return Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20,
-                  MediaQuery.of(sheetContext).viewInsets.bottom + 20),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                0,
+                20,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+              ),
               // Scrolls when the phone keyboard leaves too little room, so
               // Save is never pushed off screen
               child: SingleChildScrollView(
-               child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _cardTitle('Edit About Me'),
-                  const SizedBox(height: 4),
-                  Text(
-                      'Tell students about your experience and how you teach.',
-                      style: TextStyle(fontSize: 12, color: _grey)),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    minLines: 4,
-                    maxLines: 8,
-                    maxLength: _maxAbout,
-                    enabled: !saving,
-                    onChanged: (_) => setSheet(() {}),
-                    decoration: InputDecoration(
-                      border: const OutlineInputBorder(),
-                      helperText: length < _minAbout
-                          ? 'At least $_minAbout characters'
-                          : null,
-                    ),
-                  ),
-                  if (error != null) ...[
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _cardTitle('Edit About Me'),
                     const SizedBox(height: 4),
-                    Text(error!,
-                        style: const TextStyle(
-                            color: Color(0xFFDC2626), fontSize: 12)),
-                  ],
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed:
-                              saving ? null : () => Navigator.pop(sheetContext),
-                          child: const Text('Cancel'),
-                        ),
+                    Text(
+                      'Tell students about your experience and how you teach.',
+                      style: TextStyle(fontSize: 12, color: _grey),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      minLines: 4,
+                      maxLines: 8,
+                      maxLength: _maxAbout,
+                      enabled: !saving,
+                      onChanged: (_) => setSheet(() {}),
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        helperText: length < _minAbout
+                            ? 'At least $_minAbout characters'
+                            : null,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: valid && !saving ? save : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _blue,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                          ),
-                          child: saving
-                              ? const SizedBox(
-                                  height: 16,
-                                  width: 16,
-                                  child: CircularProgressIndicator(
-                                      color: Colors.white, strokeWidth: 2))
-                              : const Text('Save'),
+                    ),
+                    if (error != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        error!,
+                        style: const TextStyle(
+                          color: Color(0xFFDC2626),
+                          fontSize: 12,
                         ),
                       ),
                     ],
-                  ),
-                ],
-               ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: saving
+                                ? null
+                                : () => Navigator.pop(sheetContext),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: valid && !saving ? save : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _blue,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                            ),
+                            child: saving
+                                ? const SizedBox(
+                                    height: 16,
+                                    width: 16,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -442,15 +474,22 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             // 60% of the screen, but never taller than the room left above
             // the phone keyboard (or the search box is pushed off the top)
             final media = MediaQuery.of(sheetContext);
-            final room = media.size.height -
+            final room =
+                media.size.height -
                 media.viewInsets.bottom -
                 media.padding.top -
                 96; // drag handle and margins
-            final height =
-                (media.size.height * 0.6).clamp(0.0, room < 160 ? 160.0 : room);
+            final height = (media.size.height * 0.6).clamp(
+              0.0,
+              room < 160 ? 160.0 : room,
+            );
             return Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16,
-                  media.viewInsets.bottom + 16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                media.viewInsets.bottom + 16,
+              ),
               child: SizedBox(
                 height: height,
                 child: Column(
@@ -478,10 +517,11 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                                 for (final s in matches)
                                   ListTile(
                                     title: Text(s.name),
-                                    trailing:
-                                        const Icon(Icons.add, color: _blue),
-                                    onTap: () =>
-                                        Navigator.pop(sheetContext, s),
+                                    trailing: const Icon(
+                                      Icons.add,
+                                      color: _blue,
+                                    ),
+                                    onTap: () => Navigator.pop(sheetContext, s),
                                   ),
                               ],
                             ),
@@ -495,25 +535,29 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       },
     );
     if (picked == null || !mounted) return;
-    await _saveSubjects([for (final s in _subjects) s.id, picked.id],
-        done: '${picked.name} added.');
+    await _saveSubjects([
+      for (final s in _subjects) s.id,
+      picked.id,
+    ], done: '${picked.name} added.');
   }
 
   // × on a subject chip
   Future<void> _removeSubject(({int id, String name}) subject) async {
     if (_lockedSubjectIds.contains(subject.id)) {
       _showMessage(
-          '${subject.name} has an upcoming booking, so you cannot remove it '
-          'yet.');
+        '${subject.name} has an upcoming booking, so you cannot remove it '
+        'yet.',
+      );
       return;
     }
     if (_subjects.length == 1) {
       _showMessage('Keep at least one subject.');
       return;
     }
-    await _saveSubjects(
-        [for (final s in _subjects) if (s.id != subject.id) s.id],
-        done: '${subject.name} removed.');
+    await _saveSubjects([
+      for (final s in _subjects)
+        if (s.id != subject.id) s.id,
+    ], done: '${subject.name} removed.');
   }
 
   Future<void> _saveSubjects(List<int> ids, {required String done}) async {
@@ -547,18 +591,17 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         _meetConnected = true;
         _connectingMeet = false;
       });
-      _showMessage(reconnected
-          ? 'Google Meet reconnected. Your lessons use the new link.'
-          : 'Google Meet connected.');
+      _showMessage(
+        reconnected
+            ? 'Google Meet reconnected. Your lessons use the new link.'
+            : 'Google Meet connected.',
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _connectingMeet = false);
       _showMessage(e.toString(), error: true);
     }
   }
-
-  void _comingSoon(String feature) =>
-      _showMessage('$feature will be available soon.');
 
   // Support → Report a Problem; the page pops with its confirmation message
   Future<void> _openReportProblem() async {
@@ -572,10 +615,12 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   void _showMessage(String message, {bool error = false}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor: error ? const Color(0xFFDC2626) : null,
-      ));
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: error ? const Color(0xFFDC2626) : null,
+        ),
+      );
   }
 
   // 250.0 -> "R250", 262.5 -> "R262.50"
@@ -599,34 +644,34 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _blue))
           : _error != null
-              ? _buildError()
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  color: _blue,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                    children: [
-                      _buildHeaderCard(),
-                      const SizedBox(height: 16),
-                      _buildAboutCard(),
-                      const SizedBox(height: 16),
-                      _buildSubjectsCard(),
-                      const SizedBox(height: 16),
-                      _buildAvailabilityCard(),
-                      const SizedBox(height: 16),
-                      _buildEditButtons(),
-                      const SizedBox(height: 16),
-                      _buildMeetCard(),
-                      const SizedBox(height: 16),
-                      _buildPreferencesCard(),
-                      const SizedBox(height: 16),
-                      _buildSupportCard(),
-                      const SizedBox(height: 16),
-                      _buildLogOutCard(),
-                    ],
-                  ),
-                ),
+          ? _buildError()
+          : RefreshIndicator(
+              onRefresh: _load,
+              color: _blue,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  _buildHeaderCard(),
+                  const SizedBox(height: 16),
+                  _buildAboutCard(),
+                  const SizedBox(height: 16),
+                  _buildSubjectsCard(),
+                  const SizedBox(height: 16),
+                  _buildAvailabilityCard(),
+                  const SizedBox(height: 16),
+                  _buildEditButtons(),
+                  const SizedBox(height: 16),
+                  _buildMeetCard(),
+                  const SizedBox(height: 16),
+                  _buildPreferencesCard(),
+                  const SizedBox(height: 16),
+                  _buildSupportCard(),
+                  const SizedBox(height: 16),
+                  _buildLogOutCard(),
+                ],
+              ),
+            ),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -656,9 +701,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             child: const Icon(Icons.school_rounded, color: _blue, size: 18),
           ),
           const SizedBox(width: 10),
-          Text('My Profile',
-              style: TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w700, color: _dark)),
+          Text(
+            'My Profile',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: _dark,
+            ),
+          ),
         ],
       ),
       actions: [
@@ -677,16 +727,19 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   // The ☰ menu: the tutor pages and Log Out
   Widget _buildDrawer() {
     Widget item(IconData icon, String label, int tab) => ListTile(
-          leading: Icon(icon, color: tab == 3 ? _blue : _grey),
-          title: Text(label,
-              style: TextStyle(
-                  color: tab == 3 ? _blue : _dark,
-                  fontWeight: tab == 3 ? FontWeight.w600 : FontWeight.w500)),
-          onTap: () {
-            Navigator.pop(context); // close the menu
-            openTutorTab(context, tab, current: 3);
-          },
-        );
+      leading: Icon(icon, color: tab == 3 ? _blue : _grey),
+      title: Text(
+        label,
+        style: TextStyle(
+          color: tab == 3 ? _blue : _dark,
+          fontWeight: tab == 3 ? FontWeight.w600 : FontWeight.w500,
+        ),
+      ),
+      onTap: () {
+        Navigator.pop(context); // close the menu
+        openTutorTab(context, tab, current: 3);
+      },
+    );
 
     return Drawer(
       backgroundColor: _surface,
@@ -701,12 +754,15 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                   _avatar(radius: 24),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(_name,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: _dark)),
+                    child: Text(
+                      _name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _dark,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -720,8 +776,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: _red),
-              title: const Text('Log Out',
-                  style: TextStyle(color: _red, fontWeight: FontWeight.w600)),
+              title: const Text(
+                'Log Out',
+                style: TextStyle(color: _red, fontWeight: FontWeight.w600),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _logOut();
@@ -742,14 +800,18 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           children: [
             Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey[400]),
             const SizedBox(height: 12),
-            Text(_error!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _grey, fontSize: 13)),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _grey, fontSize: 13),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _load,
               style: ElevatedButton.styleFrom(
-                  backgroundColor: _blue, foregroundColor: Colors.white),
+                backgroundColor: _blue,
+                foregroundColor: Colors.white,
+              ),
               child: const Text('Retry'),
             ),
           ],
@@ -768,12 +830,15 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       child: _uploading
           ? const CircularProgressIndicator(color: _blue)
           : _photoUrl == null
-              ? Text(initialsOf(_name),
-                  style: TextStyle(
-                      fontSize: radius * 0.6,
-                      fontWeight: FontWeight.w700,
-                      color: _blue))
-              : null,
+          ? Text(
+              initialsOf(_name),
+              style: TextStyle(
+                fontSize: radius * 0.6,
+                fontWeight: FontWeight.w700,
+                color: _blue,
+              ),
+            )
+          : null,
     );
   }
 
@@ -800,8 +865,11 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(color: _surface, width: 2),
                     ),
-                    child: const Icon(Icons.camera_alt_rounded,
-                        size: 13, color: Colors.white),
+                    child: const Icon(
+                      Icons.camera_alt_rounded,
+                      size: 13,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
@@ -812,28 +880,35 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_name,
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: _dark)),
+                Text(
+                  _name,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: _dark,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.star_rounded,
-                        color: Color(0xFFF59E0B), size: 17),
+                    const Icon(
+                      Icons.star_rounded,
+                      color: Color(0xFFF59E0B),
+                      size: 17,
+                    ),
                     const SizedBox(width: 3),
                     Text(
                       hasRating ? _averageRating.toStringAsFixed(1) : 'New',
                       style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: _dark),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _dark,
+                      ),
                     ),
                     Text(
                       hasRating
                           ? '  ·  $_reviewCount '
-                              '${_reviewCount == 1 ? 'review' : 'reviews'}'
+                                '${_reviewCount == 1 ? 'review' : 'reviews'}'
                           : '  ·  No reviews yet',
                       style: TextStyle(fontSize: 12, color: _grey),
                     ),
@@ -851,8 +926,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('Session rate: $_rateLabel',
-                    style: TextStyle(fontSize: 12, color: _grey)),
+                Text(
+                  'Session rate: $_rateLabel',
+                  style: TextStyle(fontSize: 12, color: _grey),
+                ),
               ],
             ),
           ),
@@ -868,12 +945,15 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
         color: background,
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(text,
-          style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-              color: color)),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+          color: color,
+        ),
+      ),
     );
   }
 
@@ -921,8 +1001,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           _label('SUBJECTS'),
           const SizedBox(height: 8),
           if (_subjects.isEmpty)
-            Text('No subjects added yet.',
-                style: TextStyle(color: _muted, fontSize: 13))
+            Text(
+              'No subjects added yet.',
+              style: TextStyle(color: _muted, fontSize: 13),
+            )
           else
             Wrap(
               spacing: 8,
@@ -936,14 +1018,16 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                 ? const SizedBox(
                     height: 14,
                     width: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.add, size: 18),
             label: const Text('Add Subject'),
             style: OutlinedButton.styleFrom(
               foregroundColor: _blue,
               side: const BorderSide(color: _blue),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
           ),
           if (_lockedSubjectIds.isNotEmpty) ...[
@@ -954,9 +1038,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                      'Locked subjects have upcoming bookings and cannot be '
-                      'removed.',
-                      style: TextStyle(color: _muted, fontSize: 11)),
+                    'Locked subjects have upcoming bookings and cannot be '
+                    'removed.',
+                    style: TextStyle(color: _muted, fontSize: 11),
+                  ),
                 ),
               ],
             ),
@@ -965,8 +1050,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           _label('QUALIFICATIONS'),
           const SizedBox(height: 8),
           if (_qualifications.isEmpty)
-            Text('No qualifications added yet.',
-                style: TextStyle(color: _muted, fontSize: 13))
+            Text(
+              'No qualifications added yet.',
+              style: TextStyle(color: _muted, fontSize: 13),
+            )
           else
             for (final q in _qualifications)
               Padding(
@@ -979,14 +1066,18 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(q['degree']?.toString() ?? '',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                  color: _dark)),
-                          Text(q['institution']?.toString() ?? '',
-                              style: TextStyle(
-                                  color: _grey, fontSize: 12)),
+                          Text(
+                            q['degree']?.toString() ?? '',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: _dark,
+                            ),
+                          ),
+                          Text(
+                            q['institution']?.toString() ?? '',
+                            style: TextStyle(color: _grey, fontSize: 12),
+                          ),
                         ],
                       ),
                     ),
@@ -1010,11 +1101,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(subject.name,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600)),
+          Text(
+            subject.name,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(width: 6),
           GestureDetector(
             onTap: _savingSubjects ? null : () => _removeSubject(subject),
@@ -1069,22 +1163,25 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           Text(
             _showCalendar
                 ? 'Tap a date to take the day off or change its hours. '
-                    'Students see the change straight away.'
+                      'Students see the change straight away.'
                 : 'These hours repeat every week. Students can book up to '
-                    '90 days ahead.',
+                      '90 days ahead.',
             style: TextStyle(fontSize: 12, color: _grey, height: 1.4),
           ),
           if (_editMode && !_showCalendar) ...[
             const SizedBox(height: 4),
-            const Text('Tap a slot to turn it on or off.',
-                style: TextStyle(fontSize: 12, color: _blue)),
+            const Text(
+              'Tap a slot to turn it on or off.',
+              style: TextStyle(fontSize: 12, color: _blue),
+            ),
           ],
           if (_showCalendar && _gridChanged) ...[
             const SizedBox(height: 4),
             Text(
-                'The calendar uses your saved weekly hours. Save Changes to '
-                'include your grid edits.',
-                style: TextStyle(fontSize: 12, color: _amber)),
+              'The calendar uses your saved weekly hours. Save Changes to '
+              'include your grid edits.',
+              style: TextStyle(fontSize: 12, color: _amber),
+            ),
           ],
           const SizedBox(height: 14),
           if (_showCalendar && calendar != null)
@@ -1109,11 +1206,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           for (final d in _days)
             Expanded(
               child: Center(
-                child: Text(d.substring(0, 3),
-                    style: TextStyle(
-                        color: _muted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500)),
+                child: Text(
+                  d.substring(0, 3),
+                  style: TextStyle(
+                    color: _muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ),
         ],
@@ -1129,12 +1229,11 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(slot,
-                        style:
-                            TextStyle(color: _grey, fontSize: 11)),
-                    Text(_periodRange(slot),
-                        style:
-                            TextStyle(color: _muted, fontSize: 10)),
+                    Text(slot, style: TextStyle(color: _grey, fontSize: 11)),
+                    Text(
+                      _periodRange(slot),
+                      style: TextStyle(color: _muted, fontSize: 10),
+                    ),
                   ],
                 ),
               ),
@@ -1149,9 +1248,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             SizedBox(width: 6),
             Expanded(
               child: Text(
-                  'Locked slots have upcoming bookings and cannot be '
-                  'removed.',
-                  style: TextStyle(color: _muted, fontSize: 11)),
+                'Locked slots have upcoming bookings and cannot be '
+                'removed.',
+                style: TextStyle(color: _muted, fontSize: 11),
+              ),
             ),
           ],
         ),
@@ -1177,7 +1277,9 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             color: isAvailable ? _blue : _cellEmpty,
             borderRadius: BorderRadius.circular(6),
             border: _editMode && !isAvailable
-                ? Border.all(color: _dk ? TutorDark.border : const Color(0xFFD6DEEB))
+                ? Border.all(
+                    color: _dk ? TutorDark.border : const Color(0xFFD6DEEB),
+                  )
                 : null,
           ),
           child: isLocked
@@ -1190,8 +1292,9 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
 
   // "Edit Profile" turns on editing; then Cancel / Save Changes
   Widget _buildEditButtons() {
-    final shape =
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+    );
     if (!_editMode) {
       return SizedBox(
         width: double.infinity,
@@ -1204,8 +1307,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             shape: shape,
             elevation: 0,
           ),
-          child: const Text('Edit Profile',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          child: const Text(
+            'Edit Profile',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
         ),
       );
     }
@@ -1216,12 +1321,16 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             onPressed: _saving ? null : _cancelEditing,
             style: OutlinedButton.styleFrom(
               foregroundColor: _grey,
-              side: BorderSide(color: _dk ? TutorDark.border : const Color(0xFFD1D5DB)),
+              side: BorderSide(
+                color: _dk ? TutorDark.border : const Color(0xFFD1D5DB),
+              ),
               padding: const EdgeInsets.symmetric(vertical: 16),
               shape: shape,
             ),
-            child: const Text('Cancel',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
           ),
         ),
         const SizedBox(width: 12),
@@ -1240,10 +1349,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                     height: 18,
                     width: 18,
                     child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2))
-                : const Text('Save Changes',
-                    style:
-                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Text(
+                    'Save Changes',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
           ),
         ),
       ],
@@ -1271,9 +1384,9 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           Text(
             _meetConnected
                 ? 'Your lessons take place in your own Google Meet room. '
-                    'Reconnect if the link stops working.'
+                      'Reconnect if the link stops working.'
                 : 'Connect Google Meet so students can join your lessons. '
-                    'Sign in with Google once and the app creates your room.',
+                      'Sign in with Google once and the app creates your room.',
             style: TextStyle(fontSize: 12, color: _grey, height: 1.4),
           ),
           const SizedBox(height: 12),
@@ -1283,14 +1396,16 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
                 ? const SizedBox(
                     height: 14,
                     width: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.videocam_outlined, size: 18),
             label: Text(_meetConnected ? 'Reconnect' : 'Connect Google Meet'),
             style: OutlinedButton.styleFrom(
               foregroundColor: _blue,
               side: const BorderSide(color: _blue),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
           ),
         ],
@@ -1371,9 +1486,14 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             children: [
               Icon(Icons.logout_rounded, color: _red, size: 20),
               SizedBox(width: 8),
-              Text('Log Out',
-                  style: TextStyle(
-                      color: _red, fontSize: 15, fontWeight: FontWeight.w600)),
+              Text(
+                'Log Out',
+                style: TextStyle(
+                  color: _red,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -1395,16 +1515,20 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
     );
   }
 
-  Widget _cardTitle(String text) => Text(text,
-      style: TextStyle(
-          fontSize: 16, fontWeight: FontWeight.w700, color: _dark));
+  Widget _cardTitle(String text) => Text(
+    text,
+    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _dark),
+  );
 
-  Widget _label(String text) => Text(text,
-      style: TextStyle(
-          color: _muted,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1));
+  Widget _label(String text) => Text(
+    text,
+    style: TextStyle(
+      color: _muted,
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 1,
+    ),
+  );
 
   // A card with a title and tappable rows separated by lines
   Widget _listCard({required String title, required List<Widget> rows}) {
@@ -1421,10 +1545,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
             child: _cardTitle(title),
           ),
-          for (final row in rows) ...[
-            Divider(height: 1, color: _line),
-            row,
-          ],
+          for (final row in rows) ...[Divider(height: 1, color: _line), row],
         ],
       ),
     );
@@ -1443,10 +1564,8 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       title: Text(title, style: TextStyle(fontSize: 14, color: _dark)),
       subtitle: subtitle == null
           ? null
-          : Text(subtitle,
-              style: TextStyle(fontSize: 11, color: _muted)),
-      trailing: trailing ??
-          Icon(Icons.chevron_right_rounded, color: _muted),
+          : Text(subtitle, style: TextStyle(fontSize: 11, color: _muted)),
+      trailing: trailing ?? Icon(Icons.chevron_right_rounded, color: _muted),
       onTap: onTap,
     );
   }
@@ -1463,10 +1582,22 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       unselectedFontSize: 11,
       onTap: (i) => openTutorTab(context, i, current: 3),
       items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: 'Dashboard'),
-        BottomNavigationBarItem(icon: Icon(Icons.calendar_month_rounded), label: 'Schedule'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline_rounded), label: 'Chats'),
-        BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profile'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.grid_view_rounded),
+          label: 'Dashboard',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.calendar_month_rounded),
+          label: 'Schedule',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.chat_bubble_outline_rounded),
+          label: 'Chats',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.person_rounded),
+          label: 'Profile',
+        ),
       ],
     );
   }

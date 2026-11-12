@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:mysql_dart/mysql_dart.dart';
-import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:mysql_dart/exception.dart';
+import 'package:theo_tutoring_backend/db_row.dart';
 
 import 'availability_overrides.dart';
 import 'booking_domain.dart';
