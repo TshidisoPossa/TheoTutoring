@@ -4,6 +4,7 @@ import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
 import 'package:theo_tutoring_backend/header_tutor.dart';
+import 'package:theo_tutoring_backend/sa_time.dart';
 import 'package:theo_tutoring_backend/tutor_application_status.dart';
 import '../../lib/tutorlanding_session.dart';
 
@@ -82,19 +83,20 @@ Future<Response> onRequest(RequestContext context) async {
   // Card 2 and Today's Schedule: Confirmed sessions today that have not ended
   // yet, in time order. The card shows the length of this list, so the two
   // always agree. MinutesUntilStart is worked out by MySQL so it uses the
-  // same clock as CURDATE()/CURTIME(); 0 or less means the session is on now.
+  // same South African clock as the date filter (lib/sa_time.dart); 0 or less
+  // means the session is on now.
   final schedule = await conn.execute(
     'SELECT b.Booking_id, b.SubjectID, sj.subjectName AS Subject, '
     'b.StartTime, b.EndTime, b.Note, $tutorMeetLinkSql, '
     'u.Name AS StudentName, u.ProfilePhoto AS StudentPhoto, '
-    'TIMESTAMPDIFF(MINUTE, NOW(), TIMESTAMP(b.`Date`, b.StartTime)) '
+    'TIMESTAMPDIFF(MINUTE, $saNowSql, TIMESTAMP(b.`Date`, b.StartTime)) '
     'AS MinutesUntilStart '
     'FROM booking b '
     'JOIN subjects sj ON sj.subjectId = b.SubjectID '
     'JOIN studentprofile s ON s.StudentID = b.StudentID '
     'JOIN `user` u ON u.UserId = s.UserID '
     "WHERE b.TutorID = :tid AND b.Status = 'Confirmed' "
-    'AND b.`Date` = CURDATE() AND b.EndTime > CURTIME() '
+    'AND b.`Date` = $saTodaySql AND b.EndTime > $saClockSql '
     'ORDER BY b.StartTime',
     p,
   );

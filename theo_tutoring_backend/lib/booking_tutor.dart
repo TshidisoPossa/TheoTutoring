@@ -3,6 +3,7 @@ import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
+import 'package:theo_tutoring_backend/sa_time.dart';
 import 'package:theo_tutoring_backend/student_lessons.dart';
 
 // ---------------------------------------------------------------------------
@@ -194,7 +195,7 @@ Future<Map<String, dynamic>?> getBookingDetail(
     // 180 -> "Received 3h ago"
     'TIMESTAMPDIFF(MINUTE, b.Created_at, NOW()) AS ReceivedMinutesAgo, '
     // 1 once the session has started (it can no longer be postponed)
-    'TIMESTAMP(b.`Date`, b.StartTime) <= NOW() AS HasStarted, '
+    'TIMESTAMP(b.`Date`, b.StartTime) <= $saNowSql AS HasStarted, '
     'u.Name AS StudentName, u.ProfilePhoto AS StudentPhoto, '
     'u.AccountStatus AS StudentAccountStatus, '
     's.InstitutionYear, s.Course, ' // "Sophomore", "Major & Focus"
@@ -318,8 +319,8 @@ Future<PostponedBooking> postponeBooking(
     final found = await tx.execute(
       'SELECT b.Status, b.`Date`, b.StartTime, b.EndTime, '
       'sj.subjectName AS Subject, u.FirebaseUid AS StudentUid, '
-      'TIMESTAMP(b.`Date`, b.StartTime) <= NOW() AS HasStarted, '
-      'TIMESTAMP(:d, :s) >= NOW() + INTERVAL ${minimumLeadTime.inMinutes} '
+      'TIMESTAMP(b.`Date`, b.StartTime) <= $saNowSql AS HasStarted, '
+      'TIMESTAMP(:d, :s) >= $saNowSql + INTERVAL ${minimumLeadTime.inMinutes} '
       'MINUTE AS FarEnough '
       'FROM booking b '
       'JOIN subjects sj ON sj.subjectId = b.SubjectID '
@@ -496,7 +497,7 @@ Future<TutorCancellation> tutorCancelBooking(
       "DATE_FORMAT(b.`Date`, '%Y-%m-%d') AS SessionDate, "
       "TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime, "
       'sj.subjectName AS Subject, u.FirebaseUid AS StudentUid, '
-      'TIMESTAMP(b.`Date`, b.StartTime) <= NOW() AS HasStarted '
+      'TIMESTAMP(b.`Date`, b.StartTime) <= $saNowSql AS HasStarted '
       'FROM booking b '
       'JOIN subjects sj ON sj.subjectId = b.SubjectID '
       'JOIN studentprofile s ON s.StudentID = b.StudentID '

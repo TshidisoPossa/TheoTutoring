@@ -2,6 +2,7 @@ import 'package:mysql_dart/mysql_dart.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
+import 'package:theo_tutoring_backend/sa_time.dart';
 
 // The audit API is consumed by route handlers and their focused tests.
 // ignore_for_file: public_member_api_docs
@@ -202,7 +203,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
           r.RefundPercentage,
           r.RefundAmount,
           r.OverriddenByAdmin,
-          r.CancellationTime,
+          ${serverClockToUtcSql('r.CancellationTime')} AS CancellationTime,
           b.Booking_id,
           b.Date,
           b.StartTime,
@@ -340,7 +341,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     final percentage = status == 'pending' && !overridden
         ? _policyPercentage(
             _wallTime(row.str('CancellationTime')),
-            _wallTime(
+            _saWallTime(
               '${row.date('Date')} ${row.str('StartTime')}',
             ),
           )
@@ -359,7 +360,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
       'studentName': row.str('StudentName'),
       'tutorName': row.str('TutorName'),
       'subject': row.str('subjectName'),
-      'sessionStart': _johannesburgIso(
+      'sessionStart': _johannesburgIsoFromSa(
         '${row.date('Date')} ${row.str('StartTime')}',
       ),
       'cancelledAt': _johannesburgIso(row.str('CancellationTime')),
@@ -461,7 +462,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
       'subject': row.str('subjectName'),
       'sessionStart': sessionDate == null
           ? null
-          : _johannesburgIso('$sessionDate ${row.str('StartTime')}'),
+          : _johannesburgIsoFromSa('$sessionDate ${row.str('StartTime')}'),
       'cancelledAt': null,
       'createdAt': _johannesburgIso(row.str('CreatedAtUtc')),
       'reportedBy': row.str('ReporterRole'),
@@ -596,7 +597,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
         if (record.str('OverriddenByAdmin') != '1') {
           percentage = _policyPercentage(
             _wallTime(record.str('CancellationTime')),
-            _wallTime(record.str('SessionStart')),
+            _saWallTime(record.str('SessionStart')),
           );
         }
         final amountPaid = _double(record.str('AmountPaid'));
@@ -650,7 +651,7 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
         r.RefundStatus,
         r.RefundPercentage,
         r.OverriddenByAdmin,
-        r.CancellationTime,
+        ${serverClockToUtcSql('r.CancellationTime')} AS CancellationTime,
         CONCAT(b.Date, ' ', b.StartTime) AS SessionStart,
         CASE
           WHEN p.PaymentStatus = 'Successful' OR pa.PaymentStatus = 'Successful'
@@ -718,8 +719,20 @@ DateTime? _wallTime(String? value) {
 
 DateTime? _utcDateTime(String? value) => _wallTime(value);
 
-String? _johannesburgIso(String? value) {
-  final date = _wallTime(value);
+/// A lesson's date and start time (stored in South African time, UTC+2) as
+/// a UTC instant, so it can be compared with UTC times.
+DateTime? _saWallTime(String? value) =>
+    _wallTime(value)?.subtract(const Duration(hours: 2));
+
+/// [value] is a UTC time.
+String? _johannesburgIso(String? value) =>
+    _formatJohannesburg(_wallTime(value));
+
+/// [value] is a South African wall-clock time, e.g. a lesson start.
+String? _johannesburgIsoFromSa(String? value) =>
+    _formatJohannesburg(_saWallTime(value));
+
+String? _formatJohannesburg(DateTime? date) {
   if (date == null) return null;
   final local = date.add(const Duration(hours: 2));
   String two(int n) => n.toString().padLeft(2, '0');

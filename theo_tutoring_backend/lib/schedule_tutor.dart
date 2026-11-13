@@ -1,5 +1,6 @@
 import 'package:mysql_dart/mysql_dart.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
+import 'package:theo_tutoring_backend/sa_time.dart';
 import 'package:theo_tutoring_backend/google_meet.dart';
 
 // ---------------------------------------------------------------------------
@@ -92,12 +93,12 @@ ScheduleQuery parseScheduleQuery(Map<String, String> params) {
 
 // ── Fixed SQL pieces (no user text ever goes into the SQL) ──────────────────
 const _notEnded =
-    '(b.`Date` > CURDATE() OR (b.`Date` = CURDATE() AND b.EndTime > CURTIME()))';
+    '(b.`Date` > $saTodaySql OR (b.`Date` = $saTodaySql AND b.EndTime > $saClockSql))';
 const _ended =
-    '(b.`Date` < CURDATE() OR (b.`Date` = CURDATE() AND b.EndTime <= CURTIME()))';
+    '(b.`Date` < $saTodaySql OR (b.`Date` = $saTodaySql AND b.EndTime <= $saClockSql))';
 // a request is only "new" while its session has not started yet
 const _notStarted =
-    '(b.`Date` > CURDATE() OR (b.`Date` = CURDATE() AND b.StartTime > CURTIME()))';
+    '(b.`Date` > $saTodaySql OR (b.`Date` = $saTodaySql AND b.StartTime > $saClockSql))';
 
 const _tabCondition = {
   ScheduleTab.upcoming: "b.Status = 'Confirmed' AND $_notEnded",
@@ -116,10 +117,10 @@ const _tabOrder = {
 
 const _dateCondition = {
   ScheduleDate.all: '',
-  ScheduleDate.today: ' AND b.`Date` = CURDATE()',
-  ScheduleDate.tomorrow: ' AND b.`Date` = CURDATE() + INTERVAL 1 DAY',
+  ScheduleDate.today: ' AND b.`Date` = $saTodaySql',
+  ScheduleDate.tomorrow: ' AND b.`Date` = $saTodaySql + INTERVAL 1 DAY',
   // mode 3 = weeks start on Monday
-  ScheduleDate.week: ' AND YEARWEEK(b.`Date`, 3) = YEARWEEK(CURDATE(), 3)',
+  ScheduleDate.week: ' AND YEARWEEK(b.`Date`, 3) = YEARWEEK($saTodaySql, 3)',
 };
 
 /// The numbers on the tabs, e.g. Upcoming (5), New (3).
@@ -170,10 +171,10 @@ Future<List<Map<String, dynamic>>> getScheduleSessions(
     'b.Note, $tutorMeetLinkSql, b.SubjectID, sj.subjectName AS Subject, '
     'TIME_TO_SEC(TIMEDIFF(b.EndTime, b.StartTime)) DIV 60 AS DurationMinutes, '
     // 45 -> "Starts in 45m"
-    'TIMESTAMPDIFF(MINUTE, NOW(), TIMESTAMP(b.`Date`, b.StartTime)) '
+    'TIMESTAMPDIFF(MINUTE, $saNowSql, TIMESTAMP(b.`Date`, b.StartTime)) '
     'AS StartsInMinutes, '
     // 0 -> "Today", 1 -> "Tomorrow"
-    'DATEDIFF(b.`Date`, CURDATE()) AS DaysFromToday, '
+    'DATEDIFF(b.`Date`, $saTodaySql) AS DaysFromToday, '
     // New tab: "Requested 2h ago"
     'TIMESTAMPDIFF(MINUTE, b.Created_at, NOW()) AS RequestedMinutesAgo, '
     // Upcoming tab: "Confirmed 25m ago" = when the student paid

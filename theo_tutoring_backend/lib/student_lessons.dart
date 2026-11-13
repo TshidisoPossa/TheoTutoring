@@ -376,7 +376,7 @@ Future<String> recordPendingRefund(
   required int percent,
 }) async {
   final existing = await tx.execute(
-    'SELECT RefundID FROM Refund WHERE BookingID = :bookingId FOR UPDATE',
+    'SELECT RefundID FROM refund WHERE BookingID = :bookingId FOR UPDATE',
     {'bookingId': bookingId},
   );
   if (existing.rows.isNotEmpty) throw const RefundAlreadyExists();

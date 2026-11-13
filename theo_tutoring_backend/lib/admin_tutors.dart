@@ -1,6 +1,7 @@
 import 'package:mysql_dart/mysql_dart.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
+import 'package:theo_tutoring_backend/sa_time.dart';
 
 /// Roster filters sent by the Flutter app (lower case) -> User.AccountStatus.
 const tutorRosterStatusFilters = {
@@ -103,7 +104,7 @@ class MySqlTutorRosterRepository implements TutorRosterRepository {
       'SELECT COUNT(*) AS total, '
       "COALESCE(SUM(u.AccountStatus = 'Suspended'), 0) AS suspended, "
       '(SELECT COUNT(DISTINCT b.TutorID) FROM booking b '
-      'WHERE b.`Date` >= DATE_FORMAT(CURDATE(), \'%Y-%m-01\')) AS activeMonth, '
+      'WHERE b.`Date` >= DATE_FORMAT($saTodaySql, \'%Y-%m-01\')) AS activeMonth, '
       "(SELECT COUNT(*) FROM booking b WHERE b.Status = 'Completed') AS lessons "
       'FROM `user` u JOIN tutorprofile tp ON tp.UserID = u.UserId '
       "WHERE u.Role = 'tutor'",

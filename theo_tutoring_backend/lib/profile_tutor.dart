@@ -6,6 +6,7 @@ import 'package:theo_tutoring_backend/availability_overrides.dart';
 import 'package:theo_tutoring_backend/booking_domain.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/header_tutor.dart';
+import 'package:theo_tutoring_backend/sa_time.dart';
 import 'package:theo_tutoring_backend/session_rate.dart';
 
 // ---------------------------------------------------------------------------
@@ -328,7 +329,7 @@ Future<Set<int>> getLockedSubjectIds(MySQLConnection conn, int tutorId) async {
     FROM booking
     WHERE TutorID = :tutorId
       AND Status IN ('Pending', 'Accepted', 'Confirmed', 'Postponed')
-      AND (`Date` > CURDATE() OR (`Date` = CURDATE() AND EndTime > CURTIME()))
+      AND (`Date` > $saTodaySql OR (`Date` = $saTodaySql AND EndTime > $saClockSql))
     ''',
     {'tutorId': tutorId},
   );
@@ -628,7 +629,7 @@ Future<List<UpcomingBooking>> getUpcomingBookings(
     FROM booking
     WHERE TutorID = :tutorId
       AND Status IN ('Pending', 'Accepted', 'Confirmed', 'Postponed')
-      AND (`Date` > CURDATE() OR (`Date` = CURDATE() AND EndTime > CURTIME()))
+      AND (`Date` > $saTodaySql OR (`Date` = $saTodaySql AND EndTime > $saClockSql))
     ''',
     {'tutorId': tutorId},
   );
