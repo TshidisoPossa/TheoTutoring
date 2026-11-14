@@ -12,6 +12,7 @@ import 'package:theo_tutoring_backend/firebase_admin.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 import 'package:theo_tutoring_backend/firestore_endpoint.dart';
 import 'package:theo_tutoring_backend/firestore_rest.dart';
+import 'package:theo_tutoring_backend/local_test_database.dart';
 import 'package:theo_tutoring_backend/notifications.dart';
 
 // Request handling shared by the tutor (/tutor/...) and student
@@ -111,8 +112,10 @@ class ChatDependencies {
   /// Current time, for the "2h ago" labels.
   final DateTime Function() clock;
 
-  /// The shared MySQL connection, refused (before connecting) in Firestore
-  /// emulator mode or when the Firestore settings are invalid.
+  /// The shared MySQL connection, refused (before connecting) when the
+  /// Firestore settings are invalid, and in Firestore emulator mode unless
+  /// the local test database is explicitly switched on
+  /// (THEO_LOCAL_TEST_DB=1, see local_test_database.dart).
   static Future<MySQLConnection> _defaultConnection() {
     final FirestoreEndpoint endpoint;
     try {
@@ -124,10 +127,22 @@ class ChatDependencies {
       );
     }
     if (endpoint.isEmulator) {
-      throw const ChatSetupException(
-        'Firestore emulator mode is on, so the default chat database is '
-        'disabled; pass test dependencies instead.',
-      );
+      // Allowed only with the explicit local test database, which
+      // getConnection then uses instead of DB_*.
+      final LocalTestDatabase? local;
+      try {
+        local = LocalTestDatabase.resolve();
+      } on LocalTestDatabaseException catch (e) {
+        throw ChatSetupException(
+          'Invalid local test database settings: ${e.message}',
+        );
+      }
+      if (local == null) {
+        throw const ChatSetupException(
+          'Firestore emulator mode is on, so the default chat database is '
+          'disabled; pass test dependencies instead.',
+        );
+      }
     }
     return getConnection();
   }

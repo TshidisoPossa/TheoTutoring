@@ -5,11 +5,14 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/tutor.dart';
 import '../../models/tutor_profile_details.dart';
+import '../../services/student_chat_models.dart';
+import '../../services/student_chat_service.dart';
 import '../../services/tutor_search_api.dart';
 import '../Booking/booking_flow_context.dart';
 import '../Booking/booking_select_lesson.dart';
 import '../Tutor/tutor_theme.dart';
 import 'student_bottom_nav.dart';
+import 'student_chats.dart';
 import 'student_lesson.dart';
 import 'student_reports_api.dart';
 
@@ -27,6 +30,7 @@ class StudentTutorProfilePage extends StatefulWidget {
     this.studentPhoto,
     this.api,
     this.reportsApi,
+    this.chatService,
     super.key,
   });
 
@@ -39,6 +43,9 @@ class StudentTutorProfilePage extends StatefulWidget {
   /// Injected by tests; the page creates (and closes) its own otherwise.
   final TutorSearchApi? api;
   final StudentReportsApi? reportsApi;
+
+  /// Passed to the chat screen; it creates its own when null.
+  final StudentChatService? chatService;
 
   @override
   State<StudentTutorProfilePage> createState() =>
@@ -212,6 +219,36 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
     } catch (error) {
       _showMessage(error.toString());
     }
+  }
+
+  /// Opens the existing student chat with this tutor; the first message sent
+  /// creates the conversation.
+  void _openChat() {
+    final tutor = _tutor;
+    final userId = tutor.userId;
+    if (userId == null) {
+      // Never guess with tutorId: the chat routes take the User ID.
+      _showMessage('Messaging is not available for this tutor right now.');
+      return;
+    }
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatScreen(
+            contact: StudentChatContact(
+              userId: userId,
+              name: tutor.name,
+              initials: _initials.isEmpty ? '?' : _initials,
+              lastMessage: '',
+              time: '',
+              profilePhotoUrl: tutor.profilePhoto,
+              unreadCount: 0,
+            ),
+            service: widget.chatService,
+          ),
+        ),
+      ),
+    );
   }
 
   void _navTapped(int index) {
@@ -951,8 +988,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          // TODO: open the chat with this tutor once student chat exists
-          onPressed: () => _showMessage('Messaging will be connected soon.'),
+          onPressed: _openChat,
           icon: const Icon(Icons.chat_bubble_outline_rounded, size: 20),
           label: const Text('Message Tutor'),
           style: OutlinedButton.styleFrom(

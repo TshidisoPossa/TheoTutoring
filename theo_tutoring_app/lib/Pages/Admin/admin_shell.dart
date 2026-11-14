@@ -65,8 +65,6 @@ const _sections = [
     }),
     _NavItem('Users', AdminRoutes.users, {'admin.users.manage'}),
   ]),
-  // Subjects and Payouts are hidden while they are placeholder sections.
-  // Payouts remains hidden until its page is implemented.
   _NavSection('CONTENT', [
     _NavItem('Subjects', AdminRoutes.subjects, {
       'admin.subjects.manage',
@@ -78,6 +76,7 @@ const _sections = [
       'admin.refunds.read',
       'admin.reports.read',
     }),
+    _NavItem('Payouts', AdminRoutes.payouts, {'admin.finance.read'}),
   ]),
   _NavSection('ANALYTICS', [
     _NavItem('Reports', AdminRoutes.reports, {'admin.reports.read'}),

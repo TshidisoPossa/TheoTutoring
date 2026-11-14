@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:mysql_dart/mysql_dart.dart';
 import 'package:theo_tutoring_backend/env.dart';
+import 'package:theo_tutoring_backend/local_test_database.dart';
 
 MySQLConnection? _connection;
 
@@ -10,7 +11,13 @@ MySQLConnection? _connection;
 /// TLS is always on and the server certificate and hostname are verified.
 /// When DB_SSL_CA is set (for example Aiven's ca.pem), only that CA is
 /// trusted; otherwise the system's trusted roots are used.
+///
+/// With THEO_LOCAL_TEST_DB=1 (see local_test_database.dart) every
+/// connection goes to the local `theotutoring_test` database instead and
+/// DB_* is ignored; invalid local settings throw before connecting.
 Future<MySQLConnection> _newConnection() {
+  final local = LocalTestDatabase.resolve();
+  if (local != null) return local.newConnection();
   final caPath = env['DB_SSL_CA']?.trim() ?? '';
   return MySQLConnection.createConnection(
     host: env['DB_HOST'] ?? '127.0.0.1',
@@ -43,6 +50,11 @@ Future<MySQLConnection> getConnection() async {
   _connection = await _newConnection();
 
   await _connection!.connect();
-  print('✅ Connected to MySQL');
+  final local = LocalTestDatabase.resolve();
+  print(
+    local == null
+        ? '✅ Connected to MySQL'
+        : '✅ Connected to local test MySQL ${local.description}',
+  );
   return _connection!;
 }

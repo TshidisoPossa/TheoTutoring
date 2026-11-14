@@ -128,6 +128,7 @@ void main() {
           tutors: [
             {
               'tutorId': 7,
+              'userId': 42,
               'name': 'Tutor Example',
               'profilePhoto': null,
               'bio': null,
@@ -149,6 +150,7 @@ void main() {
       );
       final body = jsonDecode(await response.body()) as Map<String, dynamic>;
       final tutor = (body['tutors'] as List).single as Map<String, dynamic>;
+      expect(tutor['userId'], 42);
       expect(tutor['profilePhoto'], isNull);
       expect(tutor['bio'], isNull);
       expect(tutor['experience'], isNull);
@@ -211,6 +213,7 @@ void main() {
       final pageSql = buildTutorSearchPageSql(filter);
       expect(countSql, contains(filter.sql));
       expect(pageSql, contains(filter.sql));
+      expect(pageSql, contains('tp.UserID'));
       expect(pageSql, contains('ORDER BY u.Name ASC, tp.TutorID ASC'));
       expect(pageSql, contains('LIMIT :limit OFFSET :offset'));
       expect(pageSql, contains('AS HourlyRate'));

@@ -78,6 +78,8 @@ class MySqlTutorSearchRepository implements TutorSearchRepository {
     final averageRating = row.str('AverageRating');
     return {
       'tutorId': int.parse(row.reqStr('TutorID')),
+      // The tutor's User ID: the ID the chat routes address tutors by.
+      'userId': int.parse(row.reqStr('UserID')),
       'name': row.str('Name'),
       'profilePhoto': row.str('ProfilePhoto'),
       'bio': row.str('Bio'),
@@ -136,7 +138,7 @@ String buildTutorSearchCountSql(TutorSearchFilter filter) =>
 
 String buildTutorSearchPageSql(TutorSearchFilter filter) =>
     '''
-  SELECT tp.TutorID, u.Name, u.ProfilePhoto, tp.Bio, tp.Experience,
+  SELECT tp.TutorID, tp.UserID, u.Name, u.ProfilePhoto, tp.Bio, tp.Experience,
     (SELECT q.Degree FROM qualification q
      WHERE q.TutorID = tp.TutorID
      ORDER BY q.QualificationID DESC LIMIT 1) AS Qualification,

@@ -98,13 +98,33 @@ final _dialogField = find.descendant(
 
 final _searchField = find.widgetWithText(TextField, 'Search subjects...');
 
+/// A button inside the open dialog (the screen behind it also has an
+/// "Add subject" button).
+Finder _dialogButton(String label) => find.descendant(
+  of: find.byType(AlertDialog),
+  matching: find.widgetWithText(FilledButton, label),
+);
+
+/// The row action with [tooltip] for the subject called [name]. The
+/// tooltips are the same on every row, so the search is scoped to the
+/// row that shows [name].
+Finder _rowAction(String name, String tooltip) => find.descendant(
+  of: find.ancestor(of: find.text(name), matching: find.byType(Row)).first,
+  matching: find.byTooltip(tooltip),
+);
+
 Future<void> _openAddDialog(WidgetTester tester) async {
-  await tester.tap(find.text('Add Subject'));
+  await tester.tap(find.text('Add subject'));
   await tester.pumpAndSettle();
 }
 
 Future<void> _openRenameDialog(WidgetTester tester, String name) async {
-  await tester.tap(find.byTooltip('Rename $name'));
+  await tester.tap(_rowAction(name, 'Rename subject'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _openDeleteDialog(WidgetTester tester, String name) async {
+  await tester.tap(_rowAction(name, 'Delete subject'));
   await tester.pumpAndSettle();
 }
 
@@ -114,26 +134,17 @@ Future<void> _submitName(
   String confirmLabel,
 ) async {
   await tester.enterText(_dialogField, name);
-  await tester.tap(find.widgetWithText(FilledButton, confirmLabel));
+  await tester.tap(_dialogButton(confirmLabel));
   await tester.pumpAndSettle();
 }
 
+/// Puts [value] in the dialog's field without going through the keyboard,
+/// so the field's 100-character input limit does not shorten it first.
+void _setDialogText(WidgetTester tester, String value) {
+  tester.widget<TextFormField>(_dialogField).controller!.text = value;
+}
+
 void main() {
-  group('validateSubjectName', () {
-    test('accepts trimmed names of 1-100 characters', () {
-      expect(validateSubjectName('Mathematics'), isNull);
-      expect(validateSubjectName('A' * 100), isNull);
-      expect(validateSubjectName('  ${'A' * 100}  '), isNull);
-    });
-
-    test('rejects empty, whitespace-only and over-long names', () {
-      expect(validateSubjectName(null), 'Enter a subject name.');
-      expect(validateSubjectName(''), 'Enter a subject name.');
-      expect(validateSubjectName('   '), 'Enter a subject name.');
-      expect(validateSubjectName('A' * 101), 'Use 100 characters or fewer.');
-    });
-  });
-
   group('loading and display', () {
     testWidgets('shows a spinner until the subjects arrive', (tester) async {
       final gate = Completer<void>();
@@ -145,6 +156,8 @@ void main() {
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.text('Mathematics'), findsNothing);
+      // The first load uses the full spinner, not the refresh indicator.
+      expect(find.byTooltip('Refreshing subjects'), findsNothing);
 
       gate.complete();
       await tester.pumpAndSettle();
@@ -155,19 +168,15 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('lists subject names, IDs and the total count', (tester) async {
+    testWidgets('lists subject names and the total count', (tester) async {
       await _pump(tester);
 
-      for (final (id, name) in [
-        (1, 'Mathematics'),
-        (2, 'Physics'),
-        (3, 'Chemistry'),
-      ]) {
+      for (final name in ['Mathematics', 'Physics', 'Chemistry']) {
         expect(find.text(name), findsOneWidget);
-        expect(find.text('ID: $id'), findsOneWidget);
       }
-      expect(find.text('TOTAL SUBJECTS'), findsOneWidget);
+      expect(find.text('Total subjects'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
+      expect(find.text('3 shown'), findsOneWidget);
     });
 
     testWidgets('shows an empty state when there are no subjects', (
@@ -192,7 +201,9 @@ void main() {
       expect(find.text('Physics'), findsOneWidget);
       expect(find.text('Mathematics'), findsNothing);
       expect(find.text('Chemistry'), findsNothing);
-      expect(find.text('Showing 1 of 3 subjects'), findsOneWidget);
+      expect(find.text('1 shown'), findsOneWidget);
+      // The total still counts every subject.
+      expect(find.text('3'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Clear search'));
       await tester.pump();
@@ -200,7 +211,7 @@ void main() {
       for (final name in ['Mathematics', 'Physics', 'Chemistry']) {
         expect(find.text(name), findsOneWidget);
       }
-      expect(find.text('Showing 1 of 3 subjects'), findsNothing);
+      expect(find.text('3 shown'), findsOneWidget);
       // Search is local: no extra fetches.
       expect(service.fetchCount, 1);
     });
@@ -213,9 +224,10 @@ void main() {
       await tester.enterText(_searchField, 'Astronomy');
       await tester.pump();
 
-      expect(find.text('No subjects match'), findsOneWidget);
-      expect(find.text('Showing 0 of 3 subjects'), findsOneWidget);
+      expect(find.text('No matching subjects'), findsOneWidget);
+      expect(find.text('Try a different search term.'), findsOneWidget);
       expect(find.text('No subjects yet'), findsNothing);
+      expect(find.text('3'), findsOneWidget);
     });
   });
 
@@ -232,7 +244,7 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.text('Biology'), findsOneWidget);
       expect(find.text('4'), findsOneWidget);
-      expect(find.text('"Biology" was added.'), findsOneWidget);
+      expect(find.text('Subject added successfully.'), findsOneWidget);
     });
 
     testWidgets('rejects empty and whitespace-only names', (tester) async {
@@ -248,13 +260,27 @@ void main() {
       expect(service.created, isEmpty);
     });
 
-    testWidgets('rejects names longer than 100 characters', (tester) async {
+    testWidgets('typing stops at 100 characters, which is accepted', (
+      tester,
+    ) async {
       final service = await _pump(tester);
       await _openAddDialog(tester);
 
       await _submitName(tester, 'A' * 101, 'Add subject');
 
-      expect(find.text('Use 100 characters or fewer.'), findsOneWidget);
+      expect(find.text('Maximum length is 100 characters.'), findsNothing);
+      expect(service.created, ['A' * 100]);
+    });
+
+    testWidgets('rejects names longer than 100 characters', (tester) async {
+      final service = await _pump(tester);
+      await _openAddDialog(tester);
+
+      _setDialogText(tester, 'A' * 101);
+      await tester.tap(_dialogButton('Add subject'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Maximum length is 100 characters.'), findsOneWidget);
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(service.created, isEmpty);
     });
@@ -283,27 +309,25 @@ void main() {
       final service = await _pump(tester);
 
       await _openRenameDialog(tester, 'Physics');
+      expect(find.text('Rename subject'), findsOneWidget);
       expect(
         tester.widget<TextFormField>(_dialogField).controller?.text,
         'Physics',
       );
-      await _submitName(tester, '  Applied Physics ', 'Save name');
+      await _submitName(tester, '  Applied Physics ', 'Save changes');
 
       expect(service.renamed, [(2, 'Applied Physics')]);
       expect(service.fetchCount, 2);
       expect(find.text('Applied Physics'), findsOneWidget);
       expect(find.text('Physics'), findsNothing);
-      expect(
-        find.text('"Physics" was renamed to "Applied Physics".'),
-        findsOneWidget,
-      );
+      expect(find.text('Subject renamed successfully.'), findsOneWidget);
     });
 
     testWidgets('an unchanged name sends no request', (tester) async {
       final service = await _pump(tester);
 
       await _openRenameDialog(tester, 'Physics');
-      await _submitName(tester, ' Physics ', 'Save name');
+      await _submitName(tester, ' Physics ', 'Save changes');
 
       expect(find.byType(AlertDialog), findsNothing);
       expect(service.renamed, isEmpty);
@@ -314,11 +338,13 @@ void main() {
       final service = await _pump(tester);
       await _openRenameDialog(tester, 'Physics');
 
-      await _submitName(tester, '   ', 'Save name');
+      await _submitName(tester, '   ', 'Save changes');
       expect(find.text('Enter a subject name.'), findsOneWidget);
 
-      await _submitName(tester, 'B' * 101, 'Save name');
-      expect(find.text('Use 100 characters or fewer.'), findsOneWidget);
+      _setDialogText(tester, 'B' * 101);
+      await tester.tap(_dialogButton('Save changes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Maximum length is 100 characters.'), findsOneWidget);
 
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(service.renamed, isEmpty);
@@ -332,7 +358,7 @@ void main() {
       );
 
       await _openRenameDialog(tester, 'Physics');
-      await _submitName(tester, 'Chemistry', 'Save name');
+      await _submitName(tester, 'Chemistry', 'Save changes');
 
       expect(service.renamed, [(2, 'Chemistry')]);
       expect(find.text('A subject with that name exists.'), findsOneWidget);
@@ -345,9 +371,12 @@ void main() {
     testWidgets('cancelling the confirmation deletes nothing', (tester) async {
       final service = await _pump(tester);
 
-      await tester.tap(find.byTooltip('Delete Physics'));
-      await tester.pumpAndSettle();
-      expect(find.text('Delete "Physics"?'), findsOneWidget);
+      await _openDeleteDialog(tester, 'Physics');
+      expect(find.text('Delete subject?'), findsOneWidget);
+      expect(
+        find.textContaining('Are you sure you want to delete "Physics"?'),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
@@ -362,16 +391,16 @@ void main() {
     ) async {
       final service = await _pump(tester);
 
-      await tester.tap(find.byTooltip('Delete Physics'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Delete subject'));
+      await _openDeleteDialog(tester, 'Physics');
+      await tester.tap(_dialogButton('Delete'));
       await tester.pumpAndSettle();
 
       expect(service.deleted, [2]);
       expect(service.fetchCount, 2);
       expect(find.text('Physics'), findsNothing);
+      expect(find.text('Mathematics'), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
-      expect(find.text('"Physics" was deleted.'), findsOneWidget);
+      expect(find.text('Subject deleted successfully.'), findsOneWidget);
     });
 
     testWidgets('shows the backend message for a subject in use', (
@@ -384,9 +413,8 @@ void main() {
         _FakeSubjectsService()..deleteError = Exception(inUse),
       );
 
-      await tester.tap(find.byTooltip('Delete Physics'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Delete subject'));
+      await _openDeleteDialog(tester, 'Physics');
+      await tester.tap(_dialogButton('Delete'));
       await tester.pumpAndSettle();
 
       expect(service.deleted, [2]);
@@ -397,16 +425,15 @@ void main() {
   });
 
   group('errors and retry', () {
-    testWidgets('an initial load error offers Retry, which fetches again', (
-      tester,
-    ) async {
+    testWidgets('an initial load error offers Try again, which fetches '
+        'again', (tester) async {
       final service = await _pump(
         tester,
         _FakeSubjectsService()
           ..fetchError = Exception('Subjects are temporarily unavailable.'),
       );
 
-      expect(find.text('Could not load subjects.'), findsOneWidget);
+      expect(find.text('Could not load subjects'), findsOneWidget);
       expect(
         find.text('Subjects are temporarily unavailable.'),
         findsOneWidget,
@@ -414,12 +441,48 @@ void main() {
       expect(find.text('Mathematics'), findsNothing);
 
       service.fetchError = null;
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Retry'));
+      await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
 
       expect(service.fetchCount, 2);
-      expect(find.text('Could not load subjects.'), findsNothing);
+      expect(find.text('Could not load subjects'), findsNothing);
       expect(find.text('Mathematics'), findsOneWidget);
+    });
+
+    testWidgets('a pending refresh keeps the list and search usable and '
+        'shows a small indicator', (tester) async {
+      final service = await _pump(tester);
+      final gate = Completer<void>();
+      service.fetchGate = gate;
+
+      await tester.tap(find.byTooltip('Refresh subjects'));
+      await tester.pump();
+
+      expect(service.fetchCount, 2);
+      expect(find.byTooltip('Refreshing subjects'), findsOneWidget);
+      expect(find.byTooltip('Refresh subjects'), findsNothing);
+      // Only the small indicator, not the full-list spinner.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      for (final name in ['Mathematics', 'Physics', 'Chemistry']) {
+        expect(find.text(name), findsOneWidget);
+      }
+      expect(find.text('3'), findsOneWidget);
+
+      // Search still works while the refresh is pending.
+      await tester.enterText(_searchField, 'PHY');
+      await tester.pump();
+      expect(find.text('Physics'), findsOneWidget);
+      expect(find.text('Mathematics'), findsNothing);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Refreshing subjects'), findsNothing);
+      expect(find.byTooltip('Refresh subjects'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      // The search is kept across the refresh.
+      expect(find.text('Physics'), findsOneWidget);
+      expect(find.text('1 shown'), findsOneWidget);
     });
 
     testWidgets('a failed refresh keeps the list already shown', (
@@ -428,7 +491,7 @@ void main() {
       final service = await _pump(tester);
 
       service.fetchError = Exception('Subjects are temporarily unavailable.');
-      await tester.tap(find.byTooltip('Refresh'));
+      await tester.tap(find.byTooltip('Refresh subjects'));
       await tester.pumpAndSettle();
 
       expect(service.fetchCount, 2);
@@ -438,9 +501,45 @@ void main() {
         ),
         findsOneWidget,
       );
+      expect(find.text('Could not load subjects'), findsNothing);
       for (final name in ['Mathematics', 'Physics', 'Chemistry']) {
         expect(find.text(name), findsOneWidget);
       }
+      expect(find.text('3'), findsOneWidget);
+    });
+
+    testWidgets('a successful refresh after a failed one clears the error '
+        'and reloads the list', (tester) async {
+      final service = await _pump(tester);
+      const refreshError =
+          'Could not refresh subjects: Subjects are temporarily unavailable.';
+
+      service.fetchError = Exception('Subjects are temporarily unavailable.');
+      await tester.tap(find.byTooltip('Refresh subjects'));
+      await tester.pumpAndSettle();
+      expect(find.text(refreshError), findsOneWidget);
+
+      // Let the error snackbar time out, so its absence later shows that
+      // the successful refresh did not report a new error.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text(refreshError), findsNothing);
+
+      // Refresh stays available, and the next successful load shows data
+      // that changed on the backend in the meantime.
+      service
+        ..fetchError = null
+        ..subjects.add(const AdminSubject(subjectId: 4, subjectName: 'Biology'));
+      await tester.tap(find.byTooltip('Refresh subjects'));
+      await tester.pumpAndSettle();
+
+      expect(service.fetchCount, 3);
+      expect(find.text(refreshError), findsNothing);
+      expect(find.text('Could not load subjects'), findsNothing);
+      for (final name in ['Mathematics', 'Physics', 'Chemistry', 'Biology']) {
+        expect(find.text(name), findsOneWidget);
+      }
+      expect(find.text('4'), findsOneWidget);
     });
   });
 }

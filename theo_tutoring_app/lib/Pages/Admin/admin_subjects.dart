@@ -1,33 +1,25 @@
-// Subjects (Subject Management): the subject catalogue, with local search
-// and actions to add, rename and delete subjects. The backend refuses to
-// delete a subject that tutors or bookings still reference; that message is
-// shown as-is and nothing else is removed.
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'Services/admin_subjects_service.dart';
 import 'admin_shell.dart';
 import 'models/admin_subject_models.dart';
 
-const _red = Color(0xFFC62828);
-const _redBg = Color(0xFFFDE2E2);
-const _maxNameLength = 100;
+const _subjectsBackground = Color(0xFFF5F7FA);
+const _subjectsCard = Colors.white;
+const _subjectsText = Color(0xFF202938);
+const _subjectsMuted = Color(0xFF687386);
+const _subjectsPrimary = Color(0xFF3157A4);
+const _subjectsBorder = Color(0xFFE5E9F0);
 
-String _msg(Object e) => e.toString().replaceFirst('Exception: ', '');
-
-/// Returns an error message, or null when [value] is a valid subject name.
-String? validateSubjectName(String? value) {
-  final name = (value ?? '').trim();
-  if (name.isEmpty) return 'Enter a subject name.';
-  if (name.length > _maxNameLength) {
-    return 'Use $_maxNameLength characters or fewer.';
-  }
-  return null;
+String _message(Object error) {
+  return error.toString().replaceFirst('Exception: ', '');
 }
 
 class AdminSubjectsScreen extends StatefulWidget {
-  const AdminSubjectsScreen({super.key, this.service});
+  const AdminSubjectsScreen({
+    super.key,
+    this.service,
+  });
 
   final AdminSubjectsService? service;
 
@@ -38,194 +30,251 @@ class AdminSubjectsScreen extends StatefulWidget {
 class _AdminSubjectsScreenState extends State<AdminSubjectsScreen> {
   late final AdminSubjectsService _service;
   late final bool _ownsService;
-  final _search = TextEditingController();
 
-  List<AdminSubject>? _subjects;
+  final TextEditingController _searchController = TextEditingController();
+
+  List<AdminSubject> _subjects = [];
   bool _loading = true;
-  bool _busy = false;
-  Object? _error;
+  String? _error;
+  // True once a load has succeeded; later failures keep the list shown.
+  bool _hasLoaded = false;
+  // A refresh after a successful load: the list stays visible and only a
+  // small indicator replaces the refresh button.
+  bool _refreshing = false;
+  String _searchQuery = '';
   int _loadGeneration = 0;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _service = widget.service ?? AdminSubjectsService();
+
     _ownsService = widget.service == null;
-    _load();
+    _service = widget.service ?? AdminSubjectsService();
+
+    _loadSubjects();
   }
 
   @override
   void dispose() {
-    _search.dispose();
-    if (_ownsService) _service.dispose();
+    _searchController.dispose();
+
+    if (_ownsService) {
+      _service.dispose();
+    }
+
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _loadSubjects({bool showLoading = true}) async {
     final generation = ++_loadGeneration;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+
+    if (showLoading && mounted) {
+      setState(() {
+        if (_hasLoaded) {
+          _refreshing = true;
+        } else {
+          _loading = true;
+        }
+        _error = null;
+      });
+    }
+
     try {
       final result = await _service.fetchSubjects();
+
       if (!mounted || generation != _loadGeneration) return;
+
       setState(() {
         _subjects = result.subjects;
+        _hasLoaded = true;
         _loading = false;
+        _refreshing = false;
+        _error = null;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
+
+      // A failed refresh keeps the subjects already loaded and reports the
+      // problem in a snackbar; only a failed first load shows the error card.
+      if (_hasLoaded) {
+        setState(() {
+          _loading = false;
+          _refreshing = false;
+        });
+        _showError('Could not refresh subjects: ${_message(error)}');
+        return;
+      }
+
       setState(() {
-        _error = e;
         _loading = false;
+        _error = _message(error);
       });
     }
   }
 
-  List<AdminSubject> get _filtered {
-    final all = _subjects ?? const <AdminSubject>[];
-    final query = _search.text.trim().toLowerCase();
-    if (query.isEmpty) return all;
-    return [
-      for (final s in all)
-        if (s.subjectName.toLowerCase().contains(query)) s,
-    ];
+  List<AdminSubject> get _filteredSubjects {
+    final query = _searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) return _subjects;
+
+    return _subjects
+        .where((subject) => subject.subjectName.toLowerCase().contains(query))
+        .toList();
   }
 
-  void _toast(String message, {bool error = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: error ? _red : null),
-      );
-  }
-
-  /// Runs one change, then reloads the list from the server (no optimistic
-  /// updates).
-  Future<void> _mutate(Future<String> Function() action) async {
-    setState(() => _busy = true);
-    try {
-      final success = await action();
-      if (!mounted) return;
-      _toast(success);
-      await _load();
-    } catch (e) {
-      _toast(_msg(e), error: true);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  Future<String?> _showSubjectDialog({
+    AdminSubject? subject,
+  }) {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _SubjectNameDialog(
+        initialName: subject?.subjectName ?? '',
+        isEditing: subject != null,
+      ),
+    );
   }
 
   Future<void> _addSubject() async {
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => const _SubjectNameDialog(
-        title: 'Add subject',
-        confirmLabel: 'Add subject',
-      ),
-    );
-    if (name == null || !mounted) return;
-    await _mutate(() async {
-      final created = await _service.createSubject(name);
-      return '"${created.subjectName}" was added.';
-    });
+    if (_saving) return;
+
+    final name = await _showSubjectDialog();
+    if (!mounted || name == null) return;
+
+    setState(() => _saving = true);
+
+    try {
+      await _service.createSubject(name);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Subject added successfully.')),
+      );
+
+      await _loadSubjects(showLoading: false);
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _renameSubject(AdminSubject subject) async {
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => _SubjectNameDialog(
-        title: 'Rename subject',
-        confirmLabel: 'Save name',
-        initialName: subject.subjectName,
-      ),
-    );
-    if (name == null || !mounted || name == subject.subjectName) return;
-    await _mutate(() async {
-      final renamed = await _service.renameSubject(subject.subjectId, name);
-      return '"${subject.subjectName}" was renamed to '
-          '"${renamed.subjectName}".';
-    });
+    if (_saving) return;
+
+    final name = await _showSubjectDialog(subject: subject);
+    if (!mounted || name == null) return;
+
+    if (name == subject.subjectName) return;
+
+    setState(() => _saving = true);
+
+    try {
+      await _service.renameSubject(subject.subjectId, name);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Subject renamed successfully.')),
+      );
+
+      await _loadSubjects(showLoading: false);
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _deleteSubject(AdminSubject subject) async {
+    if (_saving) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Delete "${subject.subjectName}"?'),
-        content: const Text(
-          'This removes the subject from the catalogue. A subject that tutors '
-          'or bookings still use cannot be deleted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete subject?'),
+          content: Text(
+            'Are you sure you want to delete "${subject.subjectName}"? '
+            'Subjects already used by tutors or bookings cannot be deleted.',
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: _red),
-            child: const Text('Delete subject'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
     );
-    if (confirmed != true || !mounted) return;
-    await _mutate(() async {
+
+    if (!mounted || confirmed != true) return;
+
+    setState(() => _saving = true);
+
+    try {
       await _service.deleteSubject(subject.subjectId);
-      return '"${subject.subjectName}" was deleted.';
-    });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Subject deleted successfully.')),
+      );
+
+      await _loadSubjects(showLoading: false);
+    } catch (error) {
+      if (!mounted) return;
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
-  // ------------------------------------------------------------ build
+  void _showError(Object error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_message(error)),
+        backgroundColor: Colors.red.shade700,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final subjects = _subjects;
+    final filteredSubjects = _filteredSubjects;
+
     return AdminShell(
       currentRoute: AdminRoutes.subjects,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Header(onAdd: _busy || subjects == null ? null : _addSubject),
-                const SizedBox(height: 20),
-                if (_loading && subjects == null)
-                  const Padding(
-                    padding: EdgeInsets.all(48),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (_error != null && subjects == null)
-                  _Card(
-                    child: _StateMessage(
-                      icon: Icons.error_outline,
-                      title: 'Could not load subjects.',
-                      message: _msg(_error!),
-                      action: ElevatedButton(
-                        onPressed: _load,
-                        child: const Text('Retry'),
-                      ),
-                    ),
-                  )
-                else ...[
-                  if (_error != null) ...[
-                    _InlineError(
-                      message: 'Could not refresh subjects: ${_msg(_error!)}',
-                      onRetry: _load,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  _buildToolbar(subjects!),
+      child: Container(
+        color: _subjectsBackground,
+        width: double.infinity,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1200),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(),
+                  const SizedBox(height: 24),
+                  _buildSummaryCard(),
+                  const SizedBox(height: 20),
+                  _buildSearchAndAdd(),
                   const SizedBox(height: 16),
-                  _buildList(subjects),
+                  _buildSubjectList(filteredSubjects),
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -233,155 +282,337 @@ class _AdminSubjectsScreenState extends State<AdminSubjectsScreen> {
     );
   }
 
-  Widget _buildToolbar(List<AdminSubject> subjects) {
-    final count = Column(
+  Widget _buildHeader() {
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
       children: [
         const Text(
-          'TOTAL SUBJECTS',
+          'Subject Management',
           style: TextStyle(
-            fontSize: 11,
-            letterSpacing: 0.6,
-            fontWeight: FontWeight.w600,
-            color: AdminColors.textMuted,
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+            color: _subjectsText,
           ),
         ),
         const SizedBox(height: 6),
         Text(
-          '${subjects.length}',
-          style: const TextStyle(
-            fontSize: 30,
-            fontWeight: FontWeight.w700,
-            color: AdminColors.textDark,
+          'Manage the subjects available for tutoring on the platform.',
+          style: TextStyle(
+            fontSize: 14,
+            color: _subjectsMuted,
           ),
         ),
       ],
     );
-    final search = TextField(
-      controller: _search,
-      onChanged: (_) => setState(() {}),
-      textInputAction: TextInputAction.search,
-      style: const TextStyle(fontSize: 13),
-      decoration: InputDecoration(
-        hintText: 'Search subjects...',
-        hintStyle: const TextStyle(fontSize: 13),
-        prefixIcon: const Icon(Icons.search, size: 18),
-        suffixIcon: _search.text.isEmpty
-            ? null
-            : IconButton(
-                tooltip: 'Clear search',
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: () => setState(_search.clear),
-              ),
-        filled: true,
-        fillColor: const Color(0xFFF3F4F6),
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AdminColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AdminColors.border),
-        ),
-      ),
-    );
-    final refresh = IconButton(
-      tooltip: 'Refresh',
-      onPressed: _loading || _busy ? null : _load,
-      icon: _loading
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.refresh),
-    );
+  }
 
-    return _Card(
-      padding: const EdgeInsets.all(16),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth >= 600) {
-            return Row(
+  Widget _buildSummaryCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _subjectsCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _subjectsBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: _subjectsPrimary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.menu_book_outlined,
+              color: _subjectsPrimary,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                count,
-                const SizedBox(width: 24),
-                Expanded(child: search),
-                const SizedBox(width: 8),
-                refresh,
+                const Text(
+                  'Total subjects',
+                  style: TextStyle(
+                    color: _subjectsMuted,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _loading ? '—' : '${_subjects.length}',
+                  style: const TextStyle(
+                    color: _subjectsText,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
-            );
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(children: [count, const Spacer(), refresh]),
-              const SizedBox(height: 12),
-              search,
-            ],
-          );
-        },
+            ),
+          ),
+          if (_refreshing)
+            const Tooltip(
+              message: 'Refreshing subjects',
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Refresh subjects',
+              onPressed: _loading || _saving ? null : _loadSubjects,
+              icon: const Icon(Icons.refresh),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildList(List<AdminSubject> subjects) {
-    final visible = _filtered;
-    final searching = _search.text.trim().isNotEmpty;
+  Widget _buildSearchAndAdd() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final search = TextField(
+          controller: _searchController,
+          onChanged: (value) {
+            setState(() => _searchQuery = value);
+          },
+          decoration: InputDecoration(
+            hintText: 'Search subjects...',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchQuery.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                    icon: const Icon(Icons.close),
+                  ),
+            filled: true,
+            fillColor: _subjectsCard,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: _subjectsBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: _subjectsBorder),
+            ),
+          ),
+        );
 
-    return _Card(
+        final addButton = FilledButton.icon(
+          onPressed: _loading || _saving ? null : _addSubject,
+          icon: const Icon(Icons.add),
+          label: const Text('Add subject'),
+          style: FilledButton.styleFrom(
+            backgroundColor: _subjectsPrimary,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 16,
+            ),
+          ),
+        );
+
+        if (constraints.maxWidth < 550) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              search,
+              const SizedBox(height: 12),
+              addButton,
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: search),
+            const SizedBox(width: 12),
+            addButton,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSubjectList(List<AdminSubject> subjects) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.all(48),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return _buildMessageCard(
+        icon: Icons.error_outline,
+        title: 'Could not load subjects',
+        message: _error!,
+        action: TextButton.icon(
+          onPressed: _loadSubjects,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Try again'),
+        ),
+      );
+    }
+
+    if (subjects.isEmpty) {
+      final searching = _searchQuery.trim().isNotEmpty;
+
+      return _buildMessageCard(
+        icon: searching ? Icons.search_off : Icons.menu_book_outlined,
+        title: searching ? 'No matching subjects' : 'No subjects yet',
+        message: searching
+            ? 'Try a different search term.'
+            : 'Add a subject to make it available for tutoring.',
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _subjectsCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _subjectsBorder),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            color: const Color(0xFFF8F9FB),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: const Row(
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 16,
+            ),
+            child: Row(
               children: [
-                Expanded(child: _TableHeader('Subject')),
-                _TableHeader('Actions'),
+                const Expanded(
+                  child: Text(
+                    'Subject name',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: _subjectsMuted,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${subjects.length} shown',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _subjectsMuted,
+                  ),
+                ),
               ],
             ),
           ),
-          if (subjects.isEmpty) ...[
-            const Divider(height: 1, color: AdminColors.border),
-            const _StateMessage(
-              icon: Icons.menu_book_outlined,
-              title: 'No subjects yet',
-              message: 'Add a subject so tutors can offer it.',
+          const Divider(height: 1),
+          for (var i = 0; i < subjects.length; i++) ...[
+            _buildSubjectRow(subjects[i]),
+            if (i != subjects.length - 1)
+              const Divider(height: 1, indent: 20, endIndent: 20),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubjectRow(AdminSubject subject) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 10,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: _subjectsPrimary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
             ),
-          ] else if (visible.isEmpty) ...[
-            const Divider(height: 1, color: AdminColors.border),
-            const _StateMessage(
-              icon: Icons.search_off_outlined,
-              title: 'No subjects match',
-              message: 'Try another search term.',
+            child: const Icon(
+              Icons.book_outlined,
+              size: 19,
+              color: _subjectsPrimary,
             ),
-          ] else
-            for (final subject in visible) ...[
-              const Divider(height: 1, color: AdminColors.border),
-              _SubjectRow(
-                subject: subject,
-                onRename: _busy ? null : () => _renameSubject(subject),
-                onDelete: _busy ? null : () => _deleteSubject(subject),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              subject.subjectName,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: _subjectsText,
               ),
-            ],
-          if (searching && subjects.isNotEmpty) ...[
-            const Divider(height: 1, color: AdminColors.border),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Text(
-                'Showing ${visible.length} of ${subjects.length} '
-                '${subjects.length == 1 ? 'subject' : 'subjects'}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AdminColors.textMuted,
-                ),
-              ),
             ),
+          ),
+          IconButton(
+            tooltip: 'Rename subject',
+            onPressed: _saving
+                ? null
+                : () => _renameSubject(subject),
+            icon: const Icon(Icons.edit_outlined),
+            color: _subjectsPrimary,
+          ),
+          IconButton(
+            tooltip: 'Delete subject',
+            onPressed: _saving
+                ? null
+                : () => _deleteSubject(subject),
+            icon: const Icon(Icons.delete_outline),
+            color: Colors.red.shade700,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageCard({
+    required IconData icon,
+    required String title,
+    required String message,
+    Widget? action,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: _subjectsCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _subjectsBorder),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 38, color: _subjectsMuted),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: _subjectsText,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _subjectsMuted),
+          ),
+          if (action != null) ...[
+            const SizedBox(height: 12),
+            action,
           ],
         ],
       ),
@@ -389,113 +620,14 @@ class _AdminSubjectsScreenState extends State<AdminSubjectsScreen> {
   }
 }
 
-// ------------------------------------------------------------ widgets
-
-class _Header extends StatelessWidget {
-  const _Header({required this.onAdd});
-  final VoidCallback? onAdd;
-
-  @override
-  Widget build(BuildContext context) => Wrap(
-    alignment: WrapAlignment.spaceBetween,
-    crossAxisAlignment: WrapCrossAlignment.end,
-    spacing: 16,
-    runSpacing: 12,
-    children: [
-      const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Subject Management',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w700,
-              color: AdminColors.textDark,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Maintain the subjects tutors can offer and students can book.',
-            style: TextStyle(fontSize: 14, color: AdminColors.textMuted),
-          ),
-        ],
-      ),
-      FilledButton.icon(
-        onPressed: onAdd,
-        style: FilledButton.styleFrom(backgroundColor: AdminColors.primary),
-        icon: const Icon(Icons.add, size: 18),
-        label: const Text('Add Subject'),
-      ),
-    ],
-  );
-}
-
-class _SubjectRow extends StatelessWidget {
-  const _SubjectRow({
-    required this.subject,
-    required this.onRename,
-    required this.onDelete,
-  });
-
-  final AdminSubject subject;
-  final VoidCallback? onRename;
-  final VoidCallback? onDelete;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-    child: Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                subject.subjectName,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AdminColors.textDark,
-                ),
-              ),
-              Text(
-                'ID: ${subject.subjectId}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AdminColors.textMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
-        IconButton(
-          tooltip: 'Rename ${subject.subjectName}',
-          icon: const Icon(Icons.edit_outlined, color: AdminColors.accent),
-          onPressed: onRename,
-        ),
-        IconButton(
-          tooltip: 'Delete ${subject.subjectName}',
-          icon: const Icon(Icons.delete_outline, color: _red),
-          onPressed: onDelete,
-        ),
-      ],
-    ),
-  );
-}
-
-/// Asks for a subject name and returns it trimmed, or null when cancelled.
 class _SubjectNameDialog extends StatefulWidget {
   const _SubjectNameDialog({
-    required this.title,
-    required this.confirmLabel,
-    this.initialName = '',
+    required this.initialName,
+    required this.isEditing,
   });
 
-  final String title;
-  final String confirmLabel;
   final String initialName;
+  final bool isEditing;
 
   @override
   State<_SubjectNameDialog> createState() => _SubjectNameDialogState();
@@ -503,163 +635,68 @@ class _SubjectNameDialog extends StatefulWidget {
 
 class _SubjectNameDialogState extends State<_SubjectNameDialog> {
   final _formKey = GlobalKey<FormState>();
-  late final _name = TextEditingController(text: widget.initialName);
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+  }
 
   @override
   void dispose() {
-    _name.dispose();
+    _controller.dispose();
     super.dispose();
+  }
+
+  String? _validate(String? value) {
+    final name = value?.trim() ?? '';
+
+    if (name.isEmpty) return 'Enter a subject name.';
+    if (name.length > 100) return 'Maximum length is 100 characters.';
+
+    return null;
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    Navigator.pop(context, _name.text.trim());
+
+    Navigator.pop(context, _controller.text.trim());
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    content: SizedBox(
-      width: 400,
-      child: Form(
-        key: _formKey,
-        child: TextFormField(
-          controller: _name,
-          autofocus: true,
-          maxLength: _maxNameLength,
-          // Over-long names are rejected by the validator, not silently cut.
-          maxLengthEnforcement: MaxLengthEnforcement.none,
-          textInputAction: TextInputAction.done,
-          onFieldSubmitted: (_) => _submit(),
-          validator: validateSubjectName,
-          decoration: const InputDecoration(
-            labelText: 'Subject name',
-            border: OutlineInputBorder(),
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.isEditing ? 'Rename subject' : 'Add subject'),
+      content: SizedBox(
+        width: 380,
+        child: Form(
+          key: _formKey,
+          child: TextFormField(
+            controller: _controller,
+            autofocus: true,
+            maxLength: 100,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Subject name',
+              hintText: 'e.g. Mathematics',
+              border: OutlineInputBorder(),
+            ),
+            validator: _validate,
+            onFieldSubmitted: (_) => _submit(),
           ),
         ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: _submit,
-        style: FilledButton.styleFrom(backgroundColor: AdminColors.primary),
-        child: Text(widget.confirmLabel),
-      ),
-    ],
-  );
-}
-
-class _Card extends StatelessWidget {
-  const _Card({required this.child, this.padding});
-  final Widget child;
-  final EdgeInsetsGeometry? padding;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: padding,
-    clipBehavior: Clip.antiAlias,
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: AdminColors.border),
-    ),
-    child: child,
-  );
-}
-
-class _TableHeader extends StatelessWidget {
-  const _TableHeader(this.label);
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Text(
-    label.toUpperCase(),
-    style: const TextStyle(
-      fontSize: 11,
-      letterSpacing: 0.6,
-      fontWeight: FontWeight.w600,
-      color: AdminColors.textMuted,
-    ),
-  );
-}
-
-class _StateMessage extends StatelessWidget {
-  const _StateMessage({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.action,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-    child: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 32, color: AdminColors.textMuted),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                color: AdminColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AdminColors.textMuted,
-              ),
-            ),
-            if (action != null) ...[const SizedBox(height: 12), action!],
-          ],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
         ),
-      ),
-    ),
-  );
-}
-
-class _InlineError extends StatelessWidget {
-  const _InlineError({required this.message, required this.onRetry});
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-    decoration: BoxDecoration(
-      color: _redBg,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.error_outline, size: 18, color: _red),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(fontSize: 13, color: _red),
-          ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.isEditing ? 'Save changes' : 'Add subject'),
         ),
-        TextButton(onPressed: onRetry, child: const Text('Retry')),
       ],
-    ),
-  );
+    );
+  }
 }

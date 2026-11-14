@@ -29,9 +29,14 @@ class Tutor {
     required this.averageRating,
     required this.reviewCount,
     this.qualification,
+    this.userId,
   });
 
   final int tutorId;
+
+  /// The tutor's User ID, which the chat routes use (not [tutorId]). Null if
+  /// the backend did not send it.
+  final int? userId;
   final String name;
   final String? profilePhoto;
   final String? bio;
@@ -51,6 +56,9 @@ class Tutor {
     }
     return Tutor(
       tutorId: _requiredInt(json['tutorId'], 'tutorId'),
+      userId: json['userId'] == null
+          ? null
+          : _requiredInt(json['userId'], 'userId'),
       name: _requiredString(json['name'], 'name'),
       profilePhoto: _nullableString(json['profilePhoto']),
       bio: _nullableString(json['bio']),

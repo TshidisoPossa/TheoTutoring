@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:theo_tutoring_app/Pages/Admin/Services/admin_access_service.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_access_guard.dart';
+import 'package:theo_tutoring_app/Pages/Admin/admin_payouts.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_reports.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_reviews.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_shell.dart';
@@ -12,7 +13,8 @@ import 'package:theo_tutoring_app/Pages/Admin/admin_unavailable.dart';
 import 'package:theo_tutoring_app/Pages/Admin/admin_users.dart';
 import 'package:theo_tutoring_app/main.dart';
 
-const _sections = {AdminRoutes.payouts: 'Payouts'};
+// No Admin section is a placeholder any more (Payouts now has its page).
+const _sections = <String, String>{};
 
 // Below the shell's 900px sidebar breakpoint: the sidebar is opened as a
 // drawer (its fixed-width header overflows with the wide Ahem test font).
@@ -142,6 +144,25 @@ void main() {
     expect((built as AdminAccessGuard).child, isA<AdminReportsScreen>());
     expect(built.requiredPermissions, {'admin.reports.read'});
   });
+  testWidgets('Payouts opens the guarded Payouts page', (tester) async {
+    final navigator = await _pumpApp(tester);
+    final built = appRoutes[AdminRoutes.payouts]!(navigator.context);
+
+    expect(built, isA<AdminAccessGuard>());
+    expect((built as AdminAccessGuard).child, isA<AdminPayoutsScreen>());
+    expect(built.requiredPermissions, {'admin.finance.read'});
+  });
+
+  testWidgets('sidebar lists Payouts under Financials for finance access', (
+    tester,
+  ) async {
+    await _openDrawer(tester, {'admin.finance.read'});
+
+    expect(_drawerItem('FINANCIALS'), findsOneWidget);
+    expect(_drawerItem('Payouts'), findsOneWidget);
+    expect(_drawerItem('Refunds & Issues'), findsNothing);
+  });
+
   testWidgets('Users route requires admin.users.manage', (tester) async {
     final navigator = await _pumpApp(tester);
     final built = appRoutes[AdminRoutes.users]!(navigator.context);

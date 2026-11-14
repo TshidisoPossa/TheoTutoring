@@ -7,6 +7,7 @@ import 'Pages/auth_gate.dart';
 import 'Pages/Admin/admin_shell.dart';
 import 'Pages/Admin/admin_refunds.dart';
 import 'Pages/Admin/admin_monitor.dart';
+import 'Pages/Admin/admin_payouts.dart';
 import 'Pages/Admin/admin_settings.dart';
 import 'Pages/Admin/admin_access_guard.dart';
 import 'Pages/Admin/admin_dashboard.dart';
@@ -65,7 +66,7 @@ class MyApp extends StatelessWidget {
 
 /// Admin sidebar sections that have no page yet. Each opens a guarded
 /// "not available yet" page that keeps the sidebar item highlighted.
-const unavailableAdminSections = {AdminRoutes.payouts: 'Payouts'};
+const unavailableAdminSections = <String, String>{};
 
 final Map<String, WidgetBuilder> appRoutes = {
   AdminRoutes.dashboard: (_) => const AdminAccessGuard(
@@ -75,6 +76,10 @@ final Map<String, WidgetBuilder> appRoutes = {
   AdminRoutes.refunds: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.refunds.read', 'admin.reports.read'},
     child: AdminRefundsIssuesScreen(),
+  ),
+  AdminRoutes.payouts: (_) => const AdminAccessGuard(
+    requiredPermissions: {'admin.finance.read'},
+    child: AdminPayoutsScreen(),
   ),
   AdminRoutes.monitor: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.monitor.read'},

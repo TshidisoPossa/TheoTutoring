@@ -6,12 +6,16 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_bottom_nav.dart';
+import 'package:theo_tutoring_app/Pages/Student/student_chats.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_tutor_profile.dart';
 import 'package:theo_tutoring_app/models/tutor.dart';
+import 'package:theo_tutoring_app/services/student_chat_service.dart';
 import 'package:theo_tutoring_app/services/tutor_search_api.dart';
 
 Tutor _tutor({List<TutorSubject>? subjects, double? rating = 4.5}) => Tutor(
   tutorId: 7,
+  // Differs from tutorId so the chat test proves which ID is used.
+  userId: 42,
   name: 'Theophilus Nkhabu',
   profilePhoto: null,
   bio: 'Engineering tutor.',
@@ -31,6 +35,7 @@ Map<String, dynamic> _json(
   int reviews = 3,
 }) => {
   'tutorId': tutor.tutorId,
+  'userId': tutor.userId,
   'name': tutor.name,
   'profilePhoto': null,
   'bio': tutor.bio,
@@ -68,6 +73,7 @@ Future<void> _pump(
   WidgetTester tester,
   Tutor tutor, {
   http.Response? response,
+  StudentChatService? chatService,
 }) async {
   GoogleFonts.config.allowRuntimeFetching = false;
   tester.view.physicalSize = const Size(800, 2400);
@@ -79,7 +85,13 @@ Future<void> _pump(
     ),
   );
   await tester.pumpWidget(
-    MaterialApp(home: StudentTutorProfilePage(tutor: tutor, api: api)),
+    MaterialApp(
+      home: StudentTutorProfilePage(
+        tutor: tutor,
+        api: api,
+        chatService: chatService,
+      ),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -154,11 +166,129 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  testWidgets('Message Tutor says chat is coming soon', (tester) async {
-    await _pump(tester, _tutor());
+  testWidgets(
+    'Message Tutor opens the chat with this tutor, and back returns',
+    (tester) async {
+      final chatRequests = <http.Request>[];
+      final chatService = StudentChatService(
+        client: MockClient((request) async {
+          chatRequests.add(request);
+          // A new conversation: no messages yet.
+          return http.Response('[]', 200);
+        }),
+        tokenProvider: () async => 'tok',
+      );
+      await _pump(tester, _tutor(), chatService: chatService);
+
+      await tester.tap(find.text('Message Tutor'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ChatScreen), findsOneWidget);
+      final chat = tester.widget<ChatScreen>(find.byType(ChatScreen));
+      expect(chat.contact.userId, 42); // the tutor's User ID, not TutorID 7
+      expect(chat.contact.name, 'Theophilus Nkhabu');
+      expect(chat.contact.initials, 'TN');
+      expect(chat.contact.lastMessage, '');
+      expect(chat.contact.unreadCount, 0);
+      expect(
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.text('Theophilus Nkhabu'),
+        ),
+        findsOneWidget,
+      );
+      expect(chatRequests.single.method, 'GET');
+      expect(
+        chatRequests.single.url.path,
+        endsWith('/student/conversations/42/messages'),
+      );
+      expect(chatRequests.single.headers['Authorization'], 'Bearer tok');
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      expect(find.byType(ChatScreen), findsNothing);
+      expect(find.text('Tutor Profile'), findsOneWidget);
+      expect(find.text('Message Tutor'), findsOneWidget);
+    },
+  );
+
+  testWidgets('the first message from the profile goes to the tutor User ID', (
+    tester,
+  ) async {
+    final chatRequests = <http.Request>[];
+    final chatService = StudentChatService(
+      client: MockClient((request) async {
+        chatRequests.add(request);
+        if (request.method == 'POST') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          // The stored message, shaped like StudentChatMessage.fromJson reads.
+          return http.Response(
+            jsonEncode({
+              'messageId': '10-${body['clientMessageId']}',
+              'seq': 1,
+              'senderId': 10,
+              'receiverId': 42,
+              'messageText': body['messageText'],
+              'sentAt': '2026-11-13T09:00:00Z',
+              'isRead': false,
+              'isOutgoing': true,
+              'bookingId': null,
+            }),
+            201,
+          );
+        }
+        // A new conversation: no messages yet.
+        return http.Response('[]', 200);
+      }),
+      tokenProvider: () async => 'tok',
+    );
+    await _pump(tester, _tutor(), chatService: chatService);
+
     await tester.tap(find.text('Message Tutor'));
-    await tester.pump();
-    expect(find.text('Messaging will be connected soon.'), findsOneWidget);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Hello, are you free?');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pumpAndSettle();
+
+    final post = chatRequests.singleWhere((r) => r.method == 'POST');
+    expect(post.url.path, endsWith('/student/conversations/42/messages'));
+    expect(
+      chatRequests.where((r) => r.url.path.contains('/conversations/7/')),
+      isEmpty,
+    );
+    final body = jsonDecode(post.body) as Map<String, dynamic>;
+    expect(body['messageText'], 'Hello, are you free?');
+    expect(body['receiverId'], 42);
+    expect(body['clientMessageId'], isA<String>());
+    expect(body['clientMessageId'] as String, isNotEmpty);
+
+    expect(find.text('Hello, are you free?'), findsOneWidget);
+    expect(find.text('Sending...'), findsNothing);
+    expect(find.textContaining('Not sent'), findsNothing);
+  });
+
+  testWidgets('Message Tutor does not guess when the User ID is missing', (
+    tester,
+  ) async {
+    final tutor = Tutor(
+      tutorId: 7,
+      name: 'Theophilus Nkhabu',
+      profilePhoto: null,
+      bio: 'Engineering tutor.',
+      experience: '3-5',
+      subjects: const [TutorSubject(subjectId: 3, subjectName: 'Mathematics')],
+      hourlyRate: 100,
+      averageRating: 4.5,
+      reviewCount: 24,
+    );
+    await _pump(tester, tutor);
+    await tester.tap(find.text('Message Tutor'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatScreen), findsNothing);
+    expect(
+      find.text('Messaging is not available for this tutor right now.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the menu reports the tutor with a reason', (tester) async {
