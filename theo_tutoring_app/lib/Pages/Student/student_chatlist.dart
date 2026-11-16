@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../services/student_chat_models.dart';
@@ -63,16 +65,38 @@ class _ChatsScreenState extends State<ChatsScreen> {
   bool _hasLoadError = false;
   Object? _loadError;
 
+  /// How often the list quietly refreshes last messages and unread badges.
+  static const refreshInterval = Duration(seconds: 5);
+
+  Timer? _refreshTimer;
+  bool _refreshing = false;
+
   @override
   void initState() {
     super.initState();
     _loadChats();
+    _refreshTimer = Timer.periodic(refreshInterval, (_) => _refreshQuietly());
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Reloads the list without the loading spinner; errors keep the old list.
+  Future<void> _refreshQuietly() async {
+    if (_refreshing || _isLoading || _hasLoadError || !mounted) return;
+    _refreshing = true;
+    try {
+      final chats = await _chatService.getConversations();
+      if (mounted) setState(() => _chats = chats);
+    } catch (_) {
+      // The next tick tries again.
+    } finally {
+      _refreshing = false;
+    }
   }
 
   Future<void> _loadChats() async {

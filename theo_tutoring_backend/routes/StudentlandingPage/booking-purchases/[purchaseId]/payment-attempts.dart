@@ -174,7 +174,7 @@ Future<int> _resolveStudentId(String? authorization) async {
   final result = await connection.execute(
     '''
     SELECT sp.StudentID, u.AccountStatus
-    FROM \`User\` u
+    FROM \`user\` u
     INNER JOIN studentprofile sp ON sp.UserID = u.UserId
     WHERE u.FirebaseUid = :uid AND u.Role = 'student'
     LIMIT 1

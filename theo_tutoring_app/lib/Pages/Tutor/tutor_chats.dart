@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -49,17 +50,39 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
   bool _isLoading = true;
   Object? _loadError;
 
+  /// How often the list quietly refreshes last messages and unread badges.
+  static const refreshInterval = Duration(seconds: 5);
+
+  Timer? _refreshTimer;
+  bool _refreshing = false;
+
   @override
   void initState() {
     super.initState();
     _loadContacts();
+    _refreshTimer = Timer.periodic(refreshInterval, (_) => _refreshQuietly());
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _searchController.dispose();
     if (widget.chatService == null) _chatService.close();
     super.dispose();
+  }
+
+  /// Reloads the list without the loading spinner; errors keep the old list.
+  Future<void> _refreshQuietly() async {
+    if (_refreshing || _isLoading || _loadError != null || !mounted) return;
+    _refreshing = true;
+    try {
+      final contacts = await _chatService.getConversations();
+      if (mounted) setState(() => _contacts = contacts);
+    } catch (_) {
+      // The next tick tries again.
+    } finally {
+      _refreshing = false;
+    }
   }
 
   Future<void> _loadContacts() async {
@@ -334,6 +357,11 @@ class TutorChatScreen extends StatefulWidget {
     required this.chatService,
   });
 
+  /// How often an open conversation checks for new messages. Chat goes
+  /// through the backend over HTTP (no live connection), so the screen asks
+  /// for the newest page on this timer and adds anything it has not shown.
+  static const pollInterval = Duration(seconds: 3);
+
   @override
   State<TutorChatScreen> createState() => _TutorChatScreenState();
 }
@@ -354,17 +382,59 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
   String? _pendingMessageText;
   Object? _loadError;
 
+  Timer? _pollTimer;
+  bool _polling = false;
+
   @override
   void initState() {
     super.initState();
     _loadMessages();
+    _pollTimer = Timer.periodic(
+      TutorChatScreen.pollInterval,
+      (_) => _pollNewMessages(),
+    );
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Adds messages that arrived since the last load (from the student, or
+  /// sent from another device), in seq order, without duplicates.
+  Future<void> _pollNewMessages() async {
+    if (_polling || _isLoading || _isSending || _loadError != null) return;
+    if (!mounted) return;
+    _polling = true;
+    try {
+      final page = await widget.chatService.getMessagesPage(
+        widget.contact.userId,
+      );
+      if (!mounted) return;
+      final known = {for (final m in _messages) m.messageId};
+      final fresh = [
+        for (final m in page.messages)
+          if (!known.contains(m.messageId)) m,
+      ];
+      if (fresh.isEmpty) return;
+      final atBottom =
+          !_scrollController.hasClients ||
+          _scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 80;
+      setState(() {
+        _messages = [..._messages, ...fresh]
+          ..sort((a, b) => a.seq.compareTo(b.seq));
+      });
+      if (atBottom || fresh.any((m) => m.isOutgoing)) _scrollToBottom();
+      await _markIncomingMessagesRead(fresh);
+    } catch (_) {
+      // Quiet: the next tick tries again, and sending shows its own errors.
+    } finally {
+      _polling = false;
+    }
   }
 
   Future<void> _loadMessages() async {
@@ -478,7 +548,10 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _messages = [..._messages, sent];
+        // A poll may already have added the stored copy.
+        if (!_messages.any((m) => m.messageId == sent.messageId)) {
+          _messages = [..._messages, sent];
+        }
         _isSending = false;
         if (_pendingClientMessageId == clientMessageId) {
           _pendingClientMessageId = null;

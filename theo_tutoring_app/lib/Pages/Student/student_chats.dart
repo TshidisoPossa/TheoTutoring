@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../services/student_chat_models.dart';
@@ -74,6 +76,11 @@ class ChatScreen extends StatefulWidget {
 
   const ChatScreen({super.key, required this.contact, this.service});
 
+  /// How often an open conversation checks for new messages. Chat goes
+  /// through the backend over HTTP (no live connection), so the screen asks
+  /// for the newest page on this timer and adds anything it has not shown.
+  static const pollInterval = Duration(seconds: 3);
+
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -110,10 +117,47 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
   ];
 
+  Timer? _pollTimer;
+  bool _polling = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _pollTimer = Timer.periodic(ChatScreen.pollInterval, (_) => _pollNew());
+  }
+
+  /// Adds messages that arrived since the last load (from the tutor, or
+  /// sent from another device), in seq order, without duplicates.
+  Future<void> _pollNew() async {
+    if (_polling || _loading || _loadFailed || !mounted) return;
+    // Mid-send the stored copy could show next to its "Sending..." bubble.
+    if (_pending.any((p) => !p.failed)) return;
+    _polling = true;
+    try {
+      final page = await _service.getMessagesPage(_tutorId);
+      if (!mounted) return;
+      final known = {for (final m in _history) m.messageId};
+      final fresh = [
+        for (final m in page.messages)
+          if (!known.contains(m.messageId)) m,
+      ];
+      if (fresh.isEmpty) return;
+      final atBottom =
+          !_scroll.hasClients ||
+          _scroll.position.pixels >= _scroll.position.maxScrollExtent - 80;
+      setState(() {
+        _history
+          ..addAll(fresh)
+          ..sort((a, b) => a.seq.compareTo(b.seq));
+      });
+      if (atBottom || fresh.any((m) => m.isOutgoing)) _scrollToBottom();
+      if (fresh.any((m) => !m.isOutgoing)) await _markRead();
+    } catch (_) {
+      // Quiet: the next tick tries again, and sending shows its own errors.
+    } finally {
+      _polling = false;
+    }
   }
 
   Future<void> _load() async {
@@ -246,6 +290,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _controller.dispose();
     _scroll.dispose();
     super.dispose();

@@ -434,5 +434,42 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Hi Lerato'), findsOneWidget);
     });
+
+    testWidgets('a new message from the tutor appears without a refresh', (
+      tester,
+    ) async {
+      final api = _FakeApi();
+      await _openChat(tester, api);
+      expect(find.text('Are you ready?'), findsNothing);
+
+      api.latest = [...api.latest, _message(3, 'Are you ready?')];
+      await tester.pump(ChatScreen.pollInterval);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Are you ready?'), findsOneWidget);
+      expect(find.text('Hi Lerato'), findsOneWidget); // nothing duplicated
+      expect(api.bodies('PUT').last['upToMessageId'], '3-client-3-xxxxxxxxxx');
+    });
+
+    testWidgets('a sent message is not shown twice once polling sees it', (
+      tester,
+    ) async {
+      final api = _FakeApi();
+      await _openChat(tester, api);
+      await _type(tester, 'On my way');
+      final stored = api.bodies('POST').single;
+
+      api.latest = [
+        ...api.latest,
+        {
+          ..._message(9, 'On my way', mine: true),
+          'messageId': '10-${stored['clientMessageId']}',
+        },
+      ];
+      await tester.pump(ChatScreen.pollInterval);
+      await tester.pumpAndSettle();
+
+      expect(find.text('On my way'), findsOneWidget);
+    });
   });
 }

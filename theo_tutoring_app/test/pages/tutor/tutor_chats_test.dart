@@ -31,6 +31,9 @@ class _FakeBackend {
   bool failOlder = false;
   int sendStatus = 201;
 
+  /// Messages that arrive after the conversation was opened.
+  final newer = <Map<String, Object?>>[];
+
   late final client = MockClient((request) async {
     requests.add(request);
     final path = request.url.path;
@@ -58,7 +61,7 @@ class _FakeBackend {
         if (failOlder) return http.Response('boom', 500);
         return _json([_message(1, _studentId, 'Earlier message')]);
       }
-      return _json([_message(2, _studentId, 'Hi tutor')],
+      return _json([_message(2, _studentId, 'Hi tutor'), ...newer],
           headers: {'x-next-before-seq': '2'});
     }
     if (method == 'POST' &&
@@ -382,6 +385,44 @@ void main() {
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
         'Conflict message',
       );
+    });
+
+    testWidgets('a new message from the student appears without a refresh', (
+      tester,
+    ) async {
+      final backend = _FakeBackend();
+      await _openList(tester, backend.service());
+      await tester.tap(find.text('Lerato P'));
+      await tester.pumpAndSettle();
+      expect(find.text('Are you free at 3?'), findsNothing);
+
+      backend.newer.add(_message(3, _studentId, 'Are you free at 3?'));
+      await tester.pump(TutorChatScreen.pollInterval);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Are you free at 3?'), findsOneWidget);
+      expect(find.text('Hi tutor'), findsOneWidget); // nothing duplicated
+      final reads = backend.requests.where((r) => r.method == 'PUT').toList();
+      expect(jsonDecode(reads.last.body), {'upToMessageId': '7-client-3'});
+    });
+
+    testWidgets('a sent message is not shown twice once polling sees it', (
+      tester,
+    ) async {
+      final backend = _FakeBackend();
+      await _openList(tester, backend.service());
+      await tester.tap(find.text('Lerato P'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'See you then');
+      await tester.tap(find.byIcon(Icons.send_rounded));
+      await tester.pumpAndSettle();
+
+      // The server's copy of the sent message, as the next poll returns it.
+      backend.newer.add(_message(2, _tutorId, 'See you then'));
+      await tester.pump(TutorChatScreen.pollInterval);
+      await tester.pumpAndSettle();
+
+      expect(find.text('See you then'), findsOneWidget);
     });
   });
 }

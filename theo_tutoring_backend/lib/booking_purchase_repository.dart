@@ -130,7 +130,7 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
       '''
       SELECT sp.StudentID
       FROM studentprofile sp
-      INNER JOIN \`User\` u ON u.UserId = sp.UserID
+      INNER JOIN \`user\` u ON u.UserId = sp.UserID
       WHERE sp.StudentID = :studentId
         AND u.Role = 'student'
         AND u.AccountStatus = 'Active'
