@@ -71,8 +71,11 @@ class StudentNotificationsScreen extends StatelessWidget {
         Navigator.pop(context, studentLessonsTab);
       },
       // -1: no tab is highlighted on this page
-      bottomNav: (goToTab) =>
-          StudentBottomNav(currentIndex: -1, onTap: goToTab),
+      // Same as every student page: back to the dashboard on that tab
+      bottomNav: (_) => StudentBottomNav(
+        currentIndex: -1,
+        onTap: (index) => openStudentTab(context, index),
+      ),
     );
   }
 }

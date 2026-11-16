@@ -52,16 +52,9 @@ class BookingConfirmationPage extends StatelessWidget {
       );
   }
 
-  void _navTapped(BuildContext context, int index) {
-    if (index == 0) {
-      _goHome(context);
-      return;
-    }
-    _showMessage(
-      context,
-      '${StudentBottomNav.items[index].label} will be connected soon.',
-    );
-  }
+  // Every tab returns to the dashboard and shows that tab there.
+  void _navTapped(BuildContext context, int index) =>
+      openStudentTab(context, index);
 
   @override
   Widget build(BuildContext context) {

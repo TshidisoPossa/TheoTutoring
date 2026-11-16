@@ -3,6 +3,20 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../Tutor/tutor_theme.dart';
 
+/// The tab (0 Home, 1 Lessons, 2 Chat, 3 Profile) a page opened on top of
+/// the student dashboard asked it to show. The dashboard listens, switches
+/// to that tab and clears the request.
+final ValueNotifier<int?> studentTabRequest = ValueNotifier<int?>(null);
+
+/// Opens a student bottom-nav tab from any page opened on top of the
+/// dashboard: returns to the dashboard (the root of the student stack, so
+/// no duplicate copies pile up) and shows [index] there.
+void openStudentTab(BuildContext context, int index) {
+  if (index < 0 || index >= StudentBottomNav.items.length) return;
+  studentTabRequest.value = index;
+  Navigator.of(context).popUntil((route) => route.isFirst);
+}
+
 /// Persistent bottom navigation shared by the student screens.
 class StudentBottomNav extends StatelessWidget {
   const StudentBottomNav({

@@ -5,6 +5,7 @@ import '../../models/tutor.dart';
 import '../Tutor/tutor_theme.dart';
 import '../auth_gate.dart';
 import 'search_tutor.dart';
+import 'student_bottom_nav.dart' show studentTabRequest;
 import 'student_chatlist.dart' show ChatsScreen;
 import 'student_dashboard_api.dart';
 import 'student_lesson.dart';
@@ -115,13 +116,35 @@ class _StudentDashboardState extends State<StudentDashboard> {
   @override
   void initState() {
     super.initState();
+    studentTabRequest.value = null; // a request left by an earlier session
+    studentTabRequest.addListener(_onTabRequest);
     _loadDashboard();
+  }
+
+  // Hot reload (development only) does not rerun initState, so a dashboard
+  // opened before this listener existed would ignore tab requests.
+  @override
+  void reassemble() {
+    super.reassemble();
+    studentTabRequest
+      ..removeListener(_onTabRequest)
+      ..addListener(_onTabRequest);
   }
 
   @override
   void dispose() {
+    studentTabRequest.removeListener(_onTabRequest);
     _dashboardApi.close();
     super.dispose();
+  }
+
+  // A page opened on top (search, tutor profile, booking) returned here with
+  // a tab
+  void _onTabRequest() {
+    final tab = studentTabRequest.value;
+    if (tab == null || !mounted) return;
+    studentTabRequest.value = null;
+    _goToTab(tab);
   }
 
   Future<void> _loadDashboard() async {
@@ -171,7 +194,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
   });
 
   Future<void> _openTutorSearch() async {
-    // The search page pops with the bottom-nav tab the student tapped there
+    // Its bottom bar and photo use openStudentTab (studentTabRequest); a tab
+    // returned as a result is still honoured
     final tab = await Navigator.push<int>(
       context,
       MaterialPageRoute<int>(
@@ -408,7 +432,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
         ),
         Padding(
           padding: const EdgeInsets.only(right: 18, left: 4),
-          child: _studentAvatar(radius: 20),
+          // The student's photo opens the Profile tab
+          child: Tooltip(
+            message: 'Profile',
+            child: GestureDetector(
+              onTap: () => _goToTab(3),
+              child: _studentAvatar(radius: 20),
+            ),
+          ),
         ),
       ],
     );

@@ -212,7 +212,7 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
       ),
       bottomNavigationBar: StudentBottomNav(
         currentIndex: 0,
-        onTap: (index) => Navigator.of(context).pop(index),
+        onTap: (index) => openStudentTab(context, index),
       ),
     );
   }
@@ -263,7 +263,14 @@ class _SearchTutorPageState extends State<SearchTutorPage> {
       actions: [
         Padding(
           padding: const EdgeInsets.only(right: 18),
-          child: _buildStudentAvatar(),
+          // The student's photo opens the Profile tab on the dashboard
+          child: Tooltip(
+            message: 'Profile',
+            child: GestureDetector(
+              onTap: () => openStudentTab(context, 3),
+              child: _buildStudentAvatar(),
+            ),
+          ),
         ),
       ],
     );

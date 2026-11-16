@@ -232,24 +232,8 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
   }
 
   void _navTapped(int index) {
-    if (index == 0) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      return;
-    }
     if (index == 1) return; // already on Lessons
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            '${StudentBottomNav.items[index].label} will be connected soon.',
-            style: GoogleFonts.poppins(fontSize: 12),
-          ),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: _textDark,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    openStudentTab(context, index);
   }
 
   @override

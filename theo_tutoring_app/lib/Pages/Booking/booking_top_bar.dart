@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../Student/student_bottom_nav.dart' show openStudentTab;
 import '../Tutor/tutor_theme.dart';
 import 'booking_flow_context.dart';
 
@@ -69,7 +70,17 @@ AppBar _topBar(BuildContext context, String title, BookingFlowContext flow) {
     actions: [
       Padding(
         padding: const EdgeInsets.only(right: 18),
-        child: _StudentAvatar(name: flow.studentName, photo: flow.studentPhoto),
+        // The student's photo opens the Profile tab on the dashboard
+        child: Tooltip(
+          message: 'Profile',
+          child: GestureDetector(
+            onTap: () => openStudentTab(context, 3),
+            child: _StudentAvatar(
+              name: flow.studentName,
+              photo: flow.studentPhoto,
+            ),
+          ),
+        ),
       ),
     ],
   );

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:theo_tutoring_app/Pages/Student/student_bottom_nav.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_notifications.dart';
 import 'package:theo_tutoring_app/Pages/notifications_screen.dart';
 
@@ -102,12 +103,29 @@ void main() {
     expect(find.byType(StudentNotificationsScreen), findsNothing);
   });
 
-  testWidgets('a bottom-bar tap goes back with that tab', (tester) async {
-    final popped = await _open(tester);
-    await tester.tap(find.text('Profile'));
-    await tester.pumpAndSettle();
-    expect(popped, [3]);
-  });
+  for (final (label, tab) in [
+    ('Home', 0),
+    ('Lessons', 1),
+    ('Chat', 2),
+    ('Profile', 3),
+  ]) {
+    testWidgets('$label in the bottom bar asks the dashboard for tab $tab', (
+      tester,
+    ) async {
+      addTearDown(() => studentTabRequest.value = null);
+      await _open(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(StudentBottomNav),
+          matching: find.text(label),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(studentTabRequest.value, tab);
+      expect(find.byType(StudentNotificationsScreen), findsNothing);
+      expect(find.text('open'), findsOneWidget); // back on the root page
+    });
+  }
 
   final tutorChanges = {
     'unreadCount': 2,

@@ -350,14 +350,61 @@ void main() {
     expect(find.text('No subjects listed.'), findsOneWidget);
   });
 
-  testWidgets('non-home nav tabs show the same coming-soon message', (
-    tester,
-  ) async {
-    await _pump(tester, _tutor());
-    await tester.tap(find.text('Chat'));
-    await tester.pump();
-    expect(find.text('Chat will be connected soon.'), findsOneWidget);
-  });
+  for (final (label, tab) in [
+    ('Home', 0),
+    ('Lessons', 1),
+    ('Chat', 2),
+    ('Profile', 3),
+  ]) {
+    testWidgets('$label in the bottom nav returns to the dashboard tab', (
+      tester,
+    ) async {
+      addTearDown(() => studentTabRequest.value = null);
+      GoogleFonts.config.allowRuntimeFetching = false;
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = TutorSearchApi(
+        client: MockClient(
+          (_) async => http.Response(jsonEncode(_json(_tutor())), 200),
+        ),
+      );
+      // The tutor profile opened on top of a stand-in dashboard
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        StudentTutorProfilePage(tutor: _tutor(), api: api),
+                  ),
+                ),
+                child: const Text('root'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('root'));
+      await tester.pumpAndSettle();
+      expect(find.byType(StudentTutorProfilePage), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(StudentBottomNav),
+          matching: find.text(label),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(StudentTutorProfilePage), findsNothing);
+      expect(find.text('root'), findsOneWidget);
+      expect(studentTabRequest.value, tab);
+      expect(find.textContaining('will be connected soon'), findsNothing);
+    });
+  }
 
   test('timeAgo words review dates', () {
     final now = DateTime(2026, 10, 23, 12);

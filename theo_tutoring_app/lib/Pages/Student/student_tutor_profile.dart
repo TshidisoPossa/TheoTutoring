@@ -251,24 +251,9 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
     );
   }
 
-  void _navTapped(int index) {
-    if (index == 0) {
-      final navigator = Navigator.of(context);
-      var foundSearch = false;
-      navigator.popUntil((route) {
-        if (route.settings.name == tutorSearchRouteName) {
-          foundSearch = true;
-          return true;
-        }
-        return route.isFirst;
-      });
-      if (foundSearch) navigator.pop();
-      return;
-    }
-    _showMessage(
-      '${StudentBottomNav.items[index].label} will be connected soon.',
-    );
-  }
+  // Every tab returns to the dashboard (closing tutor search too, if this
+  // page was opened from it) and shows that tab there.
+  void _navTapped(int index) => openStudentTab(context, index);
 
   void _scrollToReviews() {
     final target = _reviewsKey.currentContext;
