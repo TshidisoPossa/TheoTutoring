@@ -224,7 +224,12 @@ void main() {
   });
 
   group('POST /auth/tutor/availability', () {
-    test('Step 3 is refused until Google Meet is connected', () async {
+    // Google Meet is optional at Step 3 (it can be connected later from
+    // the Profile page), so a tutor with no MeetLink is not refused. The
+    // fake database cannot run the save transaction, so this only checks
+    // that the route gets past the checks; the full save is covered by
+    // availability_resubmission_mysql_test.dart.
+    test('Step 3 does not require Google Meet', () async {
       final db = _FakeDb({
         'TutorID': '7',
         'UserId': '3',
@@ -244,12 +249,8 @@ void main() {
         tokenVerifier: _signedIn,
         connectionFactory: () async => db.connection,
       );
-      expect(response.statusCode, 400);
-      expect(await response.json(), {
-        'error': 'Please connect Google Meet first.',
-      });
-      // Only the tutor lookup ran: nothing was saved or submitted.
-      verify(() => db.connection.execute(any(), any())).called(1);
+      expect(response.statusCode, isNot(400));
+      expect(await response.body(), isNot(contains('Google Meet')));
     });
   });
 }

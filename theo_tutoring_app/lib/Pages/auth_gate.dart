@@ -141,6 +141,14 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<bool> _needsVerifyReminder(SignedInAccount account) async {
     if (account.role == 'admin' || account.emailVerified) return false;
+    // A tutor only becomes Active once an admin approves their application,
+    // so an approved tutor is already known to the platform and signs
+    // straight in. New tutors (Incomplete or Pending) and all students are
+    // still asked to verify their email.
+    if (account.role == 'tutor' &&
+        account.accountStatus.trim().toLowerCase() == 'active') {
+      return false;
+    }
     final uid = _auth.currentUser?.uid;
     if (!requireEmailVerification && _remindedToVerify.contains(uid)) {
       return false;

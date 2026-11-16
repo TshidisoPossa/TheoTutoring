@@ -106,25 +106,7 @@ void main() {
           {'tutorId': tutorId},
         );
 
-        // Step 3 is refused, and nothing changes, until Google Meet is
-        // connected (TutorProfile.MeetLink).
-        final noMeet = await submit();
-        expect(noMeet.statusCode, HttpStatus.badRequest);
-        expect(
-          await noMeet.json(),
-          {'error': 'Please connect Google Meet first.'},
-        );
-        final stillRejected = await connection.execute(
-          'SELECT COUNT(*) AS n FROM tutorapplication WHERE TutorID = :tutorId',
-          {'tutorId': tutorId},
-        );
-        expect(stillRejected.rows.single.str('n'), '1');
-
-        await connection.execute(
-          'UPDATE tutorprofile SET MeetLink = :link WHERE TutorID = :tutorId',
-          {'link': 'https://meet.google.com/abc-mnop-xyz', 'tutorId': tutorId},
-        );
-
+        // Google Meet is optional at Step 3: no MeetLink is set here.
         final first = await submit();
         expect(first.statusCode, HttpStatus.ok);
 

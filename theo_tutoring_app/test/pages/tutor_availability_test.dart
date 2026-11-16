@@ -6,10 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:theo_tutoring_app/Pages/tutor_availability.dart';
-import 'package:theo_tutoring_app/services/google_meet_connect.dart';
 
-// Registration Step 3: the Connect Google Meet card. Google's window and the
-// backend are fakes, so no real token or room is used.
+// Registration Step 3: weekly hours only. Google Meet is optional and is
+// connected later from the Profile page, so this step has no Meet card and
+// never waits for one. The backend is a fake.
 
 class _FakeUser extends Fake implements User {
   @override
@@ -17,90 +17,83 @@ class _FakeUser extends Fake implements User {
       'firebase-token';
 }
 
-Future<void> _open(
-  WidgetTester tester,
-  Future<String> Function() requestMeetToken,
-) {
+Future<void> _open(WidgetTester tester) {
   return tester.pumpWidget(
-    MaterialApp(
-      home: TutorAvailabilityPage(
-        firebaseUser: _FakeUser(),
-        requestMeetToken: requestMeetToken,
-      ),
-    ),
+    MaterialApp(home: TutorAvailabilityPage(firebaseUser: _FakeUser())),
   );
 }
 
-ElevatedButton _completeButton(WidgetTester tester) => tester.widget(
-  find.widgetWithText(ElevatedButton, 'Complete registration'),
-);
+Finder get _completeFinder =>
+    find.widgetWithText(ElevatedButton, 'Complete registration');
 
-Future<void> _tapConnect(WidgetTester tester) async {
-  final connect = find.text('Connect Google Meet').last; // the button
-  await tester.ensureVisible(connect);
-  await tester.tap(connect);
+ElevatedButton _completeButton(WidgetTester tester) =>
+    tester.widget(_completeFinder);
+
+Future<void> _tapComplete(WidgetTester tester) async {
+  await tester.ensureVisible(_completeFinder);
+  await tester.tap(_completeFinder);
   await tester.pumpAndSettle();
 }
 
-/// A backend that answers POST /auth/tutor/meet-link with [status] and
-/// [body], recording what was sent.
-MockClient _backend(
-  int status,
-  Map<String, dynamic> body, {
-  List<http.Request>? sent,
-}) => MockClient((request) async {
-  sent?.add(request);
-  return http.Response(jsonEncode(body), status);
-});
-
 void main() {
-  testWidgets('Complete registration stays disabled until Meet is connected', (
-    tester,
-  ) async {
-    await _open(tester, () async => 'google-token');
-    expect(_completeButton(tester).onPressed, isNull);
-  });
+  testWidgets('Step 3 has no Connect Google Meet card', (tester) async {
+    await _open(tester);
 
-  testWidgets('closing Google\'s window shows a message and stays on Step 3', (
-    tester,
-  ) async {
-    await _open(tester, () async => throw const MeetNotConnected());
-    await _tapConnect(tester);
-
-    expect(find.text("Google Meet wasn't connected. Please try again."),
-        findsOneWidget);
+    expect(find.text('Connect Google Meet'), findsNothing);
     expect(find.text('Google Meet connected'), findsNothing);
-    expect(_completeButton(tester).onPressed, isNull);
   });
 
-  testWidgets('connecting sends the Google token and enables registration', (
+  testWidgets('Complete registration is enabled without Google Meet', (
+    tester,
+  ) async {
+    await _open(tester);
+
+    expect(_completeButton(tester).onPressed, isNotNull);
+  });
+
+  testWidgets('no ticked hours shows the message and sends nothing', (
     tester,
   ) async {
     final sent = <http.Request>[];
     await http.runWithClient(() async {
-      await _open(tester, () async => 'google-token');
-      await _tapConnect(tester);
-    }, () => _backend(200, {'meetConnected': true}, sent: sent));
+      await _open(tester);
+      await _tapComplete(tester);
+    }, () => MockClient((request) async {
+      sent.add(request);
+      return http.Response('{}', 200);
+    }));
 
-    expect(sent.single.url.path, '/auth/tutor/meet-link');
-    expect(sent.single.headers['Authorization'], 'Bearer firebase-token');
-    expect(jsonDecode(sent.single.body), {'accessToken': 'google-token'});
-    expect(find.text('Google Meet connected'), findsOneWidget);
-    expect(_completeButton(tester).onPressed, isNotNull);
+    expect(sent, isEmpty);
+    expect(
+      find.text('Tap at least one time slot you are available.'),
+      findsWidgets,
+    );
   });
 
-  testWidgets('a refused Google account shows the server message', (
+  testWidgets('ticked hours are sent and a server error is shown', (
     tester,
   ) async {
-    const refused =
-        "We couldn't create a Meet room with this account. "
-        'Try another Google account.';
+    const refused = 'Please complete your teaching profile (Step 2) first.';
+    final sent = <http.Request>[];
     await http.runWithClient(() async {
-      await _open(tester, () async => 'google-token');
-      await _tapConnect(tester);
-    }, () => _backend(400, {'error': refused}));
+      await _open(tester);
+      final monday = find.bySemanticsLabel('Monday Morning');
+      await tester.ensureVisible(monday);
+      await tester.tap(monday);
+      await tester.pump();
+      await _tapComplete(tester);
+    }, () => MockClient((request) async {
+      sent.add(request);
+      return http.Response(jsonEncode({'error': refused}), 400);
+    }));
 
+    expect(sent.single.url.path, '/auth/tutor/availability');
+    expect(sent.single.headers['Authorization'], 'Bearer firebase-token');
+    expect(jsonDecode(sent.single.body), {
+      'availability': [
+        {'day': 'Monday', 'startTime': '08:00', 'endTime': '12:00'},
+      ],
+    });
     expect(find.text(refused), findsOneWidget);
-    expect(_completeButton(tester).onPressed, isNull);
   });
 }
