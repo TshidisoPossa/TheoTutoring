@@ -15,9 +15,12 @@ import 'student_profile.dart';
 import 'student_tutor_profile.dart';
 
 class StudentDashboard extends StatefulWidget {
-  const StudentDashboard({super.key, this.studentName});
+  const StudentDashboard({super.key, this.studentName, this.dashboardApi});
 
   final String? studentName;
+
+  /// Loads GET /students/dashboard; tests pass a fake.
+  final StudentDashboardApi? dashboardApi;
 
   @override
   State<StudentDashboard> createState() => _StudentDashboardState();
@@ -32,7 +35,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   // Everything on the page comes from GET /students/dashboard: the student's
   // name, their upcoming Confirmed sessions and approved tutors.
-  final StudentDashboardApi _dashboardApi = StudentDashboardApi();
+  late final StudentDashboardApi _dashboardApi =
+      widget.dashboardApi ?? StudentDashboardApi();
   Map<String, dynamic>? _dashboard;
   bool _loadingDashboard = true;
   String? _dashboardError;
@@ -185,13 +189,17 @@ class _StudentDashboardState extends State<StudentDashboard> {
     ),
   );
 
-  bool _hasSessionOn(DateTime date) => _upcomingSessions.any((session) {
-    final sessionDate = DateTime.tryParse('${session['date']}');
-    return sessionDate != null &&
-        sessionDate.year == date.year &&
-        sessionDate.month == date.month &&
-        sessionDate.day == date.day;
-  });
+  bool _hasSessionOn(DateTime date) => _sessionsOn(date).isNotEmpty;
+
+  /// The confirmed lessons on [date], earliest first (the API sorts them).
+  List<Map<String, dynamic>> _sessionsOn(DateTime date) => [
+    for (final session in _upcomingSessions)
+      if (DateTime.tryParse('${session['date']}') case final d?
+          when d.year == date.year &&
+              d.month == date.month &&
+              d.day == date.day)
+        session,
+  ];
 
   Future<void> _openTutorSearch() async {
     // Its bottom bar and photo use openStudentTab (studentTabRequest); a tab
@@ -1170,9 +1178,94 @@ class _StudentDashboardState extends State<StudentDashboard> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          ..._buildSelectedDaySessions(),
         ],
       ),
     );
+  }
+
+  /// The selected date's lessons under the calendar. Tapping one opens the
+  /// Lessons tab, which has the full details and actions.
+  List<Widget> _buildSelectedDaySessions() {
+    final sessions = _sessionsOn(_selectedDate);
+    if (sessions.isEmpty) {
+      return [
+        Text(
+          'No lessons on this day.',
+          style: GoogleFonts.poppins(fontSize: 11, color: _textMuted),
+        ),
+      ];
+    }
+    return [
+      for (final session in sessions)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Material(
+            color: _fill,
+            borderRadius: BorderRadius.circular(13),
+            child: InkWell(
+              key: ValueKey('calendar-session-${session['bookingId']}'),
+              borderRadius: BorderRadius.circular(13),
+              onTap: () => _goToTab(1), // Lessons
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 11, 8, 11),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _primaryBlue,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${session['startTime'] ?? ''} – '
+                            '${session['endTime'] ?? ''}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _accent,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${session['subject'] ?? 'Tutoring session'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _textDark,
+                            ),
+                          ),
+                          Text(
+                            'with ${session['tutorName'] ?? 'your tutor'} · '
+                            'Confirmed',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              color: _textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: _textFaint),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+    ];
   }
 
   Widget _monthButton({

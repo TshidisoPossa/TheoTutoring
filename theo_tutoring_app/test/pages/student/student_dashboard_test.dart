@@ -9,6 +9,7 @@ import 'package:theo_tutoring_app/Pages/Student/search_tutor.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_bottom_nav.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_chatlist.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_dashboard.dart';
+import 'package:theo_tutoring_app/Pages/Student/student_dashboard_api.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_lesson.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_notifications.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_profile.dart';
@@ -44,6 +45,16 @@ const _tutor = Tutor(
 );
 
 Finder get _topBar => find.byIcon(Icons.notifications_none_rounded);
+
+/// Answers GET /students/dashboard without Firebase or the network.
+class _FakeDashboardApi extends StudentDashboardApi {
+  _FakeDashboardApi(this.data);
+
+  final Map<String, dynamic> data;
+
+  @override
+  Future<Map<String, dynamic>> fetch() async => data;
+}
 
 void main() {
   testWidgets('the Chat tab shows the conversation list', (tester) async {
@@ -273,6 +284,114 @@ void main() {
       expect(find.textContaining('will be connected soon'), findsNothing);
     });
   }
+
+  group('calendar', () {
+    final now = DateTime.now();
+    String iso(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+    // Another day in the same month as today
+    final otherDay = DateTime(now.year, now.month, now.day == 1 ? 2 : 1);
+
+    // With data loaded, the organisation logo strip scrolls forever, so
+    // pumpAndSettle would never finish: pump a fixed time instead.
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+    }
+
+    Future<void> pumpWithSessions(WidgetTester tester) async {
+      // The logo strip is a wide moving row: its images cannot load in
+      // tests, which Flutter reports as an overflow. Ignore only that.
+      final onError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.exceptionAsString().contains('overflowed')) return;
+        onError?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = onError);
+      GoogleFonts.config.allowRuntimeFetching = false;
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StudentDashboard(
+            studentName: 'Lerato',
+            dashboardApi: _FakeDashboardApi({
+              'studentName': 'Lerato',
+              'upcomingSessions': [
+                {
+                  'bookingId': 11,
+                  'subject': 'Calculus',
+                  'tutorName': 'Amahle Tshabalala',
+                  'date': iso(now),
+                  'startTime': '14:00',
+                  'endTime': '15:00',
+                },
+                {
+                  'bookingId': 12,
+                  'subject': 'Physics',
+                  'tutorName': 'Thabo Nkosi',
+                  'date': iso(otherDay),
+                  'startTime': '09:00',
+                  'endTime': '10:00',
+                },
+              ],
+              'tutors': <Object>[],
+            }),
+          ),
+        ),
+      );
+      await settle(tester);
+    }
+
+    testWidgets('the selected day shows its lessons under the calendar', (
+      tester,
+    ) async {
+      await pumpWithSessions(tester);
+      // Today is selected at first
+      expect(find.text('14:00 – 15:00'), findsOneWidget);
+      expect(find.text('with Amahle Tshabalala · Confirmed'), findsOneWidget);
+      expect(find.text('09:00 – 10:00'), findsNothing);
+    });
+
+    testWidgets('choosing another day shows that day\'s lessons', (
+      tester,
+    ) async {
+      await pumpWithSessions(tester);
+      final day = find.text('${otherDay.day}').last;
+      await tester.ensureVisible(day);
+      await tester.tap(day);
+      await settle(tester);
+
+      expect(find.text('09:00 – 10:00'), findsOneWidget);
+      expect(find.text('with Thabo Nkosi · Confirmed'), findsOneWidget);
+      expect(find.text('14:00 – 15:00'), findsNothing);
+    });
+
+    testWidgets('a day without lessons says so', (tester) async {
+      await pumpWithSessions(tester);
+      // A day in the month with no lesson (not today, not otherDay)
+      final free = [3, 4, 5].firstWhere(
+        (d) => d != now.day && d != otherDay.day,
+      );
+      final day = find.text('$free').last;
+      await tester.ensureVisible(day);
+      await tester.tap(day);
+      await settle(tester);
+      expect(find.text('No lessons on this day.'), findsOneWidget);
+    });
+
+    testWidgets('tapping a lesson opens the Lessons tab', (tester) async {
+      await pumpWithSessions(tester);
+      final tile = find.byKey(const ValueKey('calendar-session-11'));
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
+      await settle(tester);
+      expect(find.byType(StudentLessonsPage), findsOneWidget);
+    });
+  });
 
   testWidgets('the top-bar search icon opens tutor search', (tester) async {
     await _pump(tester);

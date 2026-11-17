@@ -683,6 +683,25 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
       'Availability',
       Column(
         children: [
+          // Right under the heading, so it is clear the days can be tapped
+          if (slots.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Row(
+                children: [
+                  Icon(Icons.touch_app_outlined, size: 15, color: _accent),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Click on a day to view available times.',
+                      style: GoogleFonts.poppins(color: _accent, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: [
               for (final (day, short) in _weekdays)
@@ -746,10 +765,7 @@ class _StudentTutorProfilePageState extends State<StudentTutorProfilePage> {
               style: GoogleFonts.poppins(color: _textMuted, fontSize: 12),
             )
           else if (selected == null)
-            Text(
-              'Tap a day to see time slots',
-              style: GoogleFonts.poppins(color: _textMuted, fontSize: 12),
-            )
+            const SizedBox.shrink() // the hint under the heading says it
           else if (selectedSlots.isEmpty)
             Text(
               'Not available on $selected.',

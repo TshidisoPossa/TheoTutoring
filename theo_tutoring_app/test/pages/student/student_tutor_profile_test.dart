@@ -110,7 +110,10 @@ void main() {
     expect(find.text('R100.00 per session'), findsOneWidget);
     expect(find.text('University of Pretoria'), findsOneWidget);
     expect(find.text('MSc Mathematics'), findsOneWidget);
-    expect(find.text('Tap a day to see time slots'), findsOneWidget);
+    expect(
+      find.text('Click on a day to view available times.'),
+      findsOneWidget,
+    );
     expect(find.text('Lerato M.'), findsOneWidget);
     expect(find.text('Sipho K.'), findsOneWidget);
     expect(find.text('Ayanda N.'), findsNothing); // only two until See all
