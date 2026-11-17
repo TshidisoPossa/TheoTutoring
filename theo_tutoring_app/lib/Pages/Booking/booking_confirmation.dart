@@ -1,7 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 
+import '../../services/booking_receipt.dart';
+import '../../services/receipt_pdf.dart';
 import '../Student/student_bottom_nav.dart';
 import '../Tutor/tutor_theme.dart';
 import 'booking_flow_context.dart';
@@ -13,12 +18,24 @@ class BookingConfirmationPage extends StatelessWidget {
     required this.flow,
     this.result,
     this.payment,
+    this.loadReceipt,
+    this.saveReceipt,
     super.key,
   });
 
   final BookingFlowContext flow;
   final BookingPurchaseResult? result;
   final PaymentAttemptResult? payment;
+
+  /// Loads the receipt from the server; tests pass a fake.
+  final Future<BookingReceipt> Function(int purchaseId)? loadReceipt;
+
+  /// Hands the PDF to the phone's share/save sheet (a download on web);
+  /// tests pass a fake.
+  final Future<void> Function(Uint8List bytes, String fileName)? saveReceipt;
+
+  static Future<void> _sharePdf(Uint8List bytes, String fileName) =>
+      Printing.sharePdf(bytes: bytes, filename: fileName);
 
   static const Color _primaryBlue = Color(0xFF356AE6); // buttons
 
@@ -86,27 +103,12 @@ class BookingConfirmationPage extends StatelessWidget {
                       _buildSummaryCard(c),
                       const SizedBox(height: 24),
                       if (_paymentConfirmed)
-                        FilledButton.icon(
-                          onPressed: () => _showMessage(
-                            context,
-                            'Receipt download will be available soon.',
-                          ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _primaryBlue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.download_rounded, size: 18),
-                          label: Text(
-                            'Download Receipt',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
+                        _ReceiptButton(
+                          purchaseId: result!.purchaseId,
+                          loadReceipt: loadReceipt ?? fetchBookingReceipt,
+                          saveReceipt: saveReceipt ?? _sharePdf,
+                          showMessage: (message) =>
+                              _showMessage(context, message),
                         ),
                       if (_paymentConfirmed) const SizedBox(height: 12),
                       TextButton(
@@ -170,7 +172,7 @@ class BookingConfirmationPage extends StatelessWidget {
         ),
         const SizedBox(height: 22),
         Text(
-          confirmed ? 'Booking Request Sent!' : 'Payment Not Confirmed',
+          confirmed ? 'Booking Confirmed!' : 'Payment Not Confirmed',
           textAlign: TextAlign.center,
           style: GoogleFonts.poppins(
             color: c.textDark,
@@ -182,8 +184,8 @@ class BookingConfirmationPage extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           confirmed
-              ? 'Your request has been sent to the tutor and the payment is '
-                    'being processed.'
+              ? 'Your payment was successful and your lessons are booked. '
+                    'Your tutor has been notified.'
               : 'Payment has not been confirmed. Lessons are not confirmed.',
           textAlign: TextAlign.center,
           style: GoogleFonts.poppins(
@@ -216,11 +218,7 @@ class BookingConfirmationPage extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.receipt_long_rounded,
-                color: c.accent,
-                size: 20,
-              ),
+              Icon(Icons.receipt_long_rounded, color: c.accent, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -284,7 +282,13 @@ class BookingConfirmationPage extends StatelessWidget {
               icon: Icons.payments_outlined,
               child: Row(
                 children: [
-                  Expanded(child: _tileText(c, 'Total Due', muted: true)),
+                  Expanded(
+                    child: _tileText(
+                      c,
+                      _paymentConfirmed ? 'Total Paid' : 'Total Due',
+                      muted: true,
+                    ),
+                  ),
                   Text(
                     'R${result.totalAmount}',
                     style: GoogleFonts.poppins(
@@ -306,10 +310,7 @@ class BookingConfirmationPage extends StatelessWidget {
     final photo = flow.tutor.profilePhoto;
     final fallback = Text(
       _initials(flow.tutor.name),
-      style: GoogleFonts.poppins(
-        color: c.accent,
-        fontWeight: FontWeight.w600,
-      ),
+      style: GoogleFonts.poppins(color: c.accent, fontWeight: FontWeight.w600),
     );
     return CircleAvatar(
       radius: 26,
@@ -328,11 +329,7 @@ class BookingConfirmationPage extends StatelessWidget {
     );
   }
 
-  Widget _tile(
-    _Palette c, {
-    required IconData icon,
-    required Widget child,
-  }) {
+  Widget _tile(_Palette c, {required IconData icon, required Widget child}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -368,6 +365,72 @@ class BookingConfirmationPage extends StatelessWidget {
     if (parsed == null) return '$date • $start';
     return '${DateFormat('MMM d, y').format(parsed)} • '
         '${DateFormat('h:mm a').format(parsed)}';
+  }
+}
+
+/// Download Receipt: loads the receipt the server saved at payment time,
+/// turns it into a PDF and hands it to the share/save sheet.
+class _ReceiptButton extends StatefulWidget {
+  const _ReceiptButton({
+    required this.purchaseId,
+    required this.loadReceipt,
+    required this.saveReceipt,
+    required this.showMessage,
+  });
+
+  final int purchaseId;
+  final Future<BookingReceipt> Function(int purchaseId) loadReceipt;
+  final Future<void> Function(Uint8List bytes, String fileName) saveReceipt;
+  final void Function(String message) showMessage;
+
+  @override
+  State<_ReceiptButton> createState() => _ReceiptButtonState();
+}
+
+class _ReceiptButtonState extends State<_ReceiptButton> {
+  bool _busy = false;
+
+  Future<void> _download() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final receipt = await widget.loadReceipt(widget.purchaseId);
+      final bytes = await buildReceiptPdf(receipt);
+      await widget.saveReceipt(bytes, receiptFileName(receipt));
+    } on BookingReceiptException catch (error) {
+      widget.showMessage(error.message);
+    } catch (_) {
+      widget.showMessage('The receipt could not be created. Please try again.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: _busy ? null : _download,
+      style: FilledButton.styleFrom(
+        backgroundColor: BookingConfirmationPage._primaryBlue,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      icon: _busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.download_rounded, size: 18),
+      label: Text(
+        _busy ? 'Preparing receipt…' : 'Download Receipt',
+        style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 13),
+      ),
+    );
   }
 }
 

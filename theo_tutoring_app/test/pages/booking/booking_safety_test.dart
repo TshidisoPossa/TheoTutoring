@@ -212,7 +212,7 @@ void main() {
       expect(find.text('Session (1 hour)'), findsOneWidget);
       await _fillCard(tester);
       await _tapPay(tester);
-      expect(find.text('Booking Request Sent!'), findsOneWidget);
+      expect(find.text('Booking Confirmed!'), findsOneWidget);
       expect(api.paymentRequests, hasLength(1));
       expect(api.paymentRequests.single.method, 'CreditDebitCard');
       expect(api.paymentRequests.single.outcome, 'success');
@@ -253,11 +253,11 @@ void main() {
       await _fillCard(tester);
       await _tapPay(tester);
       expect(find.textContaining('Payment failed.'), findsOneWidget);
-      expect(find.text('Booking Request Sent!'), findsNothing);
+      expect(find.text('Booking Confirmed!'), findsNothing);
       await _tapPay(tester);
       expect(api.paymentRequests, hasLength(2));
       expect(api.paymentRequests[0].key, isNot(api.paymentRequests[1].key));
-      expect(find.text('Booking Request Sent!'), findsOneWidget);
+      expect(find.text('Booking Confirmed!'), findsOneWidget);
     },
   );
 
@@ -280,7 +280,7 @@ void main() {
       await _tapPay(tester);
       expect(api.paymentRequests, hasLength(2));
       expect(api.paymentRequests.first.key, api.paymentRequests.last.key);
-      expect(find.text('Booking Request Sent!'), findsOneWidget);
+      expect(find.text('Booking Confirmed!'), findsOneWidget);
     },
   );
 
@@ -309,7 +309,7 @@ void main() {
       find.textContaining('This reservation can no longer be paid.'),
       findsOneWidget,
     );
-    expect(find.text('Booking Request Sent!'), findsNothing);
+    expect(find.text('Booking Confirmed!'), findsNothing);
   });
 
   testWidgets('invalid card details never reach the payment API', (
