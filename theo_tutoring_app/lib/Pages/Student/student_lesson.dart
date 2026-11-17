@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../Booking/booking_api.dart';
 import '../Tutor/tutor_theme.dart';
 import 'student_lessons_api.dart';
+import 'student_reschedule.dart';
 import 'student_review.dart';
 
 /// The Lessons tab's colours: light, or dark while dark mode is on.
@@ -56,6 +58,10 @@ class Lesson {
   final bool tutorVerified;
   final String? tutorSubjects; // "Mathematics, Physics"
 
+  // Upcoming lessons only: whose free times Reschedule shows
+  final int? tutorId;
+  final int? subjectId;
+
   const Lesson({
     required this.bookingId,
     required this.tutorName,
@@ -63,6 +69,8 @@ class Lesson {
     required this.start,
     required this.end,
     required this.status,
+    this.tutorId,
+    this.subjectId,
     this.avatarUrl,
     this.cancellationReason,
     this.myRating,
@@ -91,6 +99,8 @@ class Lesson {
       start: start,
       end: end,
       status: optional(json['status']) ?? 'Pending',
+      tutorId: json['tutorId'] is int ? json['tutorId'] as int : null,
+      subjectId: json['subjectId'] is int ? json['subjectId'] as int : null,
       avatarUrl: optional(json['tutorPhoto']),
       cancellationReason: optional(json['cancellationReason']),
       myRating: json['myRating'] is int ? json['myRating'] as int : null,
@@ -106,6 +116,10 @@ class Lesson {
   }
 
   bool get isConfirmed => status == 'Confirmed';
+
+  /// Reschedule moves a paid lesson; the server checks it again.
+  bool get canReschedule =>
+      status == 'Confirmed' && tutorId != null && subjectId != null;
 
   /// Start session is enabled for paid lessons the student can join. The
   /// server still checks the time window and payment when it is tapped.
@@ -149,10 +163,13 @@ class Lesson {
 /// The student's Lessons tab ("My Schedule"), shown inside the dashboard's
 /// Scaffold so the menu button opens the dashboard drawer.
 class StudentLessonsPage extends StatefulWidget {
-  const StudentLessonsPage({super.key, this.api});
+  const StudentLessonsPage({super.key, this.api, this.availabilityApi});
 
   /// Tests pass a fake; the app uses the real backend.
   final StudentLessonsApi? api;
+
+  /// The tutor's free hours for Reschedule; tests pass a fake.
+  final BookingFlowApi? availabilityApi;
 
   @override
   State<StudentLessonsPage> createState() => _StudentLessonsPageState();
@@ -285,10 +302,29 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
     if (saved == true && mounted) await _loadLessons();
   }
 
-  void _showSoon(String feature) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$feature will be connected soon.')));
+  /// Opens the Reschedule page for a paid lesson; reloads once it moved.
+  Future<void> _rescheduleLesson(Lesson lesson) async {
+    if (!lesson.canReschedule) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Only paid, confirmed lessons can be rescheduled. You can cancel '
+            'this one instead.',
+          ),
+        ),
+      );
+      return;
+    }
+    final moved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => StudentReschedulePage(
+          lesson: lesson,
+          lessonsApi: _api,
+          availabilityApi: widget.availabilityApi,
+        ),
+      ),
+    );
+    if (moved == true && mounted) await _loadLessons();
   }
 
   // Two taps (Google Meet design, section 6): this first tap asks the server
@@ -411,8 +447,7 @@ class _StudentLessonsPageState extends State<StudentLessonsPage> {
             lesson: lesson,
             showActions: _tabIndex == 0,
             onCancel: () => _cancelLesson(lesson),
-            // TODO: connect rescheduling to the backend
-            onReschedule: () => _showSoon('Rescheduling'),
+            onReschedule: () => _rescheduleLesson(lesson),
             onReport: () => _reportLesson(lesson),
             onStart: lesson.canStart ? () => _startSession(lesson) : null,
             onReview: lesson.isCompleted && lesson.myRating == null

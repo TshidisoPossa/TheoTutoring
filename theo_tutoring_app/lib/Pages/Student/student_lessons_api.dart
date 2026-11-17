@@ -46,6 +46,41 @@ class StudentLessonsApi {
     return decoded;
   }
 
+  /// Moves a paid lesson to [date] ("2026-11-20") at [startTime] ("14:00"),
+  /// South African time. The payment stays with the lesson. Returns the
+  /// lesson's new date, startTime and endTime.
+  Future<Map<String, dynamic>> reschedule(
+    int bookingId, {
+    required String date,
+    required String startTime,
+  }) async {
+    final token = await _token();
+    final response = await _client
+        .post(
+          Uri.parse('$apiBaseUrl/students/lessons/$bookingId/reschedule'),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'date': date, 'startTime': startTime}),
+        )
+        .timeout(const Duration(seconds: 15));
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      throw const StudentLessonsException('Lesson could not be rescheduled.');
+    }
+    if (response.statusCode != 200 || decoded is! Map<String, dynamic>) {
+      final message = decoded is Map<String, dynamic>
+          ? decoded['error'] as String? ?? 'Lesson could not be rescheduled.'
+          : 'Lesson could not be rescheduled.';
+      throw StudentLessonsException(message);
+    }
+    return decoded;
+  }
+
   /// Reports the lesson's tutor to the administrator.
   Future<void> report(int bookingId, String reason) async {
     final token = await _token();

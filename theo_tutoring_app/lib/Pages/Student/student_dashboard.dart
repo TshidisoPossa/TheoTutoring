@@ -418,6 +418,13 @@ class _StudentDashboardState extends State<StudentDashboard> {
         ],
       ),
       actions: [
+        // Opens tutor search, the same page as the "Find a tutor" buttons
+        IconButton(
+          onPressed: _openTutorSearch,
+          icon: const Icon(Icons.search_rounded),
+          color: _textDark,
+          tooltip: 'Find a tutor',
+        ),
         // Opens Notifications; red badge = unread count
         IconButton(
           onPressed: _openNotifications,

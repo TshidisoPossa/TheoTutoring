@@ -274,6 +274,22 @@ void main() {
     });
   }
 
+  testWidgets('the top-bar search icon opens tutor search', (tester) async {
+    await _pump(tester);
+    expect(find.byIcon(Icons.search_rounded), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Find a tutor'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchTutorPage), findsOneWidget);
+
+    // Same page as the side menu's Subjects / "Find a tutor": Back returns
+    // to the dashboard.
+    tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchTutorPage), findsNothing);
+    expect(find.byIcon(Icons.search_rounded), findsOneWidget);
+  });
+
   testWidgets('the menu button still opens the side menu', (tester) async {
     await _pump(tester);
     await tester.tap(find.byTooltip('Open menu'));

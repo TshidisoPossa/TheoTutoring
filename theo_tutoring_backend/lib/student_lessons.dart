@@ -50,7 +50,7 @@ class MySqlStudentLessonsRepository {
     final result = await connection.execute(
       '''
       SELECT b.Booking_id, b.Status, s.subjectName, tu.Name AS TutorName,
-        tu.ProfilePhoto AS TutorPhoto,
+        tu.ProfilePhoto AS TutorPhoto, b.TutorID, b.SubjectID,
         DATE_FORMAT(b.Date, '%Y-%m-%d') AS SessionDate,
         TIME_FORMAT(b.StartTime, '%H:%i') AS StartTime,
         TIME_FORMAT(b.EndTime, '%H:%i') AS EndTime,
@@ -83,6 +83,8 @@ class MySqlStudentLessonsRepository {
         'status': status,
         'subject': row.str('subjectName'),
         'tutorName': row.str('TutorName'),
+        'tutorId': int.tryParse(row.str('TutorID') ?? ''),
+        'subjectId': int.tryParse(row.str('SubjectID') ?? ''),
         'tutorPhoto': row.str('TutorPhoto'),
         'date': row.str('SessionDate'),
         'startTime': row.str('StartTime'),

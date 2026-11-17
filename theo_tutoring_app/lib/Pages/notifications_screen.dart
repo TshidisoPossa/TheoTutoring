@@ -77,7 +77,7 @@ class NotificationItem {
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({
     super.key,
-    required this.roleLabel,
+    this.roleLabel,
     required this.loadNotifications,
     required this.markRead,
     required this.markAllRead,
@@ -88,8 +88,9 @@ class NotificationsScreen extends StatefulWidget {
     this.onLink,
   });
 
-  /// The chip next to the title: "Tutor" or "Student".
-  final String roleLabel;
+  /// The chip next to the title, e.g. "Tutor". No chip when null (the
+  /// student page has none).
+  final String? roleLabel;
 
   /// Loads the page: `unreadCount` and `notifications`.
   final Future<Map<String, dynamic>> Function() loadNotifications;
@@ -270,6 +271,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
             ),
           ),
+          if (widget.roleLabel case final label?)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
@@ -277,7 +279,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
-              widget.roleLabel,
+              label,
               style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,

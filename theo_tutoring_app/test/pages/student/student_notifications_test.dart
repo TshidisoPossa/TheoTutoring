@@ -85,7 +85,7 @@ Future<List<int?>> _open(
 void main() {
   testWidgets('shows payment, lesson and refund cards', (tester) async {
     await _open(tester);
-    expect(find.text('Student'), findsOneWidget);
+    expect(find.text('Student'), findsNothing); // no role chip for students
     expect(find.text('2 unread'), findsOneWidget);
     expect(find.text('Payment successful'), findsOneWidget);
     expect(find.text('Refund approved'), findsOneWidget);

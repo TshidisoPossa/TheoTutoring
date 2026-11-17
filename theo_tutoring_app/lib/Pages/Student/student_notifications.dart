@@ -42,7 +42,6 @@ class StudentNotificationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return NotificationsScreen(
-      roleLabel: 'Student',
       accent: const Color(0xFF356AE6),
       loadNotifications: loadNotifications,
       markRead: markStudentNotificationRead,
