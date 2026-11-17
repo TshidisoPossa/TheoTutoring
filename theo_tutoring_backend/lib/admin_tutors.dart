@@ -42,7 +42,7 @@ abstract interface class TutorRosterRepository {
 const _tutorSelect =
     'SELECT tp.TutorID, u.Name, u.Email, u.PhoneNum, u.ProfilePhoto, '
     'u.Created_at, u.AccountStatus, tp.VerificationStat, tp.Experience, '
-    'tp.AveRate, '
+    'tp.AveRate, tp.Certificate, tp.IdDocument, '
     '(SELECT COUNT(*) FROM reviews r WHERE r.TutorId = tp.TutorID) '
     'AS ReviewCount, '
     '(SELECT GROUP_CONCAT(s.subjectName ORDER BY s.subjectName '
@@ -67,6 +67,9 @@ Map<String, Object?> _tutor(ResultSetRow r) => {
   'totalLessons': int.parse(r.reqStr('TotalLessons')),
   'joinedAt': r.str('Created_at'),
   'status': r.str('AccountStatus'),
+  // Uploaded at registration (Cloudinary links), for the admin overview
+  'certificateUrl': r.str('Certificate'),
+  'idDocumentUrl': r.str('IdDocument'),
 };
 
 class MySqlTutorRosterRepository implements TutorRosterRepository {

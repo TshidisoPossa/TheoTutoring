@@ -29,6 +29,11 @@ Map<String, dynamic> _tutor(
   'totalLessons': lessons,
   'joinedAt': '2026-03-01T10:00:00Z',
   'status': status,
+  // Sipho (13) never uploaded an ID document
+  'certificateUrl': 'https://res.cloudinary.com/demo/image/upload/cert-$id.png',
+  'idDocumentUrl': id == 13
+      ? null
+      : 'https://res.cloudinary.com/demo/image/upload/id-$id.png',
 };
 
 /// In-memory stand-in for the /admin/tutors endpoints.
@@ -364,5 +369,48 @@ void main() {
     await tester.pump();
     expect(find.text('Adding a tutor is not available yet.'), findsOneWidget);
     expect(backend.patches, isEmpty);
+  });
+
+  testWidgets('the overview lists the tutor\'s uploaded documents', (
+    tester,
+  ) async {
+    await _pump(tester, _Backend());
+
+    await _openActions(tester, 0); // Lerato: certificate and ID
+    var dialog = find.byType(AlertDialog);
+    expect(
+      find.descendant(of: dialog, matching: find.text('Documents')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.text('View Qualification certificate'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.text('View ID document')),
+      findsOneWidget,
+    );
+    await tester.tap(find.descendant(of: dialog, matching: find.text('Close')));
+    await tester.pumpAndSettle();
+
+    await _openActions(tester, 1); // Sipho: no ID document
+    dialog = find.byType(AlertDialog);
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.text('ID document: not provided'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.text('View Qualification certificate'),
+      ),
+      findsOneWidget,
+    );
   });
 }

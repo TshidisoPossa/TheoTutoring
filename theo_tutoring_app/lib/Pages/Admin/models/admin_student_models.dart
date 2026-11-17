@@ -55,6 +55,12 @@ class AdminStudent {
   /// User.AccountStatus, e.g. Active, Pending, Suspended, Deactivated.
   final String status;
 
+  /// The institution the proof of registration should be from.
+  final String? institution;
+
+  /// Proof of registration uploaded at sign-up (Cloudinary link).
+  final String? proofOfRegistrationUrl;
+
   const AdminStudent({
     required this.studentId,
     required this.name,
@@ -67,6 +73,8 @@ class AdminStudent {
     this.institutionYear,
     this.subjectOfInterest,
     this.joinedAt,
+    this.institution,
+    this.proofOfRegistrationUrl,
   });
 
   factory AdminStudent.fromJson(Map<String, dynamic> j) => AdminStudent(
@@ -81,6 +89,8 @@ class AdminStudent {
     totalLessons: _int(j['totalLessons']) ?? 0,
     joinedAt: DateTime.tryParse('${j['joinedAt'] ?? ''}')?.toLocal(),
     status: _text(j['status']) ?? 'Unknown',
+    institution: _text(j['institution']),
+    proofOfRegistrationUrl: _text(j['proofOfRegistrationUrl']),
   );
 
   AdminStudent copyWith({String? status}) => AdminStudent(

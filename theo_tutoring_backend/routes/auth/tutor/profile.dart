@@ -84,15 +84,17 @@ Future<Response> onRequest(RequestContext context) async {
       'idDocumentUrl',
       maxLength: _maxUrlLength,
     );
-    if (idDocumentUrl != null) {
-      final error = _checkUploadUrl(
-        idDocumentUrl,
-        'ID document',
-        _documentTypes,
-        cloudName,
-      );
-      if (error != null) return jsonError(400, error);
+    // Admins check the tutor's identity before approving, so it is required
+    if (idDocumentUrl == null) {
+      return jsonError(400, 'Please upload your ID document.');
     }
+    final idDocumentError = _checkUploadUrl(
+      idDocumentUrl,
+      'ID document',
+      _documentTypes,
+      cloudName,
+    );
+    if (idDocumentError != null) return jsonError(400, idDocumentError);
 
     final profilePhotoUrl = optionalString(
       body,

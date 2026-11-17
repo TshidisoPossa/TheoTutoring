@@ -25,6 +25,11 @@ Map<String, dynamic> _student(
   'totalLessons': lessons,
   'joinedAt': '2026-03-01T10:00:00Z',
   'status': status,
+  'institution': 'University of Pretoria',
+  // Sipho (13) has no proof of registration on file
+  'proofOfRegistrationUrl': id == 13
+      ? null
+      : 'https://res.cloudinary.com/demo/image/upload/proof-$id.png',
 };
 
 /// In-memory stand-in for the expected /admin/students endpoints.
@@ -323,5 +328,42 @@ void main() {
 
     expect(find.text('Fresh Student'), findsOneWidget);
     expect(find.text('Stale Student'), findsNothing);
+  });
+
+  testWidgets('the overview shows the proof of registration to check', (
+    tester,
+  ) async {
+    await _pump(tester, _Backend());
+
+    await tester.tap(find.byTooltip('Student actions').at(0)); // Lerato
+    await tester.pumpAndSettle();
+    var dialog = find.byType(AlertDialog);
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.text('University of Pretoria'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.text('View Proof of registration'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.descendant(of: dialog, matching: find.text('Close')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Student actions').at(1)); // Sipho
+    await tester.pumpAndSettle();
+    dialog = find.byType(AlertDialog);
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.text('Proof of registration: not provided'),
+      ),
+      findsOneWidget,
+    );
   });
 }

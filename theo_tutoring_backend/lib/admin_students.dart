@@ -34,7 +34,7 @@ abstract interface class StudentRosterRepository {
 const _studentSelect =
     'SELECT sp.StudentID, u.Name, u.Email, u.PhoneNum, u.ProfilePhoto, '
     'u.Created_at, u.AccountStatus, sp.Course, sp.InstitutionYear, '
-    'sp.Subject_of_interest, '
+    'sp.Subject_of_interest, sp.Institution, sp.ProofOfReg, '
     '(SELECT COUNT(*) FROM booking b WHERE b.StudentID = sp.StudentID '
     "AND b.Status = 'Completed') AS TotalLessons "
     'FROM `user` u JOIN studentprofile sp ON sp.UserID = u.UserId ';
@@ -51,6 +51,10 @@ Map<String, Object?> _student(ResultSetRow r) => {
   'totalLessons': int.parse(r.reqStr('TotalLessons')),
   'joinedAt': r.str('Created_at'),
   'status': r.str('AccountStatus'),
+  // What the admin checks the proof of registration against
+  'institution': r.str('Institution'),
+  // Proof of registration uploaded at sign-up (Cloudinary link)
+  'proofOfRegistrationUrl': r.str('ProofOfReg'),
 };
 
 class MySqlStudentRosterRepository implements StudentRosterRepository {

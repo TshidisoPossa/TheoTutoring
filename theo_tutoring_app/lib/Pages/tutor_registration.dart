@@ -51,9 +51,12 @@ class _TutorRegistrationState extends State<TutorRegistration> {
   Uint8List? _profilePhotoBytes;
   String? _certificateUrl;
   String? _certificateName;
+  String? _idDocumentUrl;
+  String? _idDocumentName;
   bool _loadingSubjects = true;
   bool _uploadingPhoto = false;
   bool _uploadingCertificate = false;
+  bool _uploadingIdDocument = false;
   bool _isSubmitting = false;
   bool _showValidation = false;
   bool _stepOneCompleted = false;
@@ -204,6 +207,46 @@ class _TutorRegistrationState extends State<TutorRegistration> {
     }
   }
 
+  // The tutor's ID document (ID card, ID book or passport), which the admin
+  // checks before approving the application. Same upload as the certificate.
+  Future<void> _pickIdDocument() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 2000,
+      imageQuality: 95,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _idDocumentUrl = null;
+      _idDocumentName = picked.name;
+      _uploadingIdDocument = true;
+    });
+    try {
+      final url = await uploadToCloudinary(picked);
+      if (!_isCloudinaryImageUrl(url)) {
+        throw const CloudinaryUploadException(
+          'Choose a JPG or PNG scan and retry.',
+        );
+      }
+      if (mounted) setState(() => _idDocumentUrl = url);
+    } on CloudinaryUploadException catch (e) {
+      if (mounted) {
+        setState(() => _idDocumentName = null);
+        _showMessage('ID document upload failed. ${e.message}');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _idDocumentName = null);
+        _showMessage(
+          'ID document upload failed. Choose a JPG or PNG scan and retry.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingIdDocument = false);
+    }
+  }
+
   bool _isCloudinaryImageUrl(String value) {
     final uri = Uri.tryParse(value);
     if (uri == null ||
@@ -251,8 +294,10 @@ class _TutorRegistrationState extends State<TutorRegistration> {
         _experience == null ||
         _selectedSubjectIds.isEmpty ||
         _certificateUrl == null ||
+        _idDocumentUrl == null ||
         _loadingSubjects ||
         _uploadingCertificate ||
+        _uploadingIdDocument ||
         _uploadingPhoto) {
       _showMessage(
         _subjectsError != null
@@ -261,6 +306,8 @@ class _TutorRegistrationState extends State<TutorRegistration> {
             ? 'Select at least one subject.'
             : _certificateUrl == null
             ? 'Upload your certificate scan before continuing.'
+            : _idDocumentUrl == null
+            ? 'Upload your ID document before continuing.'
             : 'Complete all highlighted fields before continuing.',
       );
       return;
@@ -338,6 +385,7 @@ class _TutorRegistrationState extends State<TutorRegistration> {
               'bio': _bioController.text.trim(),
               'experience': _experience,
               'certificateUrl': _certificateUrl,
+              'idDocumentUrl': _idDocumentUrl,
               'profilePhotoUrl': _profilePhotoUrl,
               'subjectIds': _selectedSubjectIds.toList()..sort(),
               'qualifications': [
@@ -556,6 +604,39 @@ class _TutorRegistrationState extends State<TutorRegistration> {
                     ),
                     if (_showValidation && _certificateUrl == null)
                       _fieldError('Upload your certificate scan.'),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'ID document',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Choose a clear scan or photo of your ID card, ID book or '
+                      'passport (JPG/PNG). Only the admin team sees it.',
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _uploadingIdDocument || _isSubmitting
+                          ? null
+                          : _pickIdDocument,
+                      icon: _uploadingIdDocument
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.badge_outlined),
+                      label: Text(
+                        _uploadingIdDocument
+                            ? 'Uploading ID document…'
+                            : _idDocumentUrl == null
+                            ? 'Upload ID document'
+                            : 'ID document uploaded: '
+                                  '${_idDocumentName ?? 'scan'}',
+                      ),
+                    ),
+                    if (_showValidation && _idDocumentUrl == null)
+                      _fieldError('Upload your ID document.'),
                     const SizedBox(height: 20),
                     const Text(
                       'Experience',

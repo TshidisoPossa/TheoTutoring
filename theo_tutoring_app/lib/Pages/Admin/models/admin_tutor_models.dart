@@ -63,6 +63,10 @@ class AdminTutor {
   /// User.AccountStatus, e.g. Active, Pending, Suspended, Deactivated.
   final String status;
 
+  /// Files uploaded at registration (Cloudinary links), null if missing.
+  final String? certificateUrl;
+  final String? idDocumentUrl;
+
   const AdminTutor({
     required this.tutorId,
     required this.name,
@@ -77,6 +81,8 @@ class AdminTutor {
     this.averageRating = 0,
     this.reviewCount = 0,
     this.joinedAt,
+    this.certificateUrl,
+    this.idDocumentUrl,
   });
 
   factory AdminTutor.fromJson(Map<String, dynamic> j) => AdminTutor(
@@ -93,6 +99,8 @@ class AdminTutor {
     totalLessons: _int(j['totalLessons']) ?? 0,
     joinedAt: DateTime.tryParse('${j['joinedAt'] ?? ''}')?.toLocal(),
     status: _text(j['status']) ?? 'Unknown',
+    certificateUrl: _text(j['certificateUrl']),
+    idDocumentUrl: _text(j['idDocumentUrl']),
   );
 
   String get reference => 'TUT-$tutorId';

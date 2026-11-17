@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'Services/admin_tutors_service.dart';
+import 'admin_documents.dart';
 import 'admin_shell.dart';
 import 'models/admin_tutor_models.dart';
 
@@ -1043,6 +1044,13 @@ class _TutorDialogState extends State<_TutorDialog> {
                     Expanded(child: _StatusPill(tutor: s)),
                   ],
                 ),
+              ),
+              const Divider(height: 28, color: AdminColors.border),
+              AdminDocumentLinks(
+                documents: [
+                  (label: 'Qualification certificate', url: s.certificateUrl),
+                  (label: 'ID document', url: s.idDocumentUrl),
+                ],
               ),
               const Divider(height: 28, color: AdminColors.border),
               if (s.isInReview)

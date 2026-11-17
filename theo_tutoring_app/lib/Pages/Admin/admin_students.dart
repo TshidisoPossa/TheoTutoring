@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'Services/admin_students_service.dart';
+import 'admin_documents.dart';
 import 'admin_shell.dart';
 import 'models/admin_student_models.dart';
 
@@ -973,6 +974,8 @@ class _StudentDialogState extends State<_StudentDialog> {
             children: [
               _InfoRow('Email', s.email),
               _InfoRow('Phone', s.phone ?? 'No phone number'),
+              if (s.institution != null)
+                _InfoRow('Institution', s.institution!),
               if (s.course != null) _InfoRow('Course', s.course!),
               if (s.institutionYear != null)
                 _InfoRow('Year', s.institutionYear!),
@@ -997,6 +1000,16 @@ class _StudentDialogState extends State<_StudentDialog> {
                     Expanded(child: _StatusPill(student: s)),
                   ],
                 ),
+              ),
+              const Divider(height: 28, color: AdminColors.border),
+              // Check it matches the institution, course and year above
+              AdminDocumentLinks(
+                documents: [
+                  (
+                    label: 'Proof of registration',
+                    url: s.proofOfRegistrationUrl,
+                  ),
+                ],
               ),
               const Divider(height: 28, color: AdminColors.border),
               const Text(
