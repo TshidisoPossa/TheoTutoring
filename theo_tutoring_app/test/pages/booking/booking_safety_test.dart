@@ -190,7 +190,7 @@ void main() {
       await tester.ensureVisible(find.text('10:00 AM'));
       await tester.tap(find.text('10:00 AM'));
       await tester.pump();
-      final submitButton = find.text('Send Booking Request');
+      final submitButton = find.text('Proceed to payment');
       await tester.ensureVisible(submitButton);
       await tester.pumpAndSettle();
       await tester.tap(submitButton);
@@ -435,7 +435,7 @@ void main() {
         find.byKey(const ValueKey('booking-note')),
         '  Focus on proofs  ',
       );
-      await tester.tap(find.text('Send Booking Request'));
+      await tester.tap(find.text('Proceed to payment'));
       await tester.pumpAndSettle();
 
       expect(api.submitted?['note'], 'Focus on proofs');
@@ -464,7 +464,7 @@ void main() {
     expect(
       tester
           .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'Send Booking Request'),
+            find.widgetWithText(FilledButton, 'Proceed to payment'),
           )
           .onPressed,
       isNull,

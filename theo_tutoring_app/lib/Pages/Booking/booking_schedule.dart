@@ -9,8 +9,37 @@ import 'booking_flow_context.dart';
 import 'booking_payment_details.dart';
 import 'booking_top_bar.dart';
 
+/// The calendar date [weeks] weeks after [date] (both "yyyy-MM-dd"), so the
+/// weekday stays the same across month and year ends: "2030-12-31" plus one
+/// week is "2031-01-07". Worked out in UTC so a device's daylight-saving
+/// change cannot shift the day.
+@visibleForTesting
+String addWeeksToDate(String date, int weeks) {
+  final d = DateTime.parse(date);
+  return DateFormat(
+    'yyyy-MM-dd',
+  ).format(DateTime.utc(d.year, d.month, d.day + 7 * weeks));
+}
+
+/// Whole days from [from] to [to] (both "yyyy-MM-dd").
+int _daysBetween(String from, String to) {
+  final a = DateTime.parse(from);
+  final b = DateTime.parse(to);
+  return DateTime.utc(
+    b.year,
+    b.month,
+    b.day,
+  ).difference(DateTime.utc(a.year, a.month, a.day)).inDays;
+}
+
 /// "Schedule Session": the student picks a date on a calendar that marks the
-/// tutor's available days, then a time, and sends the booking request.
+/// tutor's available days, then a time, and proceeds to payment (the times
+/// are held for them first).
+///
+/// For a package, after the first time is picked the student is offered
+/// (once) to repeat it weekly for some of the remaining lessons. Each lesson
+/// can still be changed or removed on its own, and every time is checked
+/// again by the server when the purchase is created.
 ///
 /// Available days and times come from GET /StudentlandingPage/availability,
 /// which builds them from the tutor's weekly availability minus lessons that
@@ -21,12 +50,22 @@ class BookingSchedulePage extends StatefulWidget {
     this.purchaseType = 'Single',
     this.lessonCount = 1,
     this.api,
+    this.initialSelection = const [],
+    this.onSelectionChanged,
     super.key,
   });
   final BookingFlowContext flow;
   final String purchaseType;
   final int lessonCount;
   final BookingFlowApi? api;
+
+  /// Times chosen on an earlier visit ("yyyy-MM-dd|HH:mm"), shown again if
+  /// they are still free and fit the lesson count.
+  final List<String> initialSelection;
+
+  /// Called with the chosen times whenever they change, so the lesson
+  /// choice page can bring them back after the student goes back.
+  final ValueChanged<List<String>>? onSelectionChanged;
 
   @override
   State<BookingSchedulePage> createState() => _BookingSchedulePageState();
@@ -70,7 +109,30 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
   String? _idempotencyKey;
   BookingPurchaseResult? _result;
 
+  /// The weekly offer is made once per visit to this page.
+  bool _weeklyOffered = false;
+
+  /// Weekly lessons the student asked for whose time is not free; each
+  /// needs a time chosen by hand. A warning covers its week (its date and
+  /// the six days after) and is cleared only by a lesson added in that
+  /// week, or once every lesson has a time.
+  final List<AvailableBookingSlot> _unavailableWeekly = [];
+
+  /// The lesson being changed: the next free time tapped replaces only it.
+  String? _changing;
+
+  /// Releasing the held times (going back after Proceed to payment).
+  bool _releasing = false;
+
+  /// A note under the times: what happened to the times brought back from
+  /// an earlier visit, or that held times were released.
+  String? _infoNotice;
+
   bool get _isPackage => widget.lessonCount > 1;
+  bool get _locked => _result != null || _submitting || _releasing;
+
+  void _reportSelection() =>
+      widget.onSelectionChanged?.call(_selected.toList()..sort());
 
   @override
   void initState() {
@@ -110,16 +172,51 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
       for (final slots in byDate.values) {
         slots.sort((a, b) => a.startTime.compareTo(b.startTime));
       }
-      // Open on the first day the tutor is free.
-      final firstDate = (byDate.keys.toList()..sort()).firstOrNull;
+      // Times from an earlier visit: only those still free, and no more
+      // than this lesson count allows (the earliest are kept).
+      final restored = <String>[];
+      var gone = 0;
+      var over = 0;
+      if (_selected.isEmpty) {
+        for (final key in widget.initialSelection.toSet().toList()..sort()) {
+          final parts = key.split('|');
+          final free =
+              parts.length == 2 &&
+              (byDate[parts.first]?.any((s) => s.startTime == parts.last) ??
+                  false);
+          if (!free) {
+            gone++;
+          } else if (restored.length >= widget.lessonCount) {
+            over++;
+          } else {
+            restored.add(key);
+          }
+        }
+      }
+      final lessons = widget.lessonCount == 1 ? 'lesson' : 'lessons';
+      final notice = [
+        if (over > 0)
+          'You now have ${widget.lessonCount} $lessons, so only your first '
+              '${widget.lessonCount} ${widget.lessonCount == 1 ? 'time was' : 'times were'} kept.',
+        if (gone > 0)
+          '$gone of your earlier ${gone == 1 ? 'time is' : 'times are'} no '
+              'longer available.',
+      ].join(' ');
+      // Open on the first kept time, or the first day the tutor is free.
+      final firstDate =
+          restored.firstOrNull?.split('|').first ??
+          (byDate.keys.toList()..sort()).firstOrNull;
       final first = firstDate == null ? null : DateTime.tryParse(firstDate);
       setState(() {
         _slotsByDate = byDate;
         _hourlyRate = availability.hourlyRate;
         _date = first;
         if (first != null) _month = DateTime(first.year, first.month);
+        _selected.addAll(restored);
+        _infoNotice = notice.isEmpty ? null : notice;
         _loading = false;
       });
+      if (widget.initialSelection.isNotEmpty) _reportSelection();
     } on BookingApiException catch (e) {
       if (mounted) {
         setState(() {
@@ -140,10 +237,35 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
   void _toggle(AvailableBookingSlot slot) {
     // Once the request is sent the times are held for this student, so the
     // choice is locked until they pay or the hold runs out.
-    if (_result != null || _submitting) return;
+    if (_locked) return;
     final key = _slotKey(slot);
+    var added = false;
     setState(() {
-      if (_selected.contains(key)) {
+      final changing = _changing;
+      if (changing == key) {
+        _changing = null; // tapped its own time again: keep it
+        return;
+      }
+      if (changing != null && !_selected.contains(key)) {
+        // Replace just that lesson; the others stay as they are
+        _selected
+          ..remove(changing)
+          ..add(key);
+        _changing = null;
+        // Moved into an unavailable week: that week now has its lesson
+        _clearWarningFor(slot.date);
+      } else if (changing != null) {
+        // Another lesson's time: keep it, and keep waiting for a free time
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'That time is already one of your lessons. Choose a free time '
+              'to replace the lesson you are changing.',
+            ),
+          ),
+        );
+        return;
+      } else if (_selected.contains(key)) {
         _selected.remove(key);
       } else if (!_isPackage) {
         _selected
@@ -151,6 +273,8 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
           ..add(key);
       } else if (_selected.length < widget.lessonCount) {
         _selected.add(key);
+        added = true;
+        _clearWarningFor(slot.date);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -162,6 +286,193 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
       _idempotencyKey = null;
       _submitError = null;
     });
+    _reportSelection();
+    if (added && !_weeklyOffered && _selected.length == 1) _offerWeekly(slot);
+  }
+
+  /// Asks how many of the remaining lessons should repeat [first] weekly.
+  /// Skipping or choosing 0 leaves them all to pick by hand.
+  Future<void> _offerWeekly(AvailableBookingSlot first) async {
+    _weeklyOffered = true;
+    final remaining = widget.lessonCount - _selected.length;
+    if (remaining < 1) return;
+    final weeks = await showDialog<int>(
+      context: context,
+      builder: (_) => _WeeklyLessonsDialog(
+        weekday: DateFormat('EEEE').format(DateTime.parse(first.date)),
+        time: _formatTime(first.startTime),
+        maxWeeks: remaining,
+      ),
+    );
+    if (!mounted || weeks == null || weeks < 1) return;
+    _addWeekly(first, weeks.clamp(1, remaining));
+  }
+
+  /// Adds the same weekday and time for the next [weeks] weeks, only where
+  /// the tutor is free (the availability already excludes booked or held
+  /// times and dates past the 90-day window). The rest are listed so the
+  /// student can choose another time for each.
+  void _addWeekly(AvailableBookingSlot first, int weeks) {
+    if (_locked) return;
+    setState(() {
+      _unavailableWeekly.clear();
+      for (var week = 1; week <= weeks; week++) {
+        if (_selected.length >= widget.lessonCount) break;
+        final date = addWeeksToDate(first.date, week);
+        final free = _slotsByDate[date]
+            ?.where((s) => s.startTime == first.startTime)
+            .firstOrNull;
+        if (free == null || _selected.contains(_slotKey(free))) {
+          _unavailableWeekly.add(
+            AvailableBookingSlot(
+              date: date,
+              startTime: first.startTime,
+              endTime: first.endTime,
+            ),
+          );
+        } else {
+          _selected.add(_slotKey(free));
+        }
+      }
+      _idempotencyKey = null;
+      _submitError = null;
+    });
+    _reportSelection();
+  }
+
+  /// A lesson was added or moved on [date]: clears the warning for that
+  /// week only.
+  /// Once every lesson has a time, no warning is left to act on.
+  void _clearWarningFor(String date) {
+    final index = _unavailableWeekly.indexWhere((w) {
+      final days = _daysBetween(w.date, date);
+      return days >= 0 && days < 7;
+    });
+    if (index >= 0) _unavailableWeekly.removeAt(index);
+    if (_selected.length >= widget.lessonCount) _unavailableWeekly.clear();
+  }
+
+  /// Marks a chosen lesson to be replaced and opens its day; on the lesson
+  /// already being changed, cancels the change.
+  void _startChange(String key) {
+    if (_locked) return;
+    if (_changing == key) {
+      setState(() => _changing = null);
+      return;
+    }
+    final day = DateTime.tryParse(key.split('|').first);
+    setState(() {
+      _changing = key;
+      if (day != null) {
+        _date = day;
+        _month = DateTime(day.year, day.month);
+      }
+    });
+  }
+
+  void _remove(String key) {
+    if (_locked) return;
+    setState(() {
+      _selected.remove(key);
+      if (_changing == key) _changing = null;
+      _idempotencyKey = null;
+      _submitError = null;
+    });
+    _reportSelection();
+  }
+
+  /// Ends the reservation made by Proceed to payment, so the times can be
+  /// edited (or the package changed) and reserved again. Only clears it here
+  /// once the server confirms; on failure the times stay locked.
+  Future<bool> _release() async {
+    final held = _result;
+    if (held == null) return true;
+    final Object api = _api;
+    if (api is! BookingReleaseApi) {
+      setState(
+        () => _submitError =
+            'Your reserved times cannot be changed here. They are released '
+            'automatically when the reservation runs out.',
+      );
+      return false;
+    }
+    setState(() {
+      _releasing = true;
+      _submitError = null;
+    });
+    try {
+      await api.releasePurchase(held.purchaseId);
+      if (!mounted) return false;
+      setState(() {
+        _releasing = false;
+        _result = null;
+        _idempotencyKey = null; // the next Proceed is a new reservation
+      });
+      return true;
+    } on BookingApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _releasing = false;
+          _submitError = e.message;
+        });
+      }
+      return false;
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _releasing = false;
+          _submitError =
+              'Your reserved times could not be released. Please try again.';
+        });
+      }
+      return false;
+    }
+  }
+
+  /// "Change lessons" after coming back from payment.
+  Future<void> _changeLessons() async {
+    if (_releasing || _submitting) return;
+    // Shown under the times rather than as a snack bar, which would cover
+    // Proceed to payment for a few seconds
+    if (await _release() && mounted) {
+      setState(
+        () => _infoNotice =
+            'Your reserved times were released. You can change your lessons '
+            'now.',
+      );
+    }
+  }
+
+  /// Back to the lesson choice. Held times are released first (after the
+  /// student agrees), so changing the package cannot leave them reserved.
+  Future<void> _goBack() async {
+    if (_submitting || _releasing) return;
+    if (_result != null) {
+      final leave = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Release your reserved times?'),
+          content: const Text(
+            'Your times are reserved while you pay. Going back releases them '
+            'so you can change your lessons. You can reserve them again if '
+            'they are still free.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Stay'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Release and go back'),
+            ),
+          ],
+        ),
+      );
+      if (leave != true || !mounted) return;
+      if (!await _release() || !mounted) return;
+    }
+    Navigator.of(context).pop();
   }
 
   Future<void> _submit() async {
@@ -238,9 +549,25 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
 
   @override
   Widget build(BuildContext context) {
+    // The system back gesture goes the same way as the arrow, so held times
+    // are never left reserved behind the student's back.
+    return PopScope(
+      canPop: _result == null && !_submitting && !_releasing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goBack();
+      },
+      child: _buildPage(),
+    );
+  }
+
+  Widget _buildPage() {
     return Scaffold(
       backgroundColor: _background,
-      appBar: bookingTopBar(title: 'Lessons', flow: widget.flow),
+      appBar: bookingTopBar(
+        title: 'Lessons',
+        flow: widget.flow,
+        onBack: _goBack,
+      ),
       // The footer sits in the body, not the bottom bar, so it stays above
       // the keyboard while the note is being typed.
       body: SafeArea(
@@ -263,6 +590,10 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
                         if (!_loading && _error == null) ...[
                           const SizedBox(height: 26),
                           _buildTimes(),
+                          if (_isPackage) ...[
+                            const SizedBox(height: 22),
+                            _buildLessonList(),
+                          ],
                           const SizedBox(height: 26),
                           _buildNote(),
                         ],
@@ -622,6 +953,15 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
               fontWeight: FontWeight.w500,
             ),
           ),
+        if (_infoNotice != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              _infoNotice!,
+              key: const ValueKey('restore-notice'),
+              style: GoogleFonts.poppins(color: _accent, fontSize: 12.5),
+            ),
+          ),
       ],
     );
   }
@@ -650,6 +990,132 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ── YOUR LESSONS (packages) ─────────────────────────────
+
+  /// Every chosen lesson in date order, each with Change and Remove, and
+  /// the weekly lessons that need another time.
+  Widget _buildLessonList() {
+    final keys = _selected.toList()..sort();
+    final label = GoogleFonts.poppins(
+      color: _textDark,
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    );
+    String dayLabel(String date) {
+      final day = DateTime.tryParse(date);
+      return day == null ? date : DateFormat('EEE d MMM').format(day);
+    }
+
+    String describe(String date, String time) =>
+        '${dayLabel(date)} · ${_formatTime(time)}';
+
+    // With more warnings than lessons left, not every week can get one, so
+    // the warnings only say what is missing.
+    final informational =
+        _unavailableWeekly.length > widget.lessonCount - _selected.length;
+    String warning(AvailableBookingSlot slot) => informational
+        ? '${dayLabel(slot.date)} · No lesson is currently available at '
+              '${_formatTime(slot.startTime)} during this week.'
+        : '${describe(slot.date, slot.startTime)} is not available. '
+              'Choose another time for this lesson.';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Your lessons', style: label),
+        const SizedBox(height: 8),
+        if (keys.isEmpty)
+          Text(
+            'Choose a time for your first lesson.',
+            style: GoogleFonts.poppins(color: _textMuted, fontSize: 13),
+          ),
+        for (var i = 0; i < keys.length; i++)
+          _buildLessonRow(
+            number: i + 1,
+            slotKey: keys[i],
+            text: describe(keys[i].split('|').first, keys[i].split('|').last),
+          ),
+        for (final slot in _unavailableWeekly)
+          Container(
+            key: ValueKey('weekly-unavailable-${slot.date}'),
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: _errorRed.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _errorRed.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.event_busy_rounded,
+                  size: 18,
+                  color: _errorRed,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    warning(slot),
+                    style: GoogleFonts.poppins(color: _textDark, fontSize: 12.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLessonRow({
+    required int number,
+    required String slotKey,
+    required String text,
+  }) {
+    final changing = _changing == slotKey;
+    return Container(
+      key: ValueKey('lesson-$slotKey'),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(left: 12),
+      decoration: BoxDecoration(
+        color: changing ? _blueTint : _surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: changing ? _primaryBlue : _border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Lesson $number · $text',
+                  style: GoogleFonts.poppins(color: _textDark, fontSize: 13),
+                ),
+                if (changing)
+                  Text(
+                    'Tap a new time above to replace this lesson.',
+                    style: GoogleFonts.poppins(color: _accent, fontSize: 11.5),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: changing ? 'Cancel change' : 'Change lesson $number',
+            onPressed: _locked ? null : () => _startChange(slotKey),
+            icon: const Icon(Icons.edit_calendar_rounded, size: 20),
+            color: _accent,
+          ),
+          IconButton(
+            tooltip: 'Remove lesson $number',
+            onPressed: _locked ? null : () => _remove(slotKey),
+            icon: const Icon(Icons.close_rounded, size: 20),
+            color: _textMuted,
+          ),
+        ],
       ),
     );
   }
@@ -734,6 +1200,7 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
         !_loading &&
         _error == null &&
         !_submitting &&
+        _changing == null && // a replacement is still pending
         _selected.length == widget.lessonCount;
     return Container(
       color: _background,
@@ -783,6 +1250,20 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
                     ),
                 ],
               ),
+              if (_changing != null && _result == null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Choose a new time for the lesson you are changing, or '
+                    'cancel the change, before you continue.',
+                    key: const ValueKey('change-pending'),
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      color: _accent,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
               if (_submitError != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -798,7 +1279,9 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
                 ),
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: _result != null
+                onPressed: _releasing
+                    ? null
+                    : _result != null
                     ? () => _openPayment(_result!)
                     : canSend
                     ? _submit
@@ -828,7 +1311,7 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
                           Text(
                             _result != null
                                 ? 'Continue to Payment'
-                                : 'Send Booking Request',
+                                : 'Proceed to payment',
                             style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
@@ -839,10 +1322,124 @@ class _BookingSchedulePageState extends State<BookingSchedulePage> {
                         ],
                       ),
               ),
+              // Back from payment: the times are held and locked; this
+              // releases them so they can be edited and reserved again.
+              if (_result != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: TextButton(
+                    onPressed: _releasing ? null : _changeLessons,
+                    child: _releasing
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            'Change lessons',
+                            style: GoogleFonts.poppins(
+                              color: _accent,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                  ),
+                ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Repeat weekly?": pops with how many of the remaining lessons to repeat
+/// on the same weekday and time (0 to [maxWeeks]), or null when skipped.
+class _WeeklyLessonsDialog extends StatefulWidget {
+  const _WeeklyLessonsDialog({
+    required this.weekday,
+    required this.time,
+    required this.maxWeeks,
+  });
+  final String weekday; // "Tuesday"
+  final String time; // "09:00 AM"
+  final int maxWeeks;
+
+  @override
+  State<_WeeklyLessonsDialog> createState() => _WeeklyLessonsDialogState();
+}
+
+class _WeeklyLessonsDialogState extends State<_WeeklyLessonsDialog> {
+  int _weeks = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final max = widget.maxWeeks;
+    final lessons = _weeks == 1 ? 'lesson' : 'lessons';
+    return AlertDialog(
+      title: Text(
+        'Repeat weekly?',
+        style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'You have $max ${max == 1 ? 'lesson' : 'lessons'} left to '
+            'schedule. How many should be on ${widget.weekday}s at '
+            '${widget.time}, one each week?',
+            style: GoogleFonts.poppins(fontSize: 13.5),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                tooltip: 'Fewer weekly lessons',
+                onPressed: _weeks > 0 ? () => setState(() => _weeks--) : null,
+                icon: const Icon(Icons.remove_circle_outline_rounded),
+              ),
+              SizedBox(
+                width: 48,
+                child: Text(
+                  '$_weeks',
+                  key: const ValueKey('weekly-count'),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'More weekly lessons',
+                onPressed: _weeks < max ? () => setState(() => _weeks++) : null,
+                icon: const Icon(Icons.add_circle_outline_rounded),
+              ),
+            ],
+          ),
+          Text(
+            _weeks == 0
+                ? 'You will choose the other times yourself.'
+                : 'The next $_weeks ${widget.weekday}s. Any that are not free '
+                      'are listed so you can choose another time, and you can '
+                      'change any lesson afterwards.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(fontSize: 12),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Schedule manually'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _weeks),
+          child: Text(_weeks == 0 ? 'Continue' : 'Add $_weeks $lessons'),
+        ),
+      ],
     );
   }
 }

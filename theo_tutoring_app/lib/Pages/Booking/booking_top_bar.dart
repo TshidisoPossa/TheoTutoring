@@ -12,18 +12,27 @@ Color _blueText(BuildContext context) =>
     context.tutorDark ? TutorDark.blueText : _primaryBlue;
 
 /// The booking pages' top bar: logo, page title and the student's photo
-/// (or initials), like the dashboard and tutor search.
+/// (or initials), like the dashboard and tutor search. With [onBack], a back
+/// arrow sits before the logo.
 PreferredSizeWidget bookingTopBar({
   required String title,
   required BookingFlowContext flow,
+  VoidCallback? onBack,
 }) {
   return PreferredSize(
     preferredSize: const Size.fromHeight(kToolbarHeight),
-    child: Builder(builder: (context) => _topBar(context, title, flow)),
+    child: Builder(
+      builder: (context) => _topBar(context, title, flow, onBack),
+    ),
   );
 }
 
-AppBar _topBar(BuildContext context, String title, BookingFlowContext flow) {
+AppBar _topBar(
+  BuildContext context,
+  String title,
+  BookingFlowContext flow,
+  VoidCallback? onBack,
+) {
   final surface = context.tutorDark ? TutorDark.card : Colors.white;
   return AppBar(
     backgroundColor: surface,
@@ -31,7 +40,20 @@ AppBar _topBar(BuildContext context, String title, BookingFlowContext flow) {
     elevation: 0,
     scrolledUnderElevation: 0,
     automaticallyImplyLeading: false,
-    titleSpacing: 20,
+    // The same arrow as the payment page's
+    leading: onBack == null
+        ? null
+        : IconButton(
+            tooltip: 'Back',
+            onPressed: onBack,
+            icon: Icon(
+              Icons.arrow_back_rounded,
+              color: context.tutorDark
+                  ? TutorDark.text
+                  : const Color(0xFF17233D),
+            ),
+          ),
+    titleSpacing: onBack == null ? 20 : 4,
     title: Row(
       children: [
         Image.asset(

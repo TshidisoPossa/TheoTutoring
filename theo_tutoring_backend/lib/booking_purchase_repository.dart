@@ -12,7 +12,8 @@ import 'session_rate.dart';
 
 typedef BookingPurchaseConnectionFactory = Future<MySQLConnection> Function();
 
-class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
+class MySqlBookingPurchaseRepository
+    implements BookingPurchaseRepository, BookingPurchaseReleaseRepository {
   MySqlBookingPurchaseRepository({
     BookingPurchaseConnectionFactory? connectionFactory,
   }) : _connectionFactory = connectionFactory ?? createIndependentConnection;
@@ -107,6 +108,130 @@ class MySqlBookingPurchaseRepository implements BookingPurchaseRepository {
         await connection!.close();
       }
     }
+  }
+
+  @override
+  Future<String> release(int studentId, int purchaseId) async {
+    MySQLConnection? connection;
+    try {
+      connection = await _connectionFactory();
+      await connection.execute(
+        'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ',
+      );
+      return await connection.transactional(
+        (transaction) =>
+            _releaseInTransaction(transaction, studentId, purchaseId),
+      );
+    } on BookingPurchaseConflict {
+      rethrow;
+    } on BookingPurchaseNotFound {
+      rethrow;
+    } on BookingPurchaseServiceUnavailable {
+      rethrow;
+    } on MySQLServerException {
+      throw const BookingPurchaseServiceUnavailable();
+    } on MySQLClientException {
+      throw const BookingPurchaseServiceUnavailable();
+    } on FormatException {
+      throw const BookingPurchaseServiceUnavailable();
+    } catch (error) {
+      stderr.writeln(
+        'Booking release transaction failed (${error.runtimeType}).',
+      );
+      throw const BookingPurchaseServiceUnavailable();
+    } finally {
+      if (connection?.connected ?? false) {
+        await connection!.close();
+      }
+    }
+  }
+
+  // Locks in the same order as a payment attempt (student, purchase, its
+  // bookings, its holds), so a release and a payment for the same purchase
+  // run one after the other: a paid purchase can never be released, and a
+  // released one can never be paid.
+  Future<String> _releaseInTransaction(
+    MySQLConnection connection,
+    int studentId,
+    int purchaseId,
+  ) async {
+    final student = await connection.execute(
+      'SELECT StudentID FROM studentprofile WHERE StudentID = :studentId '
+      'FOR UPDATE',
+      {'studentId': studentId},
+    );
+    if (student.rows.isEmpty) throw const BookingPurchaseNotFound();
+
+    final purchaseResult = await connection.execute(
+      '''
+      SELECT PurchaseStatus
+      FROM bookingpurchase
+      WHERE PurchaseID = :purchaseId AND StudentID = :studentId
+      FOR UPDATE
+      ''',
+      {'purchaseId': purchaseId, 'studentId': studentId},
+    );
+    if (purchaseResult.rows.isEmpty) throw const BookingPurchaseNotFound();
+    final status = _string(purchaseResult.rows.first.str('PurchaseStatus'));
+    if (status == 'Cancelled' || status == 'Expired') return status;
+    if (status != 'Held') {
+      throw const BookingPurchaseConflict(
+        'purchase_not_releasable',
+        'This reservation has been paid or is being paid, so it cannot be '
+            'changed here.',
+      );
+    }
+
+    await connection.execute(
+      'SELECT Booking_id FROM booking WHERE PurchaseID = :purchaseId '
+      'ORDER BY Booking_id FOR UPDATE',
+      {'purchaseId': purchaseId},
+    );
+    await connection.execute(
+      'SELECT HoldID FROM bookingslothold WHERE PurchaseID = :purchaseId '
+      'ORDER BY HoldID FOR UPDATE',
+      {'purchaseId': purchaseId},
+    );
+    final nowResult = await connection.execute(
+      'SELECT UTC_TIMESTAMP(6) AS NowUtc',
+    );
+    final nowUtc = _formatUtcDateTime(
+      _utcDateTime(nowResult.rows.first.str('NowUtc')),
+    );
+    // The same updates as a reservation that runs out, but marked Cancelled
+    await connection.execute(
+      '''
+      UPDATE booking
+      SET Status = 'Cancelled'
+      WHERE PurchaseID = :purchaseId AND Status = 'Pending'
+      ''',
+      {'purchaseId': purchaseId},
+    );
+    await connection.execute(
+      '''
+      UPDATE bookingslothold
+      SET HoldStatus = CASE
+            WHEN ExpiresAtUtc <= :nowUtc THEN 'Expired'
+            ELSE 'Released'
+          END,
+          ReleasedAtUtc = CASE
+            WHEN ExpiresAtUtc <= :nowUtc THEN ReleasedAtUtc
+            ELSE :nowUtc
+          END
+      WHERE PurchaseID = :purchaseId
+        AND HoldStatus = 'Active'
+      ''',
+      {'purchaseId': purchaseId, 'nowUtc': nowUtc},
+    );
+    await connection.execute(
+      '''
+      UPDATE bookingpurchase
+      SET PurchaseStatus = 'Cancelled'
+      WHERE PurchaseID = :purchaseId AND PurchaseStatus = 'Held'
+      ''',
+      {'purchaseId': purchaseId},
+    );
+    return 'Cancelled';
   }
 
   Future<_PaymentTransactionOutcome> _createPaymentAttemptInTransaction(

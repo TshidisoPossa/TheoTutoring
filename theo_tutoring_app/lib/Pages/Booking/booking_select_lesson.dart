@@ -20,6 +20,10 @@ class _BookingSelectLessonPageState extends State<BookingSelectLessonPage> {
   String _type = 'Single';
   int _count = 2;
 
+  /// The times chosen on the schedule page, kept for when the student goes
+  /// back to change the package and then returns.
+  List<String> _times = const [];
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: context.tutorDark
@@ -72,6 +76,8 @@ class _BookingSelectLessonPageState extends State<BookingSelectLessonPage> {
                 purchaseType: _type,
                 lessonCount: _type == 'Single' ? 1 : _count,
                 api: widget.api,
+                initialSelection: _times,
+                onSelectionChanged: (times) => _times = times,
               ),
             ),
           ),

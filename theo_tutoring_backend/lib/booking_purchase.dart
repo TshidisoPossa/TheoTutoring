@@ -419,6 +419,22 @@ abstract interface class BookingPurchaseRepository {
   );
 }
 
+/// Ends a student's own unpaid reservation early, so they can change their
+/// lessons (going back from payment) without waiting for the 10-minute holds
+/// to run out.
+abstract interface class BookingPurchaseReleaseRepository {
+  /// Releases the holds of [purchaseId] if it belongs to [studentId] and is
+  /// still Held: its holds become Released (or Expired if they already ran
+  /// out), its Pending bookings Cancelled, and the purchase Cancelled.
+  ///
+  /// Returns the purchase status afterwards. A purchase that had already
+  /// ended (Cancelled or Expired) is returned unchanged, so a retry is safe.
+  /// Throws [BookingPurchaseNotFound] for another student's or a missing
+  /// purchase, and a [BookingPurchaseConflict] with code
+  /// `purchase_not_releasable` once payment has started or finished.
+  Future<String> release(int studentId, int purchaseId);
+}
+
 int? _positiveId(Object? value) =>
     value is int && value > 0 && value <= 2147483647 ? value : null;
 

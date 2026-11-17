@@ -22,6 +22,17 @@ abstract interface class BookingFlowApi {
   void close();
 }
 
+/// Ends the student's own unpaid reservation early, so they can change their
+/// lessons after going back from payment. Separate from [BookingFlowApi] so
+/// existing implementations need not provide it.
+abstract interface class BookingReleaseApi {
+  /// POST /StudentlandingPage/booking-purchases/{id}/release. Returns the
+  /// purchase status afterwards ('Cancelled', or 'Expired' if the holds had
+  /// already run out); throws [BookingApiException] otherwise, e.g. with code
+  /// `purchase_not_releasable` once it has been paid.
+  Future<String> releasePurchase(int purchaseId);
+}
+
 class BookingApiException implements Exception {
   const BookingApiException(this.message, {this.statusCode, this.code});
   final String message;
@@ -195,7 +206,7 @@ class PaymentAttemptResult {
   }
 }
 
-class HttpBookingFlowApi implements BookingFlowApi {
+class HttpBookingFlowApi implements BookingFlowApi, BookingReleaseApi {
   HttpBookingFlowApi({
     http.Client? client,
     Future<String?> Function()? tokenProvider,
@@ -333,6 +344,44 @@ class HttpBookingFlowApi implements BookingFlowApi {
     } catch (_) {
       throw const BookingApiException(
         'Payment result could not be confirmed. Retry using the same request.',
+      );
+    }
+  }
+
+  @override
+  Future<String> releasePurchase(int purchaseId) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse(
+              '$apiBaseUrl/StudentlandingPage/booking-purchases/'
+              '$purchaseId/release',
+            ),
+            headers: await _headers(),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) {
+        throw _apiException(
+          response,
+          'Your reserved times could not be released.',
+        );
+      }
+      final body = jsonDecode(response.body);
+      if (body is! Map<String, dynamic> ||
+          body['purchaseId'] != purchaseId ||
+          (body['purchaseStatus'] != 'Cancelled' &&
+              body['purchaseStatus'] != 'Expired')) {
+        throw const FormatException('Release response is invalid.');
+      }
+      return body['purchaseStatus'] as String;
+    } on BookingApiException {
+      rethrow;
+    } on FormatException {
+      throw const BookingApiException('Release response is invalid.');
+    } catch (_) {
+      throw const BookingApiException(
+        'Your reserved times could not be released. Check your connection '
+        'and try again.',
       );
     }
   }
