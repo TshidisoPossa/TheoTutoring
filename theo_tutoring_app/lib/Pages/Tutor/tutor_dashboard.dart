@@ -905,34 +905,39 @@ class _TutorDashboardState extends State<TutorDashboard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header row: "Today's Schedule  4 sessions  (+)"
+        // Header row: "Today's Schedule  4 sessions  View All"
         Row(
           children: [
-            _sectionTitle("Today's Schedule"),
-            const SizedBox(width: 8),
+            // On a very narrow screen the title wraps rather than the row
+            // overflowing past "View All"
             Expanded(
-              child: Text(
-                '${sessions.length} session${sessions.length == 1 ? '' : 's'}',
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(
-                    fontSize: 13, color: _muted, fontWeight: FontWeight.w500),
+              child: Row(
+                children: [
+                  Flexible(child: _sectionTitle("Today's Schedule")),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${sessions.length} session${sessions.length == 1 ? '' : 's'}',
+                    style: GoogleFonts.inter(
+                        fontSize: 13, color: _muted, fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
             ),
             // Opens the full Schedule page
-            Material(
-              color: _blue,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => _openTab(1),
-                child: const Tooltip(
-                  message: 'Open schedule',
-                  child: SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: Icon(Icons.add_rounded, color: Colors.white, size: 22),
-                  ),
-                ),
+            TextButton(
+              onPressed: () => _openTab(1),
+              style: TextButton.styleFrom(
+                foregroundColor: _blue,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(
+                'View All',
+                style: GoogleFonts.inter(
+                    fontSize: 13, fontWeight: FontWeight.w600),
               ),
             ),
           ],

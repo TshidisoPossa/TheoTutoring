@@ -58,6 +58,30 @@ void main() {
     expect(find.byType(TutorDashboard), findsNothing);
   });
 
+  testWidgets("View All in Today's Schedule opens the full Schedule page", (
+    tester,
+  ) async {
+    await _pump(tester, {'tutor': _tutor, 'accountStatus': 'Active'});
+    expect(find.text('View All'), findsOneWidget);
+    // The nearest row around View All is the section header
+    final header = find.ancestor(
+      of: find.text('View All'),
+      matching: find.byType(Row),
+    ).first;
+    expect(
+      find.descendant(of: header, matching: find.text("Today's Schedule")),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.add_rounded), findsNothing);
+    expect(find.byTooltip('Open schedule'), findsNothing);
+
+    await tester.tap(find.text('View All'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(TutorScheduleScreen), findsOneWidget);
+    expect(find.byType(TutorDashboard), findsNothing);
+  });
+
   testWidgets('Rejected tutor sees feedback and Correct and resubmit', (
     tester,
   ) async {
