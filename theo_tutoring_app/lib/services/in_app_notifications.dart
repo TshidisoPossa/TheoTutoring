@@ -187,6 +187,9 @@ class _NotificationBannerState extends State<NotificationBanner>
 
   static IconData iconFor(String type) => switch (type) {
     'NewMessage' => Icons.chat_bubble_outline_rounded,
+    'ChatFlagged' ||
+    'ChatSuspensionKept' => Icons.speaker_notes_off_outlined,
+    'ChatRestored' => Icons.mark_chat_read_outlined,
     'UpcomingSession' => Icons.alarm_rounded,
     'PaymentReceived' || 'PaymentFailed' => Icons.payments_outlined,
     'RefundApproved' || 'RefundDenied' || 'RefundRequested' =>

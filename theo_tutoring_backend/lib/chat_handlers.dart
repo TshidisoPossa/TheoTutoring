@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/admin_notifications.dart';
 import 'package:theo_tutoring_backend/chat.dart';
 import 'package:theo_tutoring_backend/chat_audit.dart';
+import 'package:theo_tutoring_backend/chat_moderation.dart';
 import 'package:theo_tutoring_backend/chat_outbox.dart';
 import 'package:theo_tutoring_backend/chat_store.dart';
 import 'package:theo_tutoring_backend/database.dart';
@@ -74,6 +76,8 @@ class ChatDependencies {
     required this.store,
     required this.audit,
     this.outbox,
+    this.moderation,
+    this.onFlagged,
     DateTime Function()? clock,
   }) : clock = clock ?? DateTime.now;
 
@@ -91,7 +95,19 @@ class ChatDependencies {
       audit: MySqlChatAudit(await _defaultConnection()),
       notifications: NotificationStore.fromFirebaseAdmin(),
     ),
+    moderation: () async =>
+        FirestoreChatModerationStore(FirestoreRest.fromEnvironment()),
+    onFlagged: (record) =>
+        announceToAdmins(() => notifyAdminsOfChatFlag(record)),
   );
+
+  /// Chat moderation records (lib/chat_moderation.dart). Without it (most
+  /// tests) messages are not screened.
+  final Future<ChatModerationStore> Function()? moderation;
+
+  /// Called after a message is blocked and the sender's chat suspended
+  /// (the app tells the admins).
+  final void Function(ChatModerationRecord record)? onFlagged;
 
   /// Checks the sign-in token.
   final ChatTokenVerifier verifyToken;
@@ -290,6 +306,51 @@ Future<Response> handleChatMessages(
     );
   }
 
+  // ── Moderation: a suspended sender cannot send, and a message with
+  // contact details or abuse is blocked before it is stored ──
+  final moderation = await session.moderation;
+  if (moderation != null) {
+    final record = await moderation.get(session.me.userId);
+    if (record != null && record.isSuspended) {
+      return Response.json(
+        statusCode: HttpStatus.forbidden,
+        body: {
+          'error':
+              'Your chat is suspended while an admin reviews a blocked '
+              'message.',
+          'code': 'chat_suspended',
+          'chatStatus': record.toOwnerJson(),
+        },
+      );
+    }
+    final verdict = screenChatMessage(send.messageText);
+    if (verdict != null) {
+      final flagged = await flagChatMessage(
+        moderation,
+        userId: session.me.userId,
+        role: role.value,
+        name: session.me.name,
+        otherUserId: otherUser.userId,
+        otherName: otherUser.name,
+        text: send.messageText,
+        verdict: verdict,
+        now: session.deps.clock().toUtc(),
+      );
+      session.deps.onFlagged?.call(flagged);
+      return Response.json(
+        statusCode: HttpStatus.unprocessableEntity,
+        body: {
+          'error':
+              'Message not sent: it contains ${verdict.reason}. Sharing '
+              'contact details or abusive language is not allowed, so your '
+              'chat is suspended until an admin reviews it.',
+          'code': 'message_blocked',
+          'chatStatus': flagged.toOwnerJson(),
+        },
+      );
+    }
+  }
+
   final me = session.party(session.me);
   final them = session.party(otherUser);
   final result = await (await session.store).send(
@@ -371,6 +432,68 @@ Future<Response> handleChatRead(
   );
 });
 
+/// GET /{role}/chat-status[?with=otherUserId]: whether the caller's chat is
+/// suspended (and why, and whether they can still explain), and whether
+/// the other user's chat is suspended (so the conversation can say so).
+Future<Response> handleChatStatus(
+  RequestContext context,
+  ChatRole role,
+  ChatDependencies deps,
+) => _run(context, role, deps, {HttpMethod.get}, (session) async {
+  final rawWith = context.request.uri.queryParameters['with'];
+  final otherId = rawWith == null ? null : int.tryParse(rawWith);
+  if (rawWith != null && (otherId == null || otherId <= 0)) {
+    return _error(HttpStatus.badRequest, 'with must be a user id.');
+  }
+  final moderation = await session.moderation;
+  final records = moderation == null
+      ? const <int, ChatModerationRecord>{}
+      : await moderation.getMany([session.me.userId, ?otherId]);
+  final mine = records[session.me.userId];
+  return Response.json(
+    body: {
+      'me': mine?.toOwnerJson() ?? {'suspended': false, 'status': 'clear'},
+      if (otherId != null)
+        'otherSuspended': records[otherId]?.isSuspended ?? false,
+    },
+  );
+});
+
+/// POST /{role}/chat-appeal {"explanation": "..."}: the suspended user's
+/// explanation for the admin (10 to 1000 characters).
+Future<Response> handleChatAppeal(
+  RequestContext context,
+  ChatRole role,
+  ChatDependencies deps,
+) => _run(context, role, deps, {HttpMethod.post}, (session) async {
+  final moderation = await session.moderation;
+  if (moderation == null) {
+    return _error(HttpStatus.serviceUnavailable, 'Chat review is unavailable.');
+  }
+  final String explanation;
+  try {
+    final body = await _readBody(context);
+    final value = body['explanation'];
+    if (value is! String) {
+      throw const FormatException('explanation is required.');
+    }
+    explanation = value;
+  } on FormatException catch (e) {
+    return _error(HttpStatus.badRequest, e.message);
+  }
+  try {
+    final record = await appealChatSuspension(
+      moderation,
+      userId: session.me.userId,
+      explanation: explanation,
+      now: session.deps.clock().toUtc(),
+    );
+    return Response.json(body: {'chatStatus': record.toOwnerJson()});
+  } on ChatModerationException catch (e) {
+    return _error(e.statusCode, e.message);
+  }
+});
+
 // ─── JSON ───────────────────────────────────────────────────────────────────
 
 Map<String, Object?> _messageFields(StoredChatMessage m, int viewerId) => {
@@ -402,6 +525,10 @@ class _Session {
 
   /// The message store, opened only by handlers that need it.
   late final Future<FirestoreChatStore> store = deps.store();
+
+  /// Moderation records, or null when moderation is not set up (tests).
+  late final Future<ChatModerationStore?> moderation =
+      deps.moderation?.call() ?? Future.value();
 
   int studentIdWith(int otherId) =>
       role == ChatRole.student ? me.userId : otherId;

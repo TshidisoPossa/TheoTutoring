@@ -9,6 +9,7 @@ import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/chat.dart';
 import 'package:theo_tutoring_backend/chat_audit.dart';
 import 'package:theo_tutoring_backend/chat_handlers.dart';
+import 'package:theo_tutoring_backend/chat_moderation.dart';
 import 'package:theo_tutoring_backend/chat_store.dart';
 import 'package:theo_tutoring_backend/firebase_admin.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
@@ -278,13 +279,38 @@ ChatDependencies _deps(
   _World world, {
   ChatTokenVerifier verify = _verify,
   ChatStoreFactory? store,
+  ChatModerationStore? moderation,
+  List<ChatModerationRecord>? flagged,
 }) => ChatDependencies(
   verifyToken: verify,
   permissions: () async => world.permissions,
   store: store ?? () async => world.store,
   audit: () async => throw StateError('handlers must not open the audit'),
+  moderation: moderation == null ? null : () async => moderation,
+  onFlagged: flagged?.add,
   clock: () => _now,
 );
+
+/// Chat moderation records in memory.
+class _ModerationMemory implements ChatModerationStore {
+  final records = <int, ChatModerationRecord>{};
+
+  @override
+  Future<ChatModerationRecord?> get(int userId) async => records[userId];
+
+  @override
+  Future<Map<int, ChatModerationRecord>> getMany(Iterable<int> ids) async => {
+    for (final id in ids)
+      if (records[id] case final r?) id: r,
+  };
+
+  @override
+  Future<void> save(ChatModerationRecord record) async =>
+      records[record.userId] = record;
+
+  @override
+  Future<List<ChatModerationRecord>> all() async => records.values.toList();
+}
 
 RequestContext _context(
   String method,
@@ -840,6 +866,118 @@ void main() {
       expect(status, 201);
     });
   }, skip: _productionSkip);
+
+  group('moderation', () {
+    Future<(int, dynamic)> post(
+      _World w,
+      _ModerationMemory mod,
+      String text, {
+      List<ChatModerationRecord>? flagged,
+    }) => _send(
+      handleChatMessages(
+        _context(
+          'POST',
+          '/x/$_tutor/messages',
+          uid: 'uid-lerato',
+          body: _sendBody('m${text.hashCode.abs()}', text),
+        ),
+        ChatRole.student,
+        '$_tutor',
+        _deps(w, moderation: mod, flagged: flagged),
+      ),
+    );
+
+    test('a message with a phone number is blocked and never stored',
+        () async {
+      final w = await _seeded();
+      final mod = _ModerationMemory();
+      final flagged = <ChatModerationRecord>[];
+      final before = w.messageCount;
+      final (status, body) = await post(
+        w,
+        mod,
+        'Call me on 082 555 1234',
+        flagged: flagged,
+      );
+
+      expect(status, 422);
+      expect((body as Map)['code'], 'message_blocked');
+      expect(body['error'], contains('a phone number'));
+      expect(w.messageCount, before); // the tutor never gets it
+      expect(mod.records[_lerato]!.isSuspended, isTrue);
+      expect(mod.records[_lerato]!.flaggedText, 'Call me on 082 555 1234');
+      expect(mod.records[_lerato]!.otherUserId, _tutor);
+      expect(flagged.single.userId, _lerato); // the admins are told
+    });
+
+    test('a suspended sender cannot send even a clean message', () async {
+      final w = await _seeded();
+      final mod = _ModerationMemory();
+      await post(w, mod, 'my email is lerato@gmail.com');
+      final before = w.messageCount;
+      final (status, body) = await post(w, mod, 'See you on Thursday');
+      expect(status, 403);
+      expect((body as Map)['code'], 'chat_suspended');
+      expect(w.messageCount, before);
+    });
+
+    test('a clean message is sent as usual', () async {
+      final w = await _seeded();
+      final mod = _ModerationMemory();
+      final (status, _) = await post(w, mod, 'See you on Thursday at 14:00');
+      expect(status, 201);
+      expect(mod.records, isEmpty);
+    });
+
+    test('chat status shows my suspension and the other side\'s', () async {
+      final w = await _seeded();
+      final mod = _ModerationMemory();
+      await post(w, mod, 'add me on WhatsApp');
+
+      final mine = await _send(
+        handleChatStatus(
+          _context('GET', '/student/chat-status?with=$_tutor', uid: 'uid-lerato'),
+          ChatRole.student,
+          _deps(w, moderation: mod),
+        ),
+      );
+      expect(mine.$1, 200);
+      expect(((mine.$2 as Map)['me'] as Map)['suspended'], isTrue);
+      expect((mine.$2 as Map)['otherSuspended'], isFalse);
+
+      // The tutor sees that Lerato's chat is suspended
+      final theirs = await _send(
+        handleChatStatus(
+          _context('GET', '/tutor/chat-status?with=$_lerato', uid: 'uid-theo'),
+          ChatRole.tutor,
+          _deps(w, moderation: mod),
+        ),
+      );
+      expect(((theirs.$2 as Map)['me'] as Map)['suspended'], isFalse);
+      expect((theirs.$2 as Map)['otherSuspended'], isTrue);
+    });
+
+    test('the suspended user can send an explanation', () async {
+      final w = await _seeded();
+      final mod = _ModerationMemory();
+      await post(w, mod, 'pay me directly next time');
+      final (status, body) = await _send(
+        handleChatAppeal(
+          _context(
+            'POST',
+            '/student/chat-appeal',
+            uid: 'uid-lerato',
+            body: {'explanation': 'I meant through the app, sorry.'},
+          ),
+          ChatRole.student,
+          _deps(w, moderation: mod),
+        ),
+      );
+      expect(status, 200);
+      expect(((body as Map)['chatStatus'] as Map)['status'], 'appealed');
+      expect(mod.records[_lerato]!.appeal, 'I meant through the app, sorry.');
+    });
+  });
 
   group('retrieval', () {
     test(
@@ -1685,6 +1823,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:theo_tutoring_backend/chat_handlers.dart';
+import 'package:theo_tutoring_backend/chat_moderation.dart';
 import 'package:theo_tutoring_backend/chat_store.dart';
 import 'package:theo_tutoring_backend/firebase_admin.dart';
 import 'package:theo_tutoring_backend/firestore_rest.dart';

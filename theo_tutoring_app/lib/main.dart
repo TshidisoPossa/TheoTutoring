@@ -5,6 +5,7 @@ import 'Pages/Admin/admin_subjects.dart';
 
 import 'Pages/auth_gate.dart';
 import 'Pages/Admin/admin_appeals.dart';
+import 'Pages/Admin/admin_chat_moderation.dart';
 import 'services/app_navigator.dart';
 import 'Pages/Admin/admin_shell.dart';
 import 'Pages/Admin/admin_refunds.dart';
@@ -127,6 +128,10 @@ final Map<String, WidgetBuilder> appRoutes = {
   AdminRoutes.reports: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.reports.read'},
     child: AdminReportsScreen(),
+  ),
+  AdminRoutes.chatModeration: (_) => const AdminAccessGuard(
+    requiredPermissions: {'admin.reports.read'},
+    child: AdminChatModerationScreen(),
   ),
   AdminRoutes.users: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.users.manage'},

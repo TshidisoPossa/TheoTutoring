@@ -3,9 +3,12 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../services/chat_moderation.dart';
+import '../../services/chat_unread.dart';
 import 'Services/tutor_chat_models.dart';
 import 'Services/tutor_chat_service.dart';
 import 'tutor_format.dart';
+import 'tutor_nav.dart';
 import 'tutor_theme.dart';
 
 // Light colours, or the dark ones when the tutor turned on Dark Mode
@@ -132,6 +135,8 @@ class _TutorChatListScreenState extends State<TutorChatListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _c.surface,
+      // The tutor bottom bar, with Chats selected (as on every tutor page)
+      bottomNavigationBar: const TutorChatsBottomBar(depth: 1),
       body: SafeArea(
         child: Column(
           children: [
@@ -382,6 +387,11 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
   String? _pendingMessageText;
   Object? _loadError;
 
+  /// Moderation: the tutor's own chat (suspended after a blocked message)
+  /// and whether the student's chat is suspended.
+  ChatModerationState _myChat = ChatModerationState.clear;
+  bool _otherSuspended = false;
+
   Timer? _pollTimer;
   bool _polling = false;
 
@@ -389,6 +399,7 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
   void initState() {
     super.initState();
     _loadMessages();
+    _loadStatus();
     _pollTimer = Timer.periodic(
       TutorChatScreen.pollInterval,
       (_) => _pollNewMessages(),
@@ -409,6 +420,7 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
     if (_polling || _isLoading || _isSending || _loadError != null) return;
     if (!mounted) return;
     _polling = true;
+    _loadStatus(); // an admin may have decided meanwhile
     try {
       final page = await widget.chatService.getMessagesPage(
         widget.contact.userId,
@@ -513,6 +525,7 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
         widget.contact.userId,
         upToMessageId: lastIncoming.messageId,
       );
+      ChatUnread.instance.refresh(); // the Chats badge
     } catch (error) {
       // The messages are on screen; only the unread badge is out of date.
       debugPrint('Marking conversation read failed: $error');
@@ -560,6 +573,19 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
       });
       _messageController.clear();
       _scrollToBottom();
+    } on ChatMessageBlockedException catch (e) {
+      // Blocked by moderation: never delivered, and the chat is suspended
+      if (!mounted) return;
+      setState(() {
+        _isSending = false;
+        _myChat = e.state;
+        _pendingClientMessageId = null;
+        _pendingMessageText = null;
+      });
+      _messageController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _isSending = false);
@@ -572,6 +598,42 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
       };
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
+      );
+    }
+  }
+
+  /// Whether either chat is suspended (best effort: on failure nothing
+  /// changes, and the server still refuses blocked messages).
+  Future<void> _loadStatus() async {
+    try {
+      final status = await widget.chatService.chatStatus(
+        studentId: widget.contact.userId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _myChat = status.me;
+        _otherSuspended = status.otherSuspended;
+      });
+    } catch (_) {}
+  }
+
+  /// "Explain to the admin": sends the tutor's explanation.
+  Future<void> _explain() async {
+    final explanation = await showChatAppealDialog(context);
+    if (explanation == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final state = await widget.chatService.appealChatSuspension(explanation);
+      if (!mounted) return;
+      setState(() => _myChat = state);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Your explanation was sent to the admin.'),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
     }
   }
@@ -612,12 +674,20 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _c.page,
+      // The same layout as the student side: header on top, the tutor
+      // bottom bar (Chats selected) underneath
+      bottomNavigationBar: const TutorChatsBottomBar(depth: 2),
       body: SafeArea(
         child: Column(
           children: [
             _buildHeader(),
+            if (_otherSuspended)
+              OtherChatSuspendedBanner(name: widget.contact.name),
             Expanded(child: _buildMessageList()),
-            _buildInputBar(),
+            if (_myChat.suspended)
+              ChatSuspendedPanel(state: _myChat, onExplain: _explain)
+            else
+              _buildInputBar(),
           ],
         ),
       ),
@@ -649,24 +719,17 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
             ),
           ),
           const SizedBox(width: 10),
+          // Name only: conversations show no online/offline status
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.contact.name,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: _c.text,
-                  ),
-                ),
-                Text(
-                  widget.contact.isOnline ? 'Online' : 'Offline',
-                  style: TextStyle(fontSize: 11, color: _c.textFaint),
-                ),
-              ],
+            child: Text(
+              widget.contact.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: _c.text,
+              ),
             ),
           ),
           GestureDetector(
@@ -961,6 +1024,72 @@ class _MessageBubble extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The tutor bottom bar on the chat pages, with Chats selected: the same
+/// bar as every other tutor page, so conversations keep the app's layout.
+/// [depth] is 1 on the Messages list and 2 in a conversation.
+class TutorChatsBottomBar extends StatelessWidget {
+  const TutorChatsBottomBar({required this.depth, super.key});
+
+  final int depth;
+
+  void _tap(BuildContext context, int index) {
+    final nav = Navigator.of(context);
+    if (index == 2) {
+      // Chats: from a conversation, back to the list
+      if (depth == 2 && nav.canPop()) nav.pop();
+      return;
+    }
+    // Leave the chat pages, then open the tab where they were opened from
+    for (var i = 0; i < depth && nav.canPop(); i++) {
+      nav.pop();
+    }
+    openTutorTab(nav.context, index, current: -1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = context.tutorDark;
+    return Container(
+      decoration: BoxDecoration(
+        color: dark ? TutorDark.card : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: BottomNavigationBar(
+        currentIndex: 2,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        selectedItemColor: dark ? TutorDark.blueText : const Color(0xFF246BFE),
+        unselectedItemColor: const Color(0xFF9CA3AF),
+        type: BottomNavigationBarType.fixed,
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
+        onTap: (index) => _tap(context, index),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.grid_view_rounded),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_month_rounded),
+            label: 'Schedule',
+          ),
+          BottomNavigationBarItem(icon: ChatNavIcon(), label: 'Chats'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_rounded),
+            label: 'Profile',
+          ),
+        ],
+      ),
     );
   }
 }

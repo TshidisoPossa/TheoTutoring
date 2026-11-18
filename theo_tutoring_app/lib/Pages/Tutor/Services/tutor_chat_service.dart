@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../config/api.dart';
+import '../../../services/chat_moderation.dart';
 import 'tutor_chat_models.dart';
 
 class TutorChatConflictException implements Exception {
@@ -68,10 +69,29 @@ class TutorChatService {
     if (response.statusCode == 503) {
       throw const TutorChatUnavailableException();
     }
+    // Contact details or abuse, or a suspended chat (moderation)
+    if (ChatMessageBlockedException.from(response) case final blocked?) {
+      throw blocked;
+    }
     throw Exception(
       'POST $path failed: ${response.statusCode} ${response.body}',
     );
   }
+
+  ChatModerationApi get _moderation => ChatModerationApi(
+    base: '$apiBaseUrl/tutor',
+    client: _client,
+    headers: _headers,
+  );
+
+  /// GET /tutor/chat-status: the tutor's own chat state, and whether
+  /// [studentId]'s chat is suspended.
+  Future<ChatStatusResult> chatStatus({int? studentId}) =>
+      _moderation.status(withUserId: studentId);
+
+  /// POST /tutor/chat-appeal: the tutor's explanation for the admin.
+  Future<ChatModerationState> appealChatSuspension(String explanation) =>
+      _moderation.appeal(explanation);
 
   Future<void> _put(String path, Map<String, dynamic> body) async {
     final response = await _client.put(

@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api.dart';
+import 'chat_moderation.dart';
 import 'student_chat_models.dart';
 
 /// The clientMessageId was already used for a different message (409).
@@ -121,12 +122,45 @@ class StudentChatService {
     if (response.statusCode == 409) {
       throw const StudentChatConflictException();
     }
+    // Contact details or abuse, or a suspended chat (moderation)
+    if (ChatMessageBlockedException.from(response) case final blocked?) {
+      throw blocked;
+    }
     if (response.statusCode != 200 && response.statusCode != 201) {
       _fail('Sending the message', response);
     }
     return StudentChatMessage.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
+  }
+
+  ChatModerationApi get _moderation => ChatModerationApi(
+    base: '$apiBaseUrl/student',
+    client: _client,
+    headers: _headers,
+  );
+
+  /// GET /student/chat-status: the student's own chat state, and whether
+  /// [tutorId]'s chat is suspended.
+  Future<ChatStatusResult> chatStatus({int? tutorId}) =>
+      _moderation.status(withUserId: tutorId);
+
+  /// POST /student/chat-appeal: the student's explanation for the admin.
+  Future<ChatModerationState> appealChatSuspension(String explanation) =>
+      _moderation.appeal(explanation);
+
+  /// GET /student/conversations/unread-count: the Chat tab's badge.
+  Future<int> unreadCount() async {
+    final response = await _client
+        .get(
+          _uri('/student/conversations/unread-count'),
+          headers: await _headers(),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) _fail('Loading unread count', response);
+    return ((jsonDecode(response.body) as Map)['unreadCount'] as num?)
+            ?.toInt() ??
+        0;
   }
 
   /// PUT /student/conversations/{tutorId}/read: marks the tutor's messages

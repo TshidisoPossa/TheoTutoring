@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../services/account_suspension_api.dart';
 import '../services/app_navigator.dart';
 import '../services/auth_service.dart';
+import '../services/chat_unread.dart';
+import '../services/student_chat_service.dart';
 import '../services/in_app_notifications.dart';
 import 'Admin/Services/admin_access_service.dart';
 import 'Admin/Services/admin_notifications_api.dart';
@@ -15,6 +17,7 @@ import 'Student/student_bottom_nav.dart';
 import 'Student/student_dashboard.dart';
 import 'Student/student_notifications.dart';
 import 'Student/student_notifications_api.dart';
+import 'Tutor/Services/tutor_chat_service.dart';
 import 'Tutor/tutor_api.dart';
 import 'Tutor/tutor_dashboard.dart';
 import 'Tutor/tutor_nav.dart';
@@ -228,6 +231,8 @@ class _AuthGateState extends State<AuthGate> {
           page: () => const StudentNotificationsScreen(),
           onTab: openStudentTab,
         );
+        // The Chat tab's unread badge
+        ChatUnread.instance.start(StudentChatService().unreadCount);
         _replaceWith(
           StudentDashboard(
             studentName: account.name.isEmpty ? null : account.name,
@@ -274,6 +279,8 @@ class _AuthGateState extends State<AuthGate> {
           page: () => const TutorNotificationsScreen(),
           onTab: (context, tab) => openTutorTab(context, tab, current: -1),
         );
+        // The Chats tab's unread badge
+        ChatUnread.instance.start(TutorChatService().getTotalUnreadCount);
       }
       _replaceWith(TutorDashboard(initialData: dashboard));
     } on TutorApiException catch (e) {

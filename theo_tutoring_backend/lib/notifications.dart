@@ -83,6 +83,16 @@ abstract final class NotificationType {
   /// admin).
   static const refundRequested = 'RefundRequested';
 
+  /// A chat message was blocked and the sender's chat suspended (to every
+  /// admin, to review on the Chat Moderation page).
+  static const chatFlagged = 'ChatFlagged';
+
+  /// An admin lifted the user's chat suspension (to that user).
+  static const chatRestored = 'ChatRestored';
+
+  /// An admin kept the user's chat suspended (to that user).
+  static const chatSuspensionKept = 'ChatSuspensionKept';
+
   /// Every valid type.
   static const all = {
     bookingRequested,
@@ -107,6 +117,9 @@ abstract final class NotificationType {
     applicationSubmitted,
     reportSubmitted,
     refundRequested,
+    chatFlagged,
+    chatRestored,
+    chatSuspensionKept,
   };
 }
 

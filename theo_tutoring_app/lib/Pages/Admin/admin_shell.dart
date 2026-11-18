@@ -24,6 +24,7 @@ class AdminRoutes {
   static const tutors = '/admin/tutors';
   static const applications = '/admin/applications';
   static const appeals = '/admin/appeals';
+  static const chatModeration = '/admin/chat-moderation';
   static const subjects = '/admin/subjects';
   static const reviews = '/admin/reviews';
   static const payouts = '/admin/payouts';
@@ -88,6 +89,10 @@ const _sections = [
   ]),
   _NavSection('ANALYTICS', [
     _NavItem('Reports', AdminRoutes.reports, {'admin.reports.read'}),
+    // Blocked chat messages and chat suspensions
+    _NavItem('Chat Moderation', AdminRoutes.chatModeration, {
+      'admin.reports.read',
+    }),
   ]),
   _NavSection('SYSTEM', [
     _NavItem('Monitor Platform', AdminRoutes.monitor, {'admin.monitor.read'}),

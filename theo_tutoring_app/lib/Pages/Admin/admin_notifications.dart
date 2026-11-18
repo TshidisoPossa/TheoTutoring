@@ -9,6 +9,7 @@ String? adminRouteFor(NotificationItem n) => switch (n.type) {
   'ApplicationSubmitted' => AdminRoutes.applications,
   'ReportSubmitted' => AdminRoutes.reports,
   'RefundRequested' => AdminRoutes.refunds,
+  'ChatFlagged' => AdminRoutes.chatModeration,
   _ => null,
 };
 
@@ -17,6 +18,7 @@ String? adminNotificationLink(NotificationItem n) => switch (n.type) {
   'ApplicationSubmitted' => 'Review application',
   'ReportSubmitted' => 'Review report',
   'RefundRequested' => 'Review refund',
+  'ChatFlagged' => 'Review chat message',
   _ => null,
 };
 

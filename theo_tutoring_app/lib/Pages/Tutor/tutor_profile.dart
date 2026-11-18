@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../../services/chat_unread.dart';
 import '../../services/google_meet_connect.dart';
 import '../cloudinary_upload.dart';
 import '../auth_gate.dart';
@@ -727,7 +728,10 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
   // The ☰ menu: the tutor pages and Log Out
   Widget _buildDrawer() {
     Widget item(IconData icon, String label, int tab) => ListTile(
-      leading: Icon(icon, color: tab == 3 ? _blue : _grey),
+      // Chats carries the unread-messages badge
+      leading: tab == 2
+          ? ChatNavIcon(icon: icon, color: _grey)
+          : Icon(icon, color: tab == 3 ? _blue : _grey),
       title: Text(
         label,
         style: TextStyle(
@@ -1591,7 +1595,7 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
           label: 'Schedule',
         ),
         BottomNavigationBarItem(
-          icon: Icon(Icons.chat_bubble_outline_rounded),
+          icon: ChatNavIcon(),
           label: 'Chats',
         ),
         BottomNavigationBarItem(

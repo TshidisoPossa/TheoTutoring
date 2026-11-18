@@ -1,3 +1,4 @@
+import '../../services/chat_unread.dart';
 import '../../services/in_app_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -1317,7 +1318,7 @@ class _TutorDashboardState extends State<TutorDashboard> {
           BottomNavigationBarItem(
               icon: Icon(Icons.inbox_rounded), label: 'Schedule'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline_rounded), label: 'Chats'),
+              icon: ChatNavIcon(), label: 'Chats'),
           BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded), label: 'Profile'),
         ],

@@ -407,6 +407,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         'ApplicationSubmitted' => Icons.assignment_ind_outlined,
         'ReportSubmitted' => Icons.flag_outlined,
         'RefundRequested' => Icons.currency_exchange_rounded,
+        'ChatFlagged' => Icons.report_gmailerrorred_rounded,
+        'ChatRestored' => Icons.mark_chat_read_outlined,
+        'ChatSuspensionKept' => Icons.speaker_notes_off_outlined,
         _ => Icons.notifications_none_rounded,
       };
 

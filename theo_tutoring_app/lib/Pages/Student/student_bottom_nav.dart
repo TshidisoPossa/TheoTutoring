@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/chat_unread.dart';
 import '../Tutor/tutor_theme.dart';
 
 /// The tab (0 Home, 1 Lessons, 2 Chat, 3 Profile) a page opened on top of
@@ -25,6 +26,9 @@ class StudentBottomNav extends StatelessWidget {
     super.key,
   });
 
+
+  /// The Chat tab's index (it carries the unread-messages badge).
+  static const chatTab = 2;
 
   static const List<({IconData icon, String label})> items = [
     (icon: Icons.home_rounded, label: 'Home'),
@@ -76,11 +80,19 @@ class StudentBottomNav extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          item.icon,
-                          color: selected ? selectedColor : muted,
-                          size: 22,
-                        ),
+                        // Chat shows a red badge with unread messages
+                        if (index == chatTab)
+                          ChatNavIcon(
+                            icon: item.icon,
+                            color: selected ? selectedColor : muted,
+                            size: 22,
+                          )
+                        else
+                          Icon(
+                            item.icon,
+                            color: selected ? selectedColor : muted,
+                            size: 22,
+                          ),
                         const SizedBox(height: 5),
                         Text(
                           item.label,

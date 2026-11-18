@@ -200,12 +200,16 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(chatRequests.single.method, 'GET');
+      // The messages, plus the chat moderation status
+      final messages = chatRequests
+          .where((r) => r.url.path.endsWith('/messages'))
+          .single;
+      expect(messages.method, 'GET');
       expect(
-        chatRequests.single.url.path,
+        messages.url.path,
         endsWith('/student/conversations/42/messages'),
       );
-      expect(chatRequests.single.headers['Authorization'], 'Bearer tok');
+      expect(messages.headers['Authorization'], 'Bearer tok');
 
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();

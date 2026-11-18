@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/chat_moderation.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/notifications.dart';
@@ -201,3 +202,18 @@ class AdminNotificationUser {
   /// The admin's Firebase UID.
   final String uid;
 }
+
+/// "A tutor's message was blocked (a phone number)" for every admin.
+Future<void> notifyAdminsOfChatFlag(ChatModerationRecord record) =>
+    notifyAdmins(
+      Notice(
+        // One per blocked message (the flag time keeps them apart)
+        id: 'admin-chatflag-${record.userId}-'
+            '${record.flaggedAt.millisecondsSinceEpoch}',
+        type: NotificationType.chatFlagged,
+        title: 'Chat message blocked',
+        body: "${record.name} (${record.role})'s message to "
+            '${record.otherName} contained ${record.reason}. Their chat is '
+            'suspended until you review it on the Chat Moderation page.',
+      ),
+    );

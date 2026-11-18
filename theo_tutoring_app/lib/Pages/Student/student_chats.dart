@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../services/student_chat_models.dart';
+import '../../services/chat_moderation.dart';
+import '../../services/chat_unread.dart';
 import '../../services/student_chat_service.dart';
 import '../Tutor/tutor_theme.dart';
+import 'student_bottom_nav.dart';
 
 /// The conversation's colours: light, or dark while dark mode is on.
 class AppColors {
@@ -100,7 +103,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _loadingOlder = false;
   bool _loadFailed = false;
 
-  int _navIndex = 2;
+  /// Moderation: the student's own chat (suspended after a blocked message)
+  /// and whether the tutor's chat is suspended.
+  ChatModerationState _myChat = ChatModerationState.clear;
+  bool _otherSuspended = false;
 
   int get _tutorId => widget.contact.userId;
 
@@ -134,6 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Mid-send the stored copy could show next to its "Sending..." bubble.
     if (_pending.any((p) => !p.failed)) return;
     _polling = true;
+    _loadStatus(); // an admin may have decided meanwhile
     try {
       final page = await _service.getMessagesPage(_tutorId);
       if (!mounted) return;
@@ -184,6 +191,34 @@ class _ChatScreenState extends State<ChatScreen> {
         _loadFailed = true;
       });
     }
+    await _loadStatus();
+  }
+
+  /// Whether either chat is suspended (best effort: on failure nothing
+  /// changes, and the server still refuses blocked messages).
+  Future<void> _loadStatus() async {
+    try {
+      final status = await _service.chatStatus(tutorId: _tutorId);
+      if (!mounted) return;
+      setState(() {
+        _myChat = status.me;
+        _otherSuspended = status.otherSuspended;
+      });
+    } catch (_) {}
+  }
+
+  /// "Explain to the admin": sends the student's explanation.
+  Future<void> _explain() async {
+    final explanation = await showChatAppealDialog(context);
+    if (explanation == null || !mounted) return;
+    try {
+      final state = await _service.appealChatSuspension(explanation);
+      if (!mounted) return;
+      setState(() => _myChat = state);
+      _notify('Your explanation was sent to the admin.');
+    } catch (e) {
+      _notify(e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _loadOlder() async {
@@ -209,6 +244,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_history.isEmpty) return;
     try {
       await _service.markRead(_tutorId, _history.last.messageId);
+      ChatUnread.instance.refresh(); // the Chat tab's badge
     } catch (e) {
       debugPrint('Marking messages read failed: $e');
     }
@@ -242,6 +278,14 @@ class _ChatScreenState extends State<ChatScreen> {
           _history.add(stored);
         }
       });
+    } on ChatMessageBlockedException catch (e) {
+      // Blocked by moderation: it was never delivered, so it leaves the chat
+      if (!mounted) return;
+      setState(() {
+        _pending.remove(pending);
+        _myChat = e.state;
+      });
+      _notify(e.message);
     } on StudentChatConflictException {
       // That id belongs to a different message: the next try needs a new one.
       pending.clientMessageId = StudentChatService.newClientMessageId();
@@ -306,18 +350,27 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: _buildAppBar(),
       body: Column(
         children: [
+          if (_otherSuspended)
+            OtherChatSuspendedBanner(name: widget.contact.name),
           Expanded(
             child: Container(
               color: _colors.chatBackground,
               child: _buildMessages(),
             ),
           ),
-          _buildInputBar(),
+          if (_myChat.suspended)
+            ChatSuspendedPanel(state: _myChat, onExplain: _explain)
+          else
+            _buildInputBar(),
         ],
       ),
       // As the Scaffold's bar it stays behind the phone keyboard, so the
-      // message box sits right above the keyboard instead of the nav bar
-      bottomNavigationBar: _buildBottomNav(),
+      // message box sits right above the keyboard instead of the nav bar.
+      // The same bar as every student page, with Chat selected.
+      bottomNavigationBar: StudentBottomNav(
+        currentIndex: 2,
+        onTap: (index) => openStudentTab(context, index),
+      ),
     );
   }
 
@@ -467,60 +520,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildBottomNav() {
-    const items = [
-      (Icons.home_outlined, 'Home'),
-      (Icons.calendar_today_outlined, 'Lessons'),
-      (Icons.chat_bubble_outline, 'Chat'),
-      (Icons.person_outline, 'Profile'),
-    ];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: _colors.surface,
-        border: Border(top: BorderSide(color: _colors.line)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(items.length, (i) {
-              final selected = i == _navIndex;
-              final color = selected ? _colors.accent : _colors.textGrey;
-              return InkWell(
-                onTap: () => setState(() => _navIndex = i),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(items[i].$1, color: color, size: 26),
-                      const SizedBox(height: 2),
-                      Text(
-                        items[i].$2,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: color,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class MessageBubble extends StatelessWidget {

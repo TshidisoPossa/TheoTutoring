@@ -251,7 +251,9 @@ void main() {
       await tester.tap(find.text('Lerato P'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Online'), findsOneWidget);
+      // Conversations show no online/offline status
+      expect(find.text('Online'), findsNothing);
+      expect(find.text('Offline'), findsNothing);
       expect(find.text('Hi tutor'), findsOneWidget);
       expect(backend.count('PUT', '/tutor/conversations/$_studentId/read'), 1);
       final read = backend.requests.singleWhere((r) => r.method == 'PUT');

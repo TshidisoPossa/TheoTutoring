@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../services/chat_unread.dart';
 import 'tutor_api.dart';
 import 'tutor_booking_detail.dart';
 import 'tutor_format.dart';
@@ -902,7 +903,7 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
           BottomNavigationBarItem(
               icon: Icon(Icons.calendar_month_rounded), label: 'Schedule'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline_rounded), label: 'Chats'),
+              icon: ChatNavIcon(), label: 'Chats'),
           BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded), label: 'Profile'),
         ],

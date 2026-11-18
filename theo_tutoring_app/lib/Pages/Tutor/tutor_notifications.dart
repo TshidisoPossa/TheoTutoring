@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/chat_unread.dart';
 import '../account_suspension_page.dart';
 import '../notifications_screen.dart';
 import 'tutor_api.dart';
@@ -95,7 +96,7 @@ class TutorNotificationsScreen extends StatelessWidget {
           BottomNavigationBarItem(
               icon: Icon(Icons.inbox_rounded), label: 'Schedule'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline_rounded), label: 'Chats'),
+              icon: ChatNavIcon(), label: 'Chats'),
           BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded), label: 'Profile'),
         ],
