@@ -6,6 +6,7 @@ import '../Tutor/tutor_theme.dart';
 import '../auth_gate.dart';
 import '../cloudinary_upload.dart';
 import '../privacy_policy.dart';
+import '../faq_page.dart';
 import '../terms_and_conditions.dart';
 import 'student_profile_api.dart';
 
@@ -376,6 +377,18 @@ class _StudentProfileTabState extends State<StudentProfileTab> {
         ),
       ]),
       _listCard(colors, 'Support', [
+        _row(
+          colors,
+          icon: Icons.quiz_outlined,
+          title: 'FAQ',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  const FaqPage(initialAudience: FaqAudience.students),
+            ),
+          ),
+        ),
         _row(
           colors,
           icon: Icons.description_outlined,

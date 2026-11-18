@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:theo_tutoring_app/Pages/Booking/booking_confirmation.dart';
 import 'package:theo_tutoring_app/Pages/Booking/booking_flow_context.dart';
 import 'package:theo_tutoring_app/Pages/Student/search_tutor.dart';
+import 'package:theo_tutoring_app/Pages/faq_page.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_bottom_nav.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_chatlist.dart';
 import 'package:theo_tutoring_app/Pages/Student/student_dashboard.dart';
@@ -97,6 +98,14 @@ void main() {
     expect(find.text('Log Out'), findsOneWidget);
     // The Profile tab has its own header
     expect(_topBar, findsNothing);
+    // FAQ sits with the Terms and Privacy Policy, and opens the FAQ
+    expect(find.text('FAQ'), findsOneWidget);
+    expect(find.text('Terms of Service'), findsOneWidget);
+    expect(find.text('Privacy Policy'), findsOneWidget);
+    await tester.ensureVisible(find.text('FAQ'));
+    await tester.tap(find.text('FAQ'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FaqPage), findsOneWidget);
   });
 
   testWidgets('the top-bar profile photo opens the Profile tab', (

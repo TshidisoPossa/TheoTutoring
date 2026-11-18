@@ -6,7 +6,7 @@ import '../../services/chat_unread.dart';
 import '../../services/google_meet_connect.dart';
 import '../cloudinary_upload.dart';
 import '../auth_gate.dart';
-import '../help_center.dart';
+import '../faq_page.dart';
 import '../privacy_policy.dart';
 import '../terms_and_conditions.dart';
 import 'tutor_api.dart';
@@ -1444,11 +1444,13 @@ class _TutorProfileScreenState extends State<TutorProfileScreen> {
       title: 'Support',
       rows: [
         _row(
-          icon: Icons.help_outline_rounded,
-          title: 'Help Center',
+          icon: Icons.quiz_outlined,
+          title: 'FAQ',
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const HelpCenterPage()),
+            MaterialPageRoute(
+              builder: (_) => const FaqPage(initialAudience: FaqAudience.tutors),
+            ),
           ),
         ),
         _row(
