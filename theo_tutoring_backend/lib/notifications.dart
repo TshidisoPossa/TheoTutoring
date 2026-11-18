@@ -63,6 +63,16 @@ abstract final class NotificationType {
   /// An administrator declined a refund (to the student).
   static const refundDenied = 'RefundDenied';
 
+  /// An administrator suspended the account, with the reason (to the
+  /// student or tutor; the card links to the appeal screen).
+  static const accountSuspended = 'AccountSuspended';
+
+  /// An administrator approved the user's appeal and lifted the suspension.
+  static const appealApproved = 'AppealApproved';
+
+  /// An administrator rejected the user's appeal; the suspension remains.
+  static const appealRejected = 'AppealRejected';
+
   /// Every valid type.
   static const all = {
     bookingRequested,
@@ -81,6 +91,9 @@ abstract final class NotificationType {
     newReview,
     refundApproved,
     refundDenied,
+    accountSuspended,
+    appealApproved,
+    appealRejected,
   };
 }
 

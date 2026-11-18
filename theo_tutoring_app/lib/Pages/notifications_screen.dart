@@ -373,6 +373,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         'RefundDenied' => Icons.money_off_rounded,
         'NewReview' => Icons.star_outline_rounded,
         'NewMessage' => Icons.chat_bubble_outline_rounded,
+        'AccountSuspended' => Icons.block_rounded,
+        'AppealApproved' => Icons.verified_user_outlined,
+        'AppealRejected' => Icons.gpp_bad_outlined,
         _ => Icons.notifications_none_rounded,
       };
 

@@ -92,15 +92,20 @@ class AdminStudentsService {
     );
   }
 
+  /// [reason] is required when suspending; it is shown to the student.
   Future<AdminStudent> updateStatus(
     int studentId,
-    StudentStatusChange status,
-  ) async {
+    StudentStatusChange status, {
+    String? reason,
+  }) async {
     final response = await _client
         .patch(
           Uri.parse('$apiBaseUrl/admin/students/$studentId/status'),
           headers: await _headers(),
-          body: jsonEncode({'status': status.apiValue}),
+          body: jsonEncode({
+            'status': status.apiValue,
+            if (status == StudentStatusChange.suspended) 'reason': reason,
+          }),
         )
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) throw _failure(response);

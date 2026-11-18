@@ -1,28 +1,21 @@
 import 'package:intl/intl.dart';
 
-// Monitor Platform (project documentation section 9.5): four metric cards,
-// a live traffic chart against baseline capacity, and an audit log of system
-// events such as configuration changes, database backups and admin actions.
+// Monitor Platform: database-backed platform counts and an audit log of
+// recorded administrator activity.
 //
-// Expected backend response (Dart Frog):
-// GET /admin/monitor?range=live|24h
+// Backend responses (Dart Frog):
+// GET /admin/monitor
 //   { "adminName": "...",
-//     "metrics": { "uptimePercent", "uptimeSince", "requestsPerSecond",
-//                  "errorRatePercent", "avgLatencyMs", "p95LatencyMs" },
-//     "traffic": { "baselinePerMinute",
-//                  "points": [ { "time", "requests" } ] } }
+//     "operationalMetrics": { "activeUsers", "activeTutors",
+//                             "pendingApplications" } }
+//   (The response also carries empty "metrics" and "traffic" placeholders;
+//   no request telemetry is recorded, so they are not read.)
 //
 // GET /admin/monitor/audit-log?limit=20&before=<cursor>
 //   { "entries": [ { "id", "actorName", "actorType": "admin|system",
 //                    "category": "config|backup|admin_action|security",
 //                    "action", "detail", "createdAt" } ],
 //     "nextCursor": "..." | null }
-
-double? _num(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString());
-}
 
 String? _text(dynamic v) {
   final s = v?.toString().trim();
@@ -43,33 +36,6 @@ String _initialsOf(String name) {
   if (parts.isEmpty) return '?';
   if (parts.length == 1) return parts.first[0].toUpperCase();
   return (parts.first[0] + parts.last[0]).toUpperCase();
-}
-
-class PlatformMetrics {
-  final double? uptimePercent;
-  final DateTime? uptimeSince;
-  final double? requestsPerSecond;
-  final double? errorRatePercent;
-  final double? avgLatencyMs;
-  final double? p95LatencyMs;
-
-  const PlatformMetrics({
-    required this.uptimePercent,
-    required this.uptimeSince,
-    required this.requestsPerSecond,
-    required this.errorRatePercent,
-    required this.avgLatencyMs,
-    required this.p95LatencyMs,
-  });
-
-  factory PlatformMetrics.fromJson(Map<String, dynamic> j) => PlatformMetrics(
-    uptimePercent: _num(j['uptimePercent']),
-    uptimeSince: _date(j['uptimeSince']),
-    requestsPerSecond: _num(j['requestsPerSecond']),
-    errorRatePercent: _num(j['errorRatePercent']),
-    avgLatencyMs: _num(j['avgLatencyMs']),
-    p95LatencyMs: _num(j['p95LatencyMs']),
-  );
 }
 
 class OperationalMetrics {
@@ -94,53 +60,17 @@ class OperationalMetrics {
 int? _integer(dynamic value) =>
     value is int ? value : int.tryParse(value?.toString() ?? '');
 
-class TrafficPoint {
-  final DateTime time;
-  final double requests;
-
-  const TrafficPoint({required this.time, required this.requests});
-
-  factory TrafficPoint.fromJson(Map<String, dynamic> j) => TrafficPoint(
-    time: _date(j['time']) ?? DateTime.now(),
-    requests: _num(j['requests']) ?? 0,
-  );
-}
-
-class TrafficSeries {
-  final double? baselinePerMinute;
-  final List<TrafficPoint> points;
-
-  const TrafficSeries({required this.baselinePerMinute, required this.points});
-
-  factory TrafficSeries.fromJson(Map<String, dynamic> j) => TrafficSeries(
-    baselinePerMinute: _num(j['baselinePerMinute']),
-    points: ((j['points'] as List<dynamic>?) ?? const [])
-        .map((e) => TrafficPoint.fromJson(e as Map<String, dynamic>))
-        .toList(),
-  );
-}
-
 class MonitorSnapshot {
   final String adminName;
-  final PlatformMetrics metrics;
-  final TrafficSeries traffic;
   final OperationalMetrics operationalMetrics;
 
   const MonitorSnapshot({
     required this.adminName,
-    required this.metrics,
-    required this.traffic,
     required this.operationalMetrics,
   });
 
   factory MonitorSnapshot.fromJson(Map<String, dynamic> j) => MonitorSnapshot(
     adminName: (j['adminName'] ?? '').toString(),
-    metrics: PlatformMetrics.fromJson(
-      (j['metrics'] as Map<String, dynamic>?) ?? const {},
-    ),
-    traffic: TrafficSeries.fromJson(
-      (j['traffic'] as Map<String, dynamic>?) ?? const {},
-    ),
     operationalMetrics: OperationalMetrics.fromJson(
       (j['operationalMetrics'] as Map<String, dynamic>?) ?? const {},
     ),

@@ -367,20 +367,28 @@ class _TutorScheduleScreenState extends State<TutorScheduleScreen>
                       color: _text1)),
             ],
           ),
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: _blue,
-            backgroundImage:
-                _tutorPhoto != null ? NetworkImage(_tutorPhoto!) : null,
-            child: _tutorPhoto != null
-                ? null
-                : _tutorName != null
-                    ? Text(initialsOf(_tutorName!),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700))
-                    : const Icon(Icons.person, color: Colors.white, size: 22),
+          // The tutor's photo opens the Profile tab, like on the dashboard
+          Tooltip(
+            message: 'Profile',
+            child: GestureDetector(
+              onTap: () => openTutorTab(context, 3, current: 1),
+              child: CircleAvatar(
+                radius: 20,
+                backgroundColor: _blue,
+                backgroundImage:
+                    _tutorPhoto != null ? NetworkImage(_tutorPhoto!) : null,
+                child: _tutorPhoto != null
+                    ? null
+                    : _tutorName != null
+                        ? Text(initialsOf(_tutorName!),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700))
+                        : const Icon(Icons.person,
+                            color: Colors.white, size: 22),
+              ),
+            ),
           ),
         ],
       ),

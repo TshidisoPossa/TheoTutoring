@@ -752,6 +752,75 @@ CREATE TABLE IF NOT EXISTS Notification (
     INDEX idx_notification_user_date (UserID, Created_AT)
 );
 
+-- Account suspensions and appeals (migration 012_account_suspension_appeal;
+-- see that file for the rules). Exact lowercase names: the server is case-sensitive.
+CREATE TABLE IF NOT EXISTS accountsuspension (
+    SuspensionID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    UserID INT NOT NULL,
+    SuspendedByAdminID INT NOT NULL,
+    Reason VARCHAR(1000) NOT NULL,
+    PreviousAccountStatus VARCHAR(20) NOT NULL,
+    SuspendedAtUtc DATETIME(6) NOT NULL,
+    Status ENUM('Active', 'Lifted') NOT NULL DEFAULT 'Active',
+    LiftedAtUtc DATETIME(6) NULL,
+    LiftedByAdminID INT NULL,
+    LiftReason ENUM('AppealApproved', 'Reinstated', 'Deactivated') NULL,
+    NotificationID BIGINT NULL,
+    ActiveUserID INT AS (CASE WHEN Status = 'Active' THEN UserID END) STORED,
+
+    CONSTRAINT chk_suspension_reason CHECK (CHAR_LENGTH(TRIM(Reason)) >= 10),
+    CONSTRAINT chk_suspension_lifted CHECK (
+        (Status = 'Active' AND LiftedAtUtc IS NULL AND LiftReason IS NULL)
+        OR (Status = 'Lifted' AND LiftedAtUtc IS NOT NULL
+            AND LiftReason IS NOT NULL)
+    ),
+    CONSTRAINT fk_suspension_user
+        FOREIGN KEY (UserID) REFERENCES `user`(UserId),
+    CONSTRAINT fk_suspension_admin
+        FOREIGN KEY (SuspendedByAdminID) REFERENCES `admin`(AdminID),
+    CONSTRAINT fk_suspension_lifted_by
+        FOREIGN KEY (LiftedByAdminID) REFERENCES `admin`(AdminID),
+    CONSTRAINT fk_suspension_notification
+        FOREIGN KEY (NotificationID) REFERENCES notification(NotificationID),
+    UNIQUE KEY uq_suspension_one_active (ActiveUserID),
+    INDEX idx_suspension_user (UserID, SuspendedAtUtc)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS suspensionappeal (
+    AppealID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    SuspensionID BIGINT UNSIGNED NOT NULL,
+    UserID INT NOT NULL,
+    Explanation VARCHAR(2000) NOT NULL,
+    SubmittedAtUtc DATETIME(6) NOT NULL,
+    Status ENUM('Pending', 'Approved', 'Rejected', 'Closed')
+        NOT NULL DEFAULT 'Pending',
+    ReviewedByAdminID INT NULL,
+    DecisionNote VARCHAR(1000) NULL,
+    DecidedAtUtc DATETIME(6) NULL,
+    DecisionNotificationID BIGINT NULL,
+
+    CONSTRAINT chk_appeal_explanation
+        CHECK (CHAR_LENGTH(TRIM(Explanation)) >= 20),
+    CONSTRAINT chk_appeal_decided CHECK (
+        (Status = 'Pending' AND DecidedAtUtc IS NULL
+            AND ReviewedByAdminID IS NULL)
+        OR (Status <> 'Pending' AND DecidedAtUtc IS NOT NULL
+            AND ReviewedByAdminID IS NOT NULL)
+    ),
+    CONSTRAINT fk_appeal_suspension
+        FOREIGN KEY (SuspensionID) REFERENCES accountsuspension(SuspensionID),
+    CONSTRAINT fk_appeal_user
+        FOREIGN KEY (UserID) REFERENCES `user`(UserId),
+    CONSTRAINT fk_appeal_reviewer
+        FOREIGN KEY (ReviewedByAdminID) REFERENCES `admin`(AdminID),
+    CONSTRAINT fk_appeal_notification
+        FOREIGN KEY (DecisionNotificationID)
+        REFERENCES notification(NotificationID),
+    UNIQUE KEY uq_appeal_one_per_suspension (SuspensionID),
+    INDEX idx_appeal_status (Status, SubmittedAtUtc),
+    INDEX idx_appeal_user (UserID, SubmittedAtUtc)
+) ENGINE=InnoDB;
+
 -- =========================================================
 -- 16. TUTOR APPLICATIONS
 -- Separate records preserve application history and allow

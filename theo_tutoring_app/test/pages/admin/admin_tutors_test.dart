@@ -218,12 +218,25 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // A reason is required, and nothing is sent without one
+    await tester.tap(find.text('Save status'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Give a reason of at least 10'), findsOneWidget);
+    expect(backend.patches, isEmpty);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('suspension-reason')),
+      'Asked students to pay outside the platform.',
+    );
     await tester.tap(find.text('Save status'));
     await tester.pumpAndSettle();
 
     final patch = backend.patches.last;
     expect(patch.url.path, '/admin/tutors/12/status');
-    expect(jsonDecode(patch.body), {'status': 'Suspended'});
+    expect(jsonDecode(patch.body), {
+      'status': 'Suspended',
+      'reason': 'Asked students to pay outside the platform.',
+    });
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('Lerato Mokoena is now Suspended.'), findsOneWidget);
   });

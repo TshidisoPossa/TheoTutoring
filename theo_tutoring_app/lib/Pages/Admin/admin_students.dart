@@ -10,6 +10,8 @@ import 'package:intl/intl.dart';
 import 'Services/admin_students_service.dart';
 import 'admin_documents.dart';
 import 'admin_shell.dart';
+import 'models/admin_appeal_models.dart'
+    show suspensionReasonMaxLength, suspensionReasonMinLength;
 import 'models/admin_student_models.dart';
 
 const _surface2 = Color(0xFFF8F9FB);
@@ -129,7 +131,10 @@ class _AdminStudentsScreenState extends State<AdminStudentsScreen> {
     if (updated == null || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${updated.name} is now ${updated.statusLabel}.'),
+        content: Text(
+          updated.statusWarning ??
+              '${updated.name} is now ${updated.statusLabel}.',
+        ),
       ),
     );
     _load();
@@ -874,6 +879,15 @@ class _StudentDialogState extends State<_StudentDialog> {
   bool _saving = false;
   String? _error;
 
+  /// Why the student is being suspended; they are shown it.
+  final _reason = TextEditingController();
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
   StudentStatusChange? get _current {
     for (final option in StudentStatusChange.values) {
       if (option.apiValue == widget.student.status) return option;
@@ -884,6 +898,16 @@ class _StudentDialogState extends State<_StudentDialog> {
   Future<void> _save() async {
     final target = _selected;
     if (target == null || target == _current) return;
+    final reason = _reason.text.trim();
+    if (target == StudentStatusChange.suspended &&
+        reason.length < suspensionReasonMinLength) {
+      setState(
+        () => _error =
+            'Give a reason of at least $suspensionReasonMinLength characters. '
+            'The student is shown it and can appeal.',
+      );
+      return;
+    }
     if (target == StudentStatusChange.removed) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -917,6 +941,7 @@ class _StudentDialogState extends State<_StudentDialog> {
       final updated = await widget.service.updateStatus(
         widget.student.studentId,
         target,
+        reason: target == StudentStatusChange.suspended ? reason : null,
       );
       if (mounted) Navigator.pop(context, updated);
     } catch (e) {
@@ -1044,6 +1069,26 @@ class _StudentDialogState extends State<_StudentDialog> {
                 const Text(
                   'Removed sets the account status to Deactivated. No '
                   'records are deleted.',
+                  style: TextStyle(fontSize: 12, color: AdminColors.textMuted),
+                ),
+              ],
+              if (_selected == StudentStatusChange.suspended &&
+                  _current != StudentStatusChange.suspended) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  key: const ValueKey('suspension-reason'),
+                  controller: _reason,
+                  enabled: !_saving,
+                  minLines: 2,
+                  maxLines: 4,
+                  maxLength: suspensionReasonMaxLength,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason for suspending (shown to the student)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const Text(
+                  'The student is notified with this reason and can appeal.',
                   style: TextStyle(fontSize: 12, color: AdminColors.textMuted),
                 ),
               ],

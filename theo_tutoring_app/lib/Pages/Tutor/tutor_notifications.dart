@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../account_suspension_page.dart';
 import '../notifications_screen.dart';
 import 'tutor_api.dart';
 import 'tutor_booking_detail.dart';
 import 'tutor_theme.dart';
 
-/// The link under a tutor's card, or null: lesson cards open the lesson.
+/// The link under a tutor's card, or null: lesson cards open the lesson,
+/// suspension and appeal cards open the appeal page.
 String? tutorLessonLink(NotificationItem n) {
+  final account = accountNoticeLink(n.type);
+  if (account != null) return account;
   if (n.bookingId == null) return null;
   return switch (n.type) {
     'UpcomingSession' => 'View scheduled lesson',
@@ -21,10 +25,14 @@ class TutorNotificationsScreen extends StatelessWidget {
   const TutorNotificationsScreen({
     super.key,
     this.loadNotifications = fetchTutorNotifications,
+    this.accountPage,
   });
 
   /// Loads the page; tests pass their own.
   final Future<Map<String, dynamic>> Function() loadNotifications;
+
+  /// The page suspension and appeal cards open; tests pass their own.
+  final Widget Function()? accountPage;
 
   static const _blue  = Color(0xFF246BFE);
   static const _muted = Color(0xFF9CA3AF);
@@ -44,7 +52,9 @@ class TutorNotificationsScreen extends StatelessWidget {
       onLink: (context, n) => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => TutorBookingDetailScreen(bookingId: n.bookingId!),
+          builder: (_) => accountNoticeLink(n.type) != null
+              ? accountPage?.call() ?? const AccountSuspensionPage()
+              : TutorBookingDetailScreen(bookingId: n.bookingId!),
         ),
       ),
       bottomNav: _bottomNav,

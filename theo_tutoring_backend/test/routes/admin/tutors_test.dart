@@ -10,18 +10,18 @@ import 'package:theo_tutoring_backend/firebase_auth.dart';
 
 import '../../../routes/admin/tutors/[tutorId]/status.dart' as status_route;
 import '../../../routes/admin/tutors/index.dart' as roster_route;
+import '../../fakes/fake_account_suspensions.dart';
 
 class _Ctx extends Mock implements RequestContext {}
 
 class _Req extends Mock implements Request {}
 
+/// Reads tutors from the shared fake store, like the MySQL roster does.
 class _Repo implements TutorRosterRepository {
-  int? statusId;
-  String? statusValue;
+  _Repo([FakeSuspensionStore? store]) : store = store ?? FakeSuspensionStore();
+  final FakeSuspensionStore store;
   String? listedStatus;
   int listCalls = 0;
-  bool missing = false;
-  String? lockedStatus;
 
   @override
   Future<Map<String, Object?>> list({
@@ -42,12 +42,12 @@ class _Repo implements TutorRosterRepository {
   }
 
   @override
-  Future<Map<String, Object?>> setStatus(int tutorId, String status) async {
-    if (missing) throw const TutorNotFound();
-    if (lockedStatus != null) throw TutorStatusLocked(lockedStatus!);
-    statusId = tutorId;
-    statusValue = status;
-    return {'tutorId': tutorId, 'status': status};
+  Future<Map<String, Object?>> find(int tutorId) async {
+    final a = store.accounts
+        .where((a) => a.role == 'tutor' && a.profileId == tutorId)
+        .firstOrNull;
+    if (a == null) throw const TutorNotFound();
+    return {'tutorId': tutorId, 'status': a.status};
   }
 }
 
@@ -75,8 +75,31 @@ RequestContext _ctx(
   return c;
 }
 
+const _reason = 'Asked students to pay outside the platform.';
+
 void main() {
   group('PATCH /admin/tutors/{id}/status', () {
+    late FakeSuspensionStore store;
+    late RecordingSender sender;
+
+    setUp(() {
+      store = FakeSuspensionStore()..add(role: 'tutor', profileId: 5);
+      sender = RecordingSender();
+    });
+
+    Future<Response> patch(
+      Map<String, Object?>? body, {
+      String id = '5',
+      AdminResolver? resolver,
+    }) => status_route.handleTutorStatus(
+      _ctx(HttpMethod.patch, body: body),
+      id,
+      adminResolver: resolver ?? _as('super_admin'),
+      repository: _Repo(store),
+      suspensions: store,
+      noticeSender: sender.call,
+    );
+
     for (final role in [
       'admin',
       'application_reviewer',
@@ -85,42 +108,63 @@ void main() {
       'monitor_admin',
     ]) {
       test('$role is forbidden and nothing changes', () async {
-        final repo = _Repo();
-        final res = await status_route.handleTutorStatus(
-          _ctx(HttpMethod.patch, body: {'status': 'Suspended'}),
-          '5',
-          adminResolver: _as(role),
-          repository: repo,
+        final res = await patch(
+          {'status': 'Suspended', 'reason': _reason},
+          resolver: _as(role),
         );
         expect(res.statusCode, HttpStatus.forbidden);
-        expect(repo.statusValue, isNull);
+        expect(store.account('tutor', 5).status, 'Active');
+        expect(store.suspensions, isEmpty);
       });
     }
 
     test('invalid token is 401', () async {
-      final repo = _Repo();
-      final res = await status_route.handleTutorStatus(
-        _ctx(HttpMethod.patch, body: {'status': 'Suspended'}),
-        '5',
-        adminResolver: _badToken(),
-        repository: repo,
+      final res = await patch(
+        {'status': 'Suspended', 'reason': _reason},
+        resolver: _badToken(),
       );
       expect(res.statusCode, HttpStatus.unauthorized);
-      expect(repo.statusValue, isNull);
+      expect(store.suspensions, isEmpty);
     });
 
-    test('super_admin can suspend, deactivate and reactivate', () async {
-      for (final s in ['Suspended', 'Deactivated', 'Active']) {
-        final repo = _Repo();
-        final res = await status_route.handleTutorStatus(
-          _ctx(HttpMethod.patch, body: {'status': s}),
-          '5',
-          adminResolver: _as('super_admin'),
-          repository: repo,
-        );
+    test('suspending records the reason and notifies the tutor', () async {
+      final res = await patch({'status': 'Suspended', 'reason': _reason});
+      expect(res.statusCode, HttpStatus.ok);
+      final body = jsonDecode(await res.body()) as Map<String, dynamic>;
+      expect(body['status'], 'Suspended');
+      expect(body['notificationDelivered'], isTrue);
+      expect(store.suspensions.single.reason, _reason);
+      expect(store.notifications.single.type, 'AccountSuspended');
+      expect(sender.sent.single.firebaseUid, 'uid-tutor-5');
+      expect(sender.sent.single.body, contains(_reason));
+    });
+
+    test('a failed notification keeps the suspension and warns the admin', () async {
+      sender.fail = true;
+      final res = await patch({'status': 'Suspended', 'reason': _reason});
+      final body = jsonDecode(await res.body()) as Map<String, dynamic>;
+      expect(res.statusCode, HttpStatus.ok);
+      expect(body['notificationDelivered'], isFalse);
+      expect(body['warning'], contains('could not be delivered'));
+      expect(store.account('tutor', 5).status, 'Suspended');
+    });
+
+    test('suspending needs a meaningful reason', () async {
+      for (final body in [
+        <String, Object?>{'status': 'Suspended'},
+        <String, Object?>{'status': 'Suspended', 'reason': 'too short'},
+      ]) {
+        final res = await patch(body);
+        expect(res.statusCode, HttpStatus.badRequest, reason: '$body');
+      }
+      expect(store.suspensions, isEmpty);
+    });
+
+    test('deactivating and reactivating need no reason', () async {
+      for (final s in ['Deactivated', 'Active']) {
+        final res = await patch({'status': s});
         expect(res.statusCode, HttpStatus.ok);
-        expect(repo.statusId, 5);
-        expect(repo.statusValue, s);
+        expect(store.account('tutor', 5).status, s);
       }
     });
 
@@ -132,46 +176,38 @@ void main() {
         (id: 'x', body: <String, Object?>{'status': 'Active'}),
         (id: '0', body: <String, Object?>{'status': 'Active'}),
       ]) {
-        final repo = _Repo();
-        final res = await status_route.handleTutorStatus(
-          _ctx(HttpMethod.patch, body: c.body),
-          c.id,
-          adminResolver: _as('super_admin'),
-          repository: repo,
-        );
+        final res = await patch(c.body, id: c.id);
         expect(res.statusCode, HttpStatus.badRequest, reason: '$c');
-        expect(repo.statusValue, isNull);
       }
     });
 
     test('a tutor still in review cannot be changed here (409)', () async {
-      final repo = _Repo()..lockedStatus = 'Pending';
-      final res = await status_route.handleTutorStatus(
-        _ctx(HttpMethod.patch, body: {'status': 'Active'}),
-        '7',
-        adminResolver: _as('super_admin'),
-        repository: repo,
-      );
-      expect(res.statusCode, HttpStatus.conflict);
-      final body = jsonDecode(await res.body()) as Map<String, dynamic>;
-      expect(body['error'], contains('Applications page'));
-      expect(repo.statusValue, isNull);
+      store.add(role: 'tutor', profileId: 7, status: 'Pending');
+      for (final body in [
+        <String, Object?>{'status': 'Active'},
+        <String, Object?>{'status': 'Suspended', 'reason': _reason},
+      ]) {
+        final res = await patch(body, id: '7');
+        expect(res.statusCode, HttpStatus.conflict);
+        final json = jsonDecode(await res.body()) as Map<String, dynamic>;
+        expect(json['error'], contains('Applications page'));
+      }
+      expect(store.account('tutor', 7).status, 'Pending');
+      expect(store.suspensions, isEmpty);
     });
 
     test('missing tutor is 404; wrong method is 405', () async {
-      final repo = _Repo()..missing = true;
-      var res = await status_route.handleTutorStatus(
-        _ctx(HttpMethod.patch, body: {'status': 'Suspended'}),
-        '9',
-        adminResolver: _as('super_admin'),
-        repository: repo,
+      var res = await patch(
+        {'status': 'Suspended', 'reason': _reason},
+        id: '9',
       );
       expect(res.statusCode, HttpStatus.notFound);
       res = await status_route.handleTutorStatus(
         _ctx(HttpMethod.post),
         '9',
         adminResolver: _as('super_admin'),
-        repository: repo,
+        repository: _Repo(store),
+        suspensions: store,
       );
       expect(res.statusCode, HttpStatus.methodNotAllowed);
     });

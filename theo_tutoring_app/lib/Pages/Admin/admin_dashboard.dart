@@ -208,7 +208,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _loadMonitor() => _run(
     _monitor,
-    widget.loadMonitor ?? () => _monitorApi.fetchSnapshot('live'),
+    widget.loadMonitor ?? _monitorApi.fetchSnapshot,
   );
 
   Future<void> _loadActivity() => _run(
@@ -386,7 +386,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       if (_canMonitor)
         _QuickAction(
           title: 'Monitor Platform',
-          subtitle: 'Uptime, traffic and audit log',
+          subtitle: 'Platform counts and audit log',
           icon: Icons.monitor_heart_outlined,
           onTap: () => _open(AdminRoutes.monitor),
         ),

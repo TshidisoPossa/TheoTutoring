@@ -208,14 +208,76 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // A reason is required, and nothing is sent without one
+    expect(find.byKey(const ValueKey('suspension-reason')), findsOneWidget);
+    await tester.tap(find.text('Save status'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Give a reason of at least 10'), findsOneWidget);
+    expect(backend.requests.where((r) => r.method == 'PATCH'), isEmpty);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('suspension-reason')),
+      'Repeated no-shows for booked lessons.',
+    );
     await tester.tap(find.text('Save status'));
     await tester.pumpAndSettle();
 
     final patch = backend.requests.lastWhere((r) => r.method == 'PATCH');
     expect(patch.url.path, '/admin/students/12/status');
-    expect(jsonDecode(patch.body), {'status': 'Suspended'});
+    expect(jsonDecode(patch.body), {
+      'status': 'Suspended',
+      'reason': 'Repeated no-shows for booked lessons.',
+    });
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('Lerato Mokoena is now Suspended.'), findsOneWidget);
+  });
+
+  testWidgets('an undelivered suspension notice is reported to the admin', (
+    tester,
+  ) async {
+    final backend = _Backend()
+      ..patchResponse = http.Response(
+        jsonEncode({
+          ..._student(12, 'Lerato Mokoena', 'Suspended'),
+          'notificationDelivered': false,
+          'warning':
+              'The student was suspended, but the notification could not be '
+              'delivered right now.',
+        }),
+        200,
+      );
+    await _pump(tester, backend);
+
+    await _openActions(tester, 0);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Suspended'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('suspension-reason')),
+      'Repeated no-shows for booked lessons.',
+    );
+    await tester.tap(find.text('Save status'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('notification could not be delivered'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('reactivating a suspended student needs no reason', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await _pump(tester, backend);
+
+    await _openActions(tester, 1); // Sipho, suspended
+    expect(find.byKey(const ValueKey('suspension-reason')), findsNothing);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Active'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('suspension-reason')), findsNothing);
+    await tester.tap(find.text('Save status'));
+    await tester.pumpAndSettle();
+    final patch = backend.requests.lastWhere((r) => r.method == 'PATCH');
+    expect(jsonDecode(patch.body), {'status': 'Active'});
   });
 
   testWidgets('removing a student needs confirmation and sends Deactivated', (

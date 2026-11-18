@@ -21,6 +21,7 @@ class AdminRoutes {
   static const users = '/admin/users';
   static const tutors = '/admin/tutors';
   static const applications = '/admin/applications';
+  static const appeals = '/admin/appeals';
   static const subjects = '/admin/subjects';
   static const reviews = '/admin/reviews';
   static const payouts = '/admin/payouts';
@@ -64,6 +65,11 @@ const _sections = [
       'admin.applications.read',
     }),
     _NavItem('Users', AdminRoutes.users, {'admin.users.manage'}),
+    // Deciding an appeal lifts a suspension, like changing the status
+    _NavItem('Appeals', AdminRoutes.appeals, {
+      'admin.students.manage',
+      'admin.tutors.manage',
+    }),
   ]),
   _NavSection('CONTENT', [
     _NavItem('Subjects', AdminRoutes.subjects, {
@@ -115,7 +121,11 @@ class AdminShell extends StatelessWidget {
             Expanded(
               child: Column(
                 children: [
-                  _TopBar(adminName: adminName, showMenu: !wide),
+                  _TopBar(
+                    adminName: adminName,
+                    showMenu: !wide,
+                    currentRoute: currentRoute,
+                  ),
                   Expanded(child: child),
                 ],
               ),
@@ -237,7 +247,14 @@ class _SidebarItem extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.adminName, required this.showMenu});
+  const _TopBar({
+    required this.adminName,
+    required this.showMenu,
+    required this.currentRoute,
+  });
+
+  /// The page showing; the avatar opens Settings unless it is already open.
+  final String currentRoute;
   final String? adminName;
   final bool showMenu;
 
@@ -317,17 +334,30 @@ class _TopBar extends StatelessWidget {
                 ],
               ),
             ),
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AdminColors.accent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.person_outline,
-              color: Colors.white,
-              size: 20,
+          // The account icon opens Settings (password and log out), the
+          // admin's account page; its own route guard still applies
+          Tooltip(
+            message: 'Account settings',
+            child: GestureDetector(
+              onTap: currentRoute == AdminRoutes.settings
+                  ? null
+                  : () => Navigator.pushReplacementNamed(
+                      context,
+                      AdminRoutes.settings,
+                    ),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AdminColors.accent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.person_outline,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
             ),
           ),
         ],

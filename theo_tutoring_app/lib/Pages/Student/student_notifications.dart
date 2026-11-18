@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../account_suspension_page.dart';
 import '../notifications_screen.dart';
 import 'student_bottom_nav.dart';
 import 'student_notifications_api.dart';
@@ -9,12 +10,13 @@ import 'student_rebook.dart';
 const studentLessonsTab = 1;
 
 /// The link under a student's card, or null: lesson cards go to Lessons,
-/// and a lesson the tutor rescheduled goes to that tutor's booking page.
+/// a lesson the tutor rescheduled goes to that tutor's booking page, and
+/// suspension and appeal cards go to the appeal page.
 String? studentLessonLink(NotificationItem n) => switch (n.type) {
       'UpcomingSession' => 'View upcoming lesson',
       'PaymentReceived' || 'BookingCancelled' => 'View my lessons',
       'BookingRescheduled' when n.tutorId != null => 'Book a new time',
-      _ => null,
+      _ => accountNoticeLink(n.type),
     };
 
 /// The student's bell page. It pops with a bottom-bar tab index (a tab was
@@ -27,6 +29,7 @@ class StudentNotificationsScreen extends StatelessWidget {
     this.studentName,
     this.studentPhoto,
     this.rebookPage,
+    this.accountPage,
   });
 
   /// Loads the page; tests pass their own.
@@ -38,6 +41,9 @@ class StudentNotificationsScreen extends StatelessWidget {
 
   /// The page "Book a new time" opens; tests pass their own.
   final Widget Function(NotificationItem n)? rebookPage;
+
+  /// The page suspension and appeal cards open; tests pass their own.
+  final Widget Function()? accountPage;
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +57,15 @@ class StudentNotificationsScreen extends StatelessWidget {
           'to start or changes, or there is news about a refund.',
       linkLabel: studentLessonLink,
       onLink: (context, n) async {
+        if (accountNoticeLink(n.type) != null) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => accountPage?.call() ?? const AccountSuspensionPage(),
+            ),
+          );
+          return;
+        }
         if (n.type == 'BookingRescheduled' && n.tutorId != null) {
           await Navigator.push(
             context,

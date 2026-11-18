@@ -27,8 +27,10 @@ abstract interface class StudentRosterRepository {
     required int pageSize,
   });
 
-  /// Updates only `User.AccountStatus` of a student and returns that student.
-  Future<Map<String, Object?>> setStatus(int studentId, String status);
+  /// One student as the roster shows them. Throws [StudentNotFound].
+  /// (Status changes go through the AccountSuspensionRepository, which also
+  /// records suspensions.)
+  Future<Map<String, Object?>> find(int studentId);
 }
 
 const _studentSelect =
@@ -117,22 +119,13 @@ class MySqlStudentRosterRepository implements StudentRosterRepository {
   }
 
   @override
-  Future<Map<String, Object?>> setStatus(int studentId, String status) async {
+  Future<Map<String, Object?>> find(int studentId) async {
     final conn = await getConnection();
-    final found = await conn.execute(
-      'SELECT u.UserId FROM `user` u JOIN studentprofile sp '
-      "ON sp.UserID = u.UserId WHERE sp.StudentID = :id AND u.Role = 'student'",
-      {'id': studentId},
-    );
-    if (found.rows.isEmpty) throw const StudentNotFound();
-    await conn.execute(
-      'UPDATE `user` SET AccountStatus = :status WHERE UserId = :uid',
-      {'status': status, 'uid': found.rows.first.str('UserId')},
-    );
     final row = await conn.execute(
-      '$_studentSelect WHERE sp.StudentID = :id',
+      "$_studentSelect WHERE sp.StudentID = :id AND u.Role = 'student'",
       {'id': studentId},
     );
+    if (row.rows.isEmpty) throw const StudentNotFound();
     return _student(row.rows.first);
   }
 }

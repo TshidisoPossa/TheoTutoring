@@ -67,6 +67,10 @@ class AdminTutor {
   final String? certificateUrl;
   final String? idDocumentUrl;
 
+  /// Only after a status change: e.g. the tutor was suspended but could not
+  /// be notified yet.
+  final String? statusWarning;
+
   const AdminTutor({
     required this.tutorId,
     required this.name,
@@ -83,6 +87,7 @@ class AdminTutor {
     this.joinedAt,
     this.certificateUrl,
     this.idDocumentUrl,
+    this.statusWarning,
   });
 
   factory AdminTutor.fromJson(Map<String, dynamic> j) => AdminTutor(
@@ -101,6 +106,7 @@ class AdminTutor {
     status: _text(j['status']) ?? 'Unknown',
     certificateUrl: _text(j['certificateUrl']),
     idDocumentUrl: _text(j['idDocumentUrl']),
+    statusWarning: _text(j['warning']),
   );
 
   String get reference => 'TUT-$tutorId';

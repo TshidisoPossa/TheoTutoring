@@ -140,6 +140,36 @@ void main() {
     ],
   };
 
+  testWidgets('a suspension card links to the appeal page', (tester) async {
+    tester.view.physicalSize = const Size(400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StudentNotificationsScreen(
+          loadNotifications: () async => {
+            'unreadCount': 1,
+            'notifications': [
+              _card(
+                'suspension-4',
+                'AccountSuspended',
+                'Account suspended',
+                'Your TheoTutoring account has been suspended. Reason: '
+                    'Repeated no-shows.',
+              ),
+            ],
+          },
+          accountPage: () => const Scaffold(body: Text('appeal page')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Reason: Repeated no-shows.'), findsOneWidget);
+    await tester.tap(find.text('View suspension and appeal'));
+    await tester.pumpAndSettle();
+    expect(find.text('appeal page'), findsOneWidget);
+  });
+
   testWidgets('a rescheduled lesson links to booking a new time', (
     tester,
   ) async {

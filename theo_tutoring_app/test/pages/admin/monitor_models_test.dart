@@ -2,29 +2,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:theo_tutoring_app/Pages/Admin/models/monitor_models.dart';
 
 void main() {
-  test('parses unavailable snapshot values without inventing traffic data', () {
+  test('parses the counts and ignores the empty telemetry placeholders', () {
     final snapshot = MonitorSnapshot.fromJson({
       'adminName': 'Verified Admin',
-      'metrics': {
-        'uptimePercent': null,
-        'uptimeSince': null,
-        'requestsPerSecond': null,
-        'errorRatePercent': null,
-        'avgLatencyMs': null,
-        'p95LatencyMs': null,
-      },
+      'metrics': {'uptimePercent': null, 'avgLatencyMs': null},
       'traffic': {'baselinePerMinute': null, 'points': <Object?>[]},
+      'operationalMetrics': {
+        'activeUsers': 12,
+        'activeTutors': '4',
+        'pendingApplications': 0,
+      },
     });
 
     expect(snapshot.adminName, 'Verified Admin');
-    expect(snapshot.metrics.uptimePercent, isNull);
-    expect(snapshot.metrics.uptimeSince, isNull);
-    expect(snapshot.metrics.requestsPerSecond, isNull);
-    expect(snapshot.metrics.errorRatePercent, isNull);
-    expect(snapshot.metrics.avgLatencyMs, isNull);
-    expect(snapshot.metrics.p95LatencyMs, isNull);
-    expect(snapshot.traffic.baselinePerMinute, isNull);
-    expect(snapshot.traffic.points, isEmpty);
+    expect(snapshot.operationalMetrics.activeUsers, 12);
+    expect(snapshot.operationalMetrics.activeTutors, 4);
+    expect(snapshot.operationalMetrics.pendingApplications, 0);
+  });
+
+  test('a missing or unreadable count stays null rather than zero', () {
+    final snapshot = MonitorSnapshot.fromJson({
+      'operationalMetrics': {'activeUsers': 'n/a'},
+    });
+    expect(snapshot.adminName, '');
+    expect(snapshot.operationalMetrics.activeUsers, isNull);
+    expect(snapshot.operationalMetrics.activeTutors, isNull);
+    expect(snapshot.operationalMetrics.pendingApplications, isNull);
+    expect(
+      MonitorSnapshot.fromJson({}).operationalMetrics.activeUsers,
+      isNull,
+    );
   });
 
   test('parses backend audit metadata and distinguishes record kinds', () {

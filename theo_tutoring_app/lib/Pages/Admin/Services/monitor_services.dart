@@ -59,14 +59,10 @@ class AdminMonitorService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  /// [range] is `live` (recent minutes) or `24h`.
-  Future<MonitorSnapshot> fetchSnapshot(String range) async =>
-      MonitorSnapshot.fromJson(
-        await _get(
-          Uri.parse('$apiBaseUrl/admin/monitor')
-              .replace(queryParameters: {'range': range}),
-        ),
-      );
+  /// The admin's name and the current platform counts.
+  Future<MonitorSnapshot> fetchSnapshot() async => MonitorSnapshot.fromJson(
+    await _get(Uri.parse('$apiBaseUrl/admin/monitor')),
+  );
 
   /// Pass the previous page's `nextCursor` as [before] to load older entries.
   Future<AuditLogPage> fetchAuditLog({String? before, int limit = 20}) async =>

@@ -23,8 +23,7 @@ void main() {
           return http.Response(
             jsonEncode({
               'adminName': 'Admin',
-              'metrics': {},
-              'traffic': {'points': []},
+              'operationalMetrics': {'activeUsers': 5},
             }),
             200,
           );
@@ -32,13 +31,15 @@ void main() {
         tokenProvider: () async => 'firebase-id-token',
       );
 
-      await service.fetchSnapshot('24h');
+      final snapshot = await service.fetchSnapshot();
       await service.fetchAuditLog(before: 'cursor/value', limit: 20);
 
+      expect(snapshot.operationalMetrics.activeUsers, 5);
       expect(requests, hasLength(2));
       expect(requests[0].url.origin, Uri.parse(apiBaseUrl).origin);
       expect(requests[0].url.path, '/admin/monitor');
-      expect(requests[0].url.queryParameters['range'], '24h');
+      // No traffic range any more: there is no traffic data to choose from
+      expect(requests[0].url.queryParameters, isEmpty);
       expect(requests[0].headers['Authorization'], 'Bearer firebase-id-token');
       expect(requests[1].url.path, '/admin/monitor/audit-log');
       expect(requests[1].url.queryParameters['limit'], '20');
@@ -59,26 +60,28 @@ void main() {
       tokenProvider: () async => null,
     );
 
-    await expectLater(service.fetchSnapshot('live'), throwsException);
+    await expectLater(service.fetchSnapshot(), throwsException);
     expect(sent, isFalse);
   });
 
   test('uses the backend error message for failed requests', () async {
     final service = AdminMonitorService(
       client: MockClient(
-        (_) async =>
-            http.Response(jsonEncode({'error': 'Invalid range.'}), 400),
+        (_) async => http.Response(
+          jsonEncode({'error': 'Platform metrics are temporarily unavailable.'}),
+          500,
+        ),
       ),
       tokenProvider: () async => 'token',
     );
 
     await expectLater(
-      service.fetchSnapshot('7d'),
+      service.fetchSnapshot(),
       throwsA(
         isA<Exception>().having(
           (e) => e.toString(),
           'message',
-          contains('Invalid range.'),
+          contains('Platform metrics are temporarily unavailable.'),
         ),
       ),
     );

@@ -8,8 +8,9 @@ nullable `StudentProfile.Institution`, the student's university), then
 `007_tutor_availability_override.sql`,
 then `009_email_verification_code.sql` (the emailed sign-up codes),
 then `010_report_category.sql` (Report a Problem categories),
-and finally `011_review_highlights_note.sql` (review badges and private note,
-both admin only). Apply
+then `011_review_highlights_note.sql` (review badges and private note,
+both admin only), and finally `012_account_suspension_appeal.sql`
+(suspension history and appeals). Apply
 these after the base `schema.sql`, from one deployment process with booking
 writes stopped.
 Each migration ledger version is written last.
@@ -491,3 +492,24 @@ another user. Apply after the active `004_report.sql` migration.
 
 Adds nullable admin-only review highlights and private notes to `Reviews`.
 Apply after the base schema has created `Reviews`.
+
+## `012_account_suspension_appeal.sql`
+
+Creates `accountsuspension` (who suspended a student or tutor, why, when, the
+status to restore, and how and by whom the suspension ended) and
+`suspensionappeal` (the user's explanation and submission time, then the
+reviewing admin, decision, note to the user and decision time). Both
+reference the existing `notification` table, which keeps the SQL record of
+each suspension and appeal-decision notice; `FirestoreNotificationID` is set
+once the in-app notification was delivered.
+
+Rules enforced by the schema: one `Active` suspension per user, one appeal
+per suspension (a rejected appeal is final for that suspension), a reason of
+at least 10 characters and an explanation of at least 20. Rows are never
+deleted. Apply after the base schema; it references `user`, `admin` and
+`notification` and records itself in `schemamigrations`. Table names are
+written exactly as they exist on the case-sensitive server
+(`lower_case_table_names = 0`), and the file has no `USE`, so it runs in the
+database selected when connecting. Re-running it changes nothing. Until it
+is applied, suspending from the admin Students and Tutors pages, the
+suspended-account screen and the Appeals page return server errors.

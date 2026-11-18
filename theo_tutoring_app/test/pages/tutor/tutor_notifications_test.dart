@@ -55,6 +55,37 @@ Future<void> _pump(WidgetTester tester, Map<String, dynamic> page) async {
 }
 
 void main() {
+  testWidgets('an appeal decision card links to the appeal page', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TutorNotificationsScreen(
+          loadNotifications: () async => {
+            'unreadCount': 1,
+            'notifications': [
+              _card(
+                'appeal-3-decision',
+                'AppealApproved',
+                'Appeal approved',
+                'Your appeal was approved and your account has been '
+                    'reinstated.',
+              ),
+            ],
+          },
+          accountPage: () => const Scaffold(body: Text('appeal page')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View appeal'));
+    await tester.pumpAndSettle();
+    expect(find.text('appeal page'), findsOneWidget);
+  });
+
   testWidgets('groups cards by day with the unread count', (tester) async {
     await _pump(tester, _page);
     expect(find.text('Notifications'), findsOneWidget);

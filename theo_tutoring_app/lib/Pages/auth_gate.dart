@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/account_suspension_api.dart';
 import '../services/auth_service.dart';
 import 'Admin/Services/admin_access_service.dart';
 import 'Admin/admin_shell.dart';
@@ -11,6 +12,7 @@ import 'Tutor/tutor_api.dart';
 import 'Tutor/tutor_dashboard.dart';
 import 'Tutor/tutor_presence.dart';
 import 'Tutor/tutor_theme.dart';
+import 'account_suspension_page.dart';
 import 'login_page.dart';
 import 'role_selection.dart';
 import 'tutor_registration.dart';
@@ -43,10 +45,13 @@ Future<void> signOutToStart(BuildContext context) async {
 /// signing in, so registration (which also signs the user in) is never
 /// interrupted. It does notice signing out, e.g. at the end of registration.
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key, this.service});
+  const AuthGate({super.key, this.service, this.suspensionApi});
 
   /// Tests pass a fake; the app uses [AuthService.instance].
   final AuthService? service;
+
+  /// Tests pass a fake for the suspended-account screen.
+  final AccountSuspensionApi? suspensionApi;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -62,6 +67,7 @@ class _AuthGateState extends State<AuthGate> {
 
   bool _loading = true;
   bool _signedOut = false;
+  bool _suspended = false;
   SignedInAccount? _verifyReminder;
   _GateMessage? _message;
 
@@ -83,6 +89,7 @@ class _AuthGateState extends State<AuthGate> {
   void _show({
     bool loading = false,
     bool signedOut = false,
+    bool suspended = false,
     SignedInAccount? verifyReminder,
     _GateMessage? message,
   }) {
@@ -90,6 +97,7 @@ class _AuthGateState extends State<AuthGate> {
     setState(() {
       _loading = loading;
       _signedOut = signedOut;
+      _suspended = suspended;
       _verifyReminder = verifyReminder;
       _message = message;
     });
@@ -164,6 +172,13 @@ class _AuthGateState extends State<AuthGate> {
   /// Opens the dashboard for the account's role.
   Future<void> _openHome(SignedInAccount account) async {
     final status = account.accountStatus.trim().toLowerCase();
+    // A suspended student or tutor sees only their suspension and appeal;
+    // the backend refuses every other student and tutor route for them.
+    if (status == 'suspended' &&
+        (account.role == 'student' || account.role == 'tutor')) {
+      _show(suspended: true);
+      return;
+    }
     if (status == 'suspended' || status == 'deactivated') {
       _show(
         message: const _GateMessage(
@@ -310,6 +325,15 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_signedOut) return const _SplashScreen();
+
+    if (_suspended && !_loading) {
+      return AccountSuspensionPage(
+        api: widget.suspensionApi,
+        onSignOut: _signOut,
+        // Reinstated meanwhile: ask the backend again and open the app
+        onReinstated: _resolve,
+      );
+    }
 
     final reminder = _verifyReminder;
     if (reminder != null) {

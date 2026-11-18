@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'Pages/Admin/admin_subjects.dart';
 
 import 'Pages/auth_gate.dart';
+import 'Pages/Admin/admin_appeals.dart';
 import 'Pages/Admin/admin_shell.dart';
 import 'Pages/Admin/admin_refunds.dart';
 import 'Pages/Admin/admin_monitor.dart';
@@ -103,6 +104,10 @@ final Map<String, WidgetBuilder> appRoutes = {
   AdminRoutes.students: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.students.read', 'admin.students.manage'},
     child: AdminStudentsScreen(),
+  ),
+  AdminRoutes.appeals: (_) => const AdminAccessGuard(
+    requiredPermissions: {'admin.students.manage', 'admin.tutors.manage'},
+    child: AdminAppealsScreen(),
   ),
   AdminRoutes.subjects: (_) => const AdminAccessGuard(
     requiredPermissions: {'admin.subjects.manage'},

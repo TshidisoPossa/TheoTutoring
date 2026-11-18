@@ -18,13 +18,6 @@ class TutorNotFound implements Exception {
   const TutorNotFound();
 }
 
-/// The tutor has not been approved yet (Incomplete, Pending or Rejected):
-/// their status is decided on the Applications page, not here.
-class TutorStatusLocked implements Exception {
-  const TutorStatusLocked(this.status);
-  final String status;
-}
-
 abstract interface class TutorRosterRepository {
   /// [status] is a User.AccountStatus value, or null for all tutors.
   Future<Map<String, Object?>> list({
@@ -34,9 +27,10 @@ abstract interface class TutorRosterRepository {
     required int pageSize,
   });
 
-  /// Updates only `User.AccountStatus` of an approved tutor and returns that
-  /// tutor. Throws [TutorStatusLocked] for a tutor still in review.
-  Future<Map<String, Object?>> setStatus(int tutorId, String status);
+  /// One tutor as the roster shows them. Throws [TutorNotFound].
+  /// (Status changes go through the AccountSuspensionRepository, which also
+  /// records suspensions; tutors still in review stay locked there.)
+  Future<Map<String, Object?>> find(int tutorId);
 }
 
 const _tutorSelect =
@@ -132,27 +126,13 @@ class MySqlTutorRosterRepository implements TutorRosterRepository {
   }
 
   @override
-  Future<Map<String, Object?>> setStatus(int tutorId, String status) async {
+  Future<Map<String, Object?>> find(int tutorId) async {
     final conn = await getConnection();
-    final found = await conn.execute(
-      'SELECT u.UserId, u.AccountStatus FROM `user` u JOIN tutorprofile tp '
-      "ON tp.UserID = u.UserId WHERE tp.TutorID = :id AND u.Role = 'tutor'",
-      {'id': tutorId},
-    );
-    if (found.rows.isEmpty) throw const TutorNotFound();
-    final current = found.rows.first.str('AccountStatus') ?? '';
-    // Activating a tutor in review would skip the application approval.
-    if (!tutorRosterSettableStatuses.contains(current)) {
-      throw TutorStatusLocked(current);
-    }
-    await conn.execute(
-      'UPDATE `user` SET AccountStatus = :status WHERE UserId = :uid',
-      {'status': status, 'uid': found.rows.first.str('UserId')},
-    );
     final row = await conn.execute(
-      '$_tutorSelect WHERE tp.TutorID = :id',
+      "$_tutorSelect WHERE tp.TutorID = :id AND u.Role = 'tutor'",
       {'id': tutorId},
     );
+    if (row.rows.isEmpty) throw const TutorNotFound();
     return _tutor(row.rows.first);
   }
 }

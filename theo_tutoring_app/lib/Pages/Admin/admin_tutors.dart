@@ -11,6 +11,8 @@ import 'package:intl/intl.dart';
 import 'Services/admin_tutors_service.dart';
 import 'admin_documents.dart';
 import 'admin_shell.dart';
+import 'models/admin_appeal_models.dart'
+    show suspensionReasonMaxLength, suspensionReasonMinLength;
 import 'models/admin_tutor_models.dart';
 
 const _surface2 = Color(0xFFF8F9FB);
@@ -137,7 +139,12 @@ class _AdminTutorsScreenState extends State<AdminTutorsScreen> {
     );
     if (updated == null || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${updated.name} is now ${updated.statusLabel}.')),
+      SnackBar(
+        content: Text(
+          updated.statusWarning ??
+              '${updated.name} is now ${updated.statusLabel}.',
+        ),
+      ),
     );
     _load();
   }
@@ -920,6 +927,15 @@ class _TutorDialogState extends State<_TutorDialog> {
   bool _saving = false;
   String? _error;
 
+  /// Why the tutor is being suspended; they are shown it.
+  final _reason = TextEditingController();
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
   TutorStatusChange? get _current {
     for (final option in TutorStatusChange.values) {
       if (option.apiValue == widget.tutor.status) return option;
@@ -930,6 +946,16 @@ class _TutorDialogState extends State<_TutorDialog> {
   Future<void> _save() async {
     final target = _selected;
     if (target == null || target == _current) return;
+    final reason = _reason.text.trim();
+    if (target == TutorStatusChange.suspended &&
+        reason.length < suspensionReasonMinLength) {
+      setState(
+        () => _error =
+            'Give a reason of at least $suspensionReasonMinLength characters. '
+            'The tutor is shown it and can appeal.',
+      );
+      return;
+    }
     if (target == TutorStatusChange.removed) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -963,6 +989,7 @@ class _TutorDialogState extends State<_TutorDialog> {
       final updated = await widget.service.updateStatus(
         widget.tutor.tutorId,
         target,
+        reason: target == TutorStatusChange.suspended ? reason : null,
       );
       if (mounted) Navigator.pop(context, updated);
     } catch (e) {
@@ -1092,6 +1119,29 @@ class _TutorDialogState extends State<_TutorDialog> {
                   const Text(
                     'Removed sets the account status to Deactivated. No '
                     'records are deleted.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AdminColors.textMuted,
+                    ),
+                  ),
+                ],
+                if (_selected == TutorStatusChange.suspended &&
+                    _current != TutorStatusChange.suspended) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const ValueKey('suspension-reason'),
+                    controller: _reason,
+                    enabled: !_saving,
+                    minLines: 2,
+                    maxLines: 4,
+                    maxLength: suspensionReasonMaxLength,
+                    decoration: const InputDecoration(
+                      labelText: 'Reason for suspending (shown to the tutor)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const Text(
+                    'The tutor is notified with this reason and can appeal.',
                     style: TextStyle(
                       fontSize: 12,
                       color: AdminColors.textMuted,

@@ -61,6 +61,10 @@ class AdminStudent {
   /// Proof of registration uploaded at sign-up (Cloudinary link).
   final String? proofOfRegistrationUrl;
 
+  /// Only after a status change: e.g. the student was suspended but could
+  /// not be notified yet.
+  final String? statusWarning;
+
   const AdminStudent({
     required this.studentId,
     required this.name,
@@ -75,6 +79,7 @@ class AdminStudent {
     this.joinedAt,
     this.institution,
     this.proofOfRegistrationUrl,
+    this.statusWarning,
   });
 
   factory AdminStudent.fromJson(Map<String, dynamic> j) => AdminStudent(
@@ -91,6 +96,7 @@ class AdminStudent {
     status: _text(j['status']) ?? 'Unknown',
     institution: _text(j['institution']),
     proofOfRegistrationUrl: _text(j['proofOfRegistrationUrl']),
+    statusWarning: _text(j['warning']),
   );
 
   AdminStudent copyWith({String? status}) => AdminStudent(
