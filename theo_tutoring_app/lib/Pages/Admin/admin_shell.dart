@@ -3,7 +3,9 @@
 
 import 'package:flutter/material.dart';
 
+import '../../services/in_app_notifications.dart';
 import 'admin_access_guard.dart';
+import 'admin_notifications.dart';
 
 class AdminColors {
   static const primary = Color(0xFF0A3FA6);
@@ -302,9 +304,24 @@ class _TopBar extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () {},
+          // Opens the admin's notifications; red badge = live unread count
+          ValueListenableBuilder<int>(
+            valueListenable: InAppNotifications.instance.unreadCount,
+            builder: (context, unread, _) => IconButton(
+              tooltip: 'Notifications',
+              icon: Badge(
+                isLabelVisible: unread > 0,
+                backgroundColor: const Color(0xFFE05252),
+                label: Text(unread > 99 ? '99+' : '$unread'),
+                child: const Icon(Icons.notifications_none),
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const AdminNotificationsScreen(),
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 8),
           Container(width: 1, height: 32, color: AdminColors.border),

@@ -5,6 +5,7 @@ import 'Pages/Admin/admin_subjects.dart';
 
 import 'Pages/auth_gate.dart';
 import 'Pages/Admin/admin_appeals.dart';
+import 'services/app_navigator.dart';
 import 'Pages/Admin/admin_shell.dart';
 import 'Pages/Admin/admin_refunds.dart';
 import 'Pages/Admin/admin_monitor.dart';
@@ -48,6 +49,8 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: TutorTheme.mode,
       builder: (context, themeMode, _) => MaterialApp(
+        // In-app notification banners show over any page through this
+        navigatorKey: appNavigatorKey,
         title: 'TheoTutoring',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(

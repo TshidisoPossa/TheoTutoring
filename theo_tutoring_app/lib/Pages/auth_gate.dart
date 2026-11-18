@@ -4,12 +4,21 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/account_suspension_api.dart';
+import '../services/app_navigator.dart';
 import '../services/auth_service.dart';
+import '../services/in_app_notifications.dart';
 import 'Admin/Services/admin_access_service.dart';
+import 'Admin/Services/admin_notifications_api.dart';
+import 'Admin/admin_notifications.dart';
 import 'Admin/admin_shell.dart';
+import 'Student/student_bottom_nav.dart';
 import 'Student/student_dashboard.dart';
+import 'Student/student_notifications.dart';
+import 'Student/student_notifications_api.dart';
 import 'Tutor/tutor_api.dart';
 import 'Tutor/tutor_dashboard.dart';
+import 'Tutor/tutor_nav.dart';
+import 'Tutor/tutor_notifications.dart';
 import 'Tutor/tutor_presence.dart';
 import 'Tutor/tutor_theme.dart';
 import 'account_suspension_page.dart';
@@ -25,6 +34,29 @@ import 'verify_email_page.dart';
 /// have no inbox. Users then get "Skip for now", and are reminded once per
 /// app run.
 const bool requireEmailVerification = true;
+
+/// Starts the in-app notification pop-ups for the signed-in user: [fetch]
+/// is their notification list, [page] their bell page (opened when a
+/// banner is tapped).
+void startInAppNotifications({
+  required Future<Map<String, dynamic>> Function() fetch,
+  required Widget Function() page,
+  void Function(BuildContext context, int tab)? onTab,
+}) {
+  InAppNotifications.instance.start(
+    fetch: fetch,
+    openPage: () async {
+      // The bell page pops with a tab index when its bottom bar is tapped
+      final tab = await appNavigatorKey.currentState?.push<Object?>(
+        MaterialPageRoute<Object?>(builder: (_) => page()),
+      );
+      final context = appNavigatorKey.currentContext;
+      if (tab is int && onTab != null && context != null && context.mounted) {
+        onTab(context, tab);
+      }
+    },
+  );
+}
 
 /// Signs out and goes back to the start screen, clearing the history so
 /// Back cannot return to the signed-in pages. Every Log Out button uses this.
@@ -191,6 +223,11 @@ class _AuthGateState extends State<AuthGate> {
     switch (account.role) {
       case 'student':
         TutorTheme.signedIn('student'); // dark mode, if they turned it on
+        startInAppNotifications(
+          fetch: fetchStudentNotifications,
+          page: () => const StudentNotificationsScreen(),
+          onTab: openStudentTab,
+        );
         _replaceWith(
           StudentDashboard(
             studentName: account.name.isEmpty ? null : account.name,
@@ -230,6 +267,14 @@ class _AuthGateState extends State<AuthGate> {
       // Students see "Available Now" on this tutor's profile from here on
       TutorPresence.instance.start();
       TutorTheme.signedIn('tutor'); // dark mode, if the tutor turned it on
+      // Approved tutors only: a pending tutor has no notifications yet
+      if (account.accountStatus.trim().toLowerCase() == 'active') {
+        startInAppNotifications(
+          fetch: fetchTutorNotifications,
+          page: () => const TutorNotificationsScreen(),
+          onTab: (context, tab) => openTutorTab(context, tab, current: -1),
+        );
+      }
       _replaceWith(TutorDashboard(initialData: dashboard));
     } on TutorApiException catch (e) {
       _show(
@@ -259,6 +304,10 @@ class _AuthGateState extends State<AuthGate> {
     if (!mounted) return;
     switch (access.status) {
       case AdminAccessStatus.allowed:
+        startInAppNotifications(
+          fetch: fetchAdminNotifications,
+          page: () => const AdminNotificationsScreen(),
+        );
         Navigator.of(context).pushReplacementNamed(AdminRoutes.dashboard);
       case AdminAccessStatus.denied:
         _show(

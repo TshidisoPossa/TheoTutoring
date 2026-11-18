@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../Pages/Tutor/tutor_presence.dart';
 import '../Pages/Tutor/tutor_theme.dart';
 import '../config/api.dart';
+import 'in_app_notifications.dart';
 
 /// Who is signed in, from GET /auth/me.
 class SignedInAccount {
@@ -284,6 +285,7 @@ class AuthService {
   Future<void> signOut() async {
     // While the token still works, so students see the tutor offline now.
     if (TutorPresence.instance.isRunning) await TutorPresence.instance.stop();
+    InAppNotifications.instance.stop(); // no pop-ups once signed out
     await _auth.signOut();
     TutorTheme.signedOut(); // the sign-in screens are always light
   }

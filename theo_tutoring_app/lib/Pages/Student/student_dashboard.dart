@@ -1,3 +1,4 @@
+import '../../services/in_app_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -122,7 +123,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
     super.initState();
     studentTabRequest.value = null; // a request left by an earlier session
     studentTabRequest.addListener(_onTabRequest);
+    // The bell follows the in-app notification checks (new ones pop up)
+    InAppNotifications.instance.unreadCount.addListener(_onLiveUnread);
     _loadDashboard();
+  }
+
+  void _onLiveUnread() {
+    if (mounted) {
+      setState(() => _unread = InAppNotifications.instance.unreadCount.value);
+    }
   }
 
   // Hot reload (development only) does not rerun initState, so a dashboard
@@ -138,6 +147,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
   @override
   void dispose() {
     studentTabRequest.removeListener(_onTabRequest);
+    InAppNotifications.instance.unreadCount.removeListener(_onLiveUnread);
     _dashboardApi.close();
     super.dispose();
   }

@@ -1,5 +1,6 @@
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mysql_dart/mysql_dart.dart';
+import 'package:theo_tutoring_backend/admin_notifications.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
 
 import '../../../lib/database.dart';
@@ -35,8 +36,17 @@ typedef TutorAvailabilitySlot = ({
   int endMinutes,
 });
 
-Future<Response> onRequest(RequestContext context) =>
-    handleTutorAvailability(context);
+Future<Response> onRequest(RequestContext context) async {
+  final (response, body) = await readResponseJson(
+    await handleTutorAvailability(context),
+  );
+  // A new application: tell the admins (in the background)
+  final tutorId = body?['tutorId'];
+  if (response.statusCode == 200 && tutorId is int) {
+    announceToAdmins(() => notifyAdminsOfApplication(tutorId));
+  }
+  return response;
+}
 
 /// Optional seams let the focused integration test use only its isolated DB
 /// and a verified test identity, while production keeps the normal defaults.

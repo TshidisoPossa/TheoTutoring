@@ -1,3 +1,4 @@
+import '../../services/in_app_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -187,6 +188,20 @@ class _TutorDashboardState extends State<TutorDashboard> {
     } else {
       _load();
     }
+    // The bell follows the in-app notification checks (new ones pop up)
+    InAppNotifications.instance.unreadCount.addListener(_onLiveUnread);
+  }
+
+  void _onLiveUnread() {
+    if (mounted) {
+      setState(() => _unread = InAppNotifications.instance.unreadCount.value);
+    }
+  }
+
+  @override
+  void dispose() {
+    InAppNotifications.instance.unreadCount.removeListener(_onLiveUnread);
+    super.dispose();
   }
 
   Future<void> _load() async {

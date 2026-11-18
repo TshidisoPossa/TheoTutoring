@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/in_app_notifications.dart';
 import 'Tutor/tutor_format.dart'; // notificationTime
 import 'Tutor/tutor_theme.dart';
 
@@ -81,7 +82,7 @@ class NotificationsScreen extends StatefulWidget {
     required this.loadNotifications,
     required this.markRead,
     required this.markAllRead,
-    required this.bottomNav,
+    this.bottomNav,
     required this.emptyMessage,
     this.accent = const Color(0xFF246BFE),
     this.linkLabel,
@@ -102,7 +103,8 @@ class NotificationsScreen extends StatefulWidget {
   final Future<int> Function() markAllRead;
 
   /// The role's bottom bar, with no tab highlighted. Call [goToTab] on a tap.
-  final Widget Function(ValueChanged<int> goToTab) bottomNav;
+  /// Null for admins, who have no bottom bar.
+  final Widget Function(ValueChanged<int> goToTab)? bottomNav;
 
   /// Shown when there are no notifications yet.
   final String emptyMessage;
@@ -146,11 +148,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     'earlier': 'Earlier',
   };
 
+  final _live = InAppNotifications.instance;
+
   @override
   void initState() {
     super.initState();
+    // No pop-ups over this page; new ones are added to the list instead
+    _live.pageOpened();
+    _live.unreadCount.addListener(_onLiveCount);
     _load();
   }
+
+  @override
+  void dispose() {
+    _live.unreadCount.removeListener(_onLiveCount);
+    _live.pageClosed();
+    super.dispose();
+  }
+
+  // The in-app check saw more unread than this page shows: reload it
+  void _onLiveCount() {
+    if (!_loading && _live.unreadCount.value > _unread) _load();
+  }
+
+  // Keeps the bells' live number in step with this page
+  void _syncLive() => _live.unreadCount.value = _unread;
 
   Future<void> _load() async {
     setState(() { _loading = _items.isEmpty; _error = null; });
@@ -166,6 +188,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _unread = (data['unreadCount'] as num?)?.toInt() ?? 0;
         _loading = false;
       });
+      _syncLive();
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
@@ -190,6 +213,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final unread = await widget.markRead(n.id);
       if (mounted) setState(() => _unread = unread);
+      if (mounted) _syncLive();
     } catch (e) {
       if (!mounted) return;
       replace(n);
@@ -207,6 +231,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _items = [for (final i in _items) i.copyWith(read: true)];
         _unread = unread;
       });
+      _syncLive();
     } catch (e) {
       if (mounted) _showMessage(e.toString());
     } finally {
@@ -243,8 +268,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar:
-          widget.bottomNav((index) => Navigator.pop(context, index)),
+      // Admins have no bottom bar
+      bottomNavigationBar: widget.bottomNav?.call(
+        (index) => Navigator.pop(context, index),
+      ),
     );
   }
 
@@ -376,6 +403,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         'AccountSuspended' => Icons.block_rounded,
         'AppealApproved' => Icons.verified_user_outlined,
         'AppealRejected' => Icons.gpp_bad_outlined,
+        // Admin notifications
+        'ApplicationSubmitted' => Icons.assignment_ind_outlined,
+        'ReportSubmitted' => Icons.flag_outlined,
+        'RefundRequested' => Icons.currency_exchange_rounded,
         _ => Icons.notifications_none_rounded,
       };
 

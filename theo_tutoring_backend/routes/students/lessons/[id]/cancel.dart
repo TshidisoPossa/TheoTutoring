@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/admin_notifications.dart';
 import 'package:theo_tutoring_backend/booking_tutor.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
@@ -54,6 +55,16 @@ Future<Response> onRequest(RequestContext context, String id) async {
       await getConnection(),
     ).cancel(identity.uid, bookingId, reason);
     final notified = await _notifyTutor(cancellation);
+    // A paid lesson leaves a refund for the admins to review
+    if (cancellation.refundAmount != null) {
+      announceToAdmins(
+        () => notifyAdminsOfRefund(
+          bookingId,
+          cancelledBy: 'student',
+          amount: cancellation.refundAmount,
+        ),
+      );
+    }
 
     return Response.json(
       body: {

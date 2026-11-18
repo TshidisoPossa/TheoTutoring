@@ -73,6 +73,16 @@ abstract final class NotificationType {
   /// An administrator rejected the user's appeal; the suspension remains.
   static const appealRejected = 'AppealRejected';
 
+  /// A tutor submitted (or resubmitted) an application (to every admin).
+  static const applicationSubmitted = 'ApplicationSubmitted';
+
+  /// A student or tutor filed a report (to every admin).
+  static const reportSubmitted = 'ReportSubmitted';
+
+  /// A cancelled paid lesson has a refund waiting for review (to every
+  /// admin).
+  static const refundRequested = 'RefundRequested';
+
   /// Every valid type.
   static const all = {
     bookingRequested,
@@ -94,6 +104,9 @@ abstract final class NotificationType {
     accountSuspended,
     appealApproved,
     appealRejected,
+    applicationSubmitted,
+    reportSubmitted,
+    refundRequested,
   };
 }
 

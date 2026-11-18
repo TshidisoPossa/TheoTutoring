@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dart_frog/dart_frog.dart';
+import 'package:theo_tutoring_backend/admin_notifications.dart';
 import 'package:theo_tutoring_backend/database.dart';
 import 'package:theo_tutoring_backend/firebase_auth.dart';
 import 'package:theo_tutoring_backend/request_utils.dart';
@@ -50,6 +51,7 @@ Future<Response> onRequest(RequestContext context, String id) async {
     final reportId = await MySqlStudentReportsRepository(
       await getConnection(),
     ).reportTutor(identity.uid, tutorId, reason);
+    announceToAdmins(() => notifyAdminsOfReport(reportId));
 
     return Response.json(
       statusCode: HttpStatus.created,
