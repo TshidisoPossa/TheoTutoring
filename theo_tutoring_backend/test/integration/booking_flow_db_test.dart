@@ -24,6 +24,7 @@ import '../../routes/StudentlandingPage/booking-purchases/[purchaseId]/payment-a
     as payments;
 import '../../routes/StudentlandingPage/booking-purchases/index.dart'
     as purchases;
+import '../support/test_database.dart';
 
 class _MockRequestContext extends Mock implements RequestContext {}
 
@@ -64,6 +65,7 @@ void main() {
           password: _password!,
           databaseName: _testDatabase,
           secure: true,
+          securityContext: testDatabaseSecurityContext(),
         );
         await connection.connect();
         return connection;

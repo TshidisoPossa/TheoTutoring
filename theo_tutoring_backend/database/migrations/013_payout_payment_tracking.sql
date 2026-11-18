@@ -80,6 +80,7 @@ BEGIN
     DECLARE v_updated DATETIME DEFAULT NULL;
     DECLARE v_unix BIGINT DEFAULT NULL;
     DECLARE v_offset VARCHAR(16) DEFAULT NULL;
+    DECLARE v_offset_given BOOLEAN DEFAULT FALSE;
     DECLARE v_offset_minutes INT DEFAULT NULL;
     DECLARE v_boundary DATETIME(6) DEFAULT NULL;
 
@@ -334,10 +335,17 @@ BEGIN
         SELECT CommissionPercentage FROM platformsettings WHERE SettingsID = 1);
     SET v_updated = (
         SELECT UpdatedAt FROM platformsettings WHERE SettingsID = 1);
-    SET v_offset = @theo_013_settings_utc_offset;
+    -- The operator's value is checked before it is copied: anything that is
+    -- not exactly '+HH:MM' / '-HH:MM' (e.g. a named zone, which would also
+    -- not fit v_offset) means "unknown", never an error.
+    SET v_offset_given = @theo_013_settings_utc_offset IS NOT NULL;
+    SET v_offset = IF(
+        CHAR_LENGTH(@theo_013_settings_utc_offset) = 6,
+        @theo_013_settings_utc_offset,
+        NULL);
 
     IF v_updated IS NOT NULL THEN
-        IF v_offset IS NOT NULL THEN
+        IF v_offset_given THEN
             IF v_offset REGEXP '^[+-](0[0-9]|1[0-4]):[0-5][0-9]$' THEN
                 SET v_offset_minutes =
                     (CAST(SUBSTRING(v_offset, 2, 2) AS UNSIGNED) * 60

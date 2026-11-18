@@ -18,6 +18,7 @@ import 'package:test/test.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
 
 import '../support/sql_script.dart';
+import '../support/test_database.dart';
 
 const _testDatabase = 'theotutoring_test';
 final _password = Platform.environment['THEO_TEST_DB_PASSWORD'];
@@ -49,6 +50,7 @@ void main() {
           databaseName: _testDatabase,
           // ignore: avoid_redundant_argument_values, as the other DB tests
           secure: true,
+          securityContext: testDatabaseSecurityContext(),
         );
         await connection.connect();
         return connection;

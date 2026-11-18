@@ -19,6 +19,8 @@ import 'package:theo_tutoring_backend/booking_tutor.dart';
 import 'package:theo_tutoring_backend/db_row.dart';
 import 'package:theo_tutoring_backend/payout_finance.dart';
 
+import '../support/test_database.dart';
+
 const _testDatabase = 'theotutoring_test';
 final _password = Platform.environment['THEO_TEST_DB_PASSWORD'];
 
@@ -45,6 +47,7 @@ void main() {
           databaseName: _testDatabase,
           // ignore: avoid_redundant_argument_values, as the other DB tests
           secure: true,
+          securityContext: testDatabaseSecurityContext(),
         );
         await connection.connect();
         return connection;
@@ -252,9 +255,14 @@ void main() {
         final audits = 'PayoutID IN ($payoutIds) OR AdminID = ${admin.id}';
         final payouts =
             'PayoutID IN ($payoutIds) OR BookingID IN ($bookingIds)';
+        final refundActions =
+            'RefundID IN (SELECT RefundID FROM refund '
+            'WHERE BookingID IN ($bookingIds))';
         for (final sql in [
           'DELETE FROM payoutadminaction WHERE $audits',
           'DELETE FROM payout WHERE $payouts',
+          // The real refund repository audits its decisions (deny above).
+          'DELETE FROM refundadminaction WHERE $refundActions',
           'DELETE FROM refund WHERE BookingID IN ($bookingIds)',
           'DELETE FROM purchasepayment WHERE PurchaseID IN ($purchases)',
           'DELETE FROM payment WHERE BookingId IN ($bookingIds)',
