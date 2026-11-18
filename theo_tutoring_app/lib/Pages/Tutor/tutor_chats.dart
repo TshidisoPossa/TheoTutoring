@@ -734,12 +734,6 @@ class _TutorChatScreenState extends State<TutorChatScreen> {
           ),
           GestureDetector(
             onTap: () {},
-            child: Icon(Icons.phone_outlined,
-                color: _c.textSoft, size: 22),
-          ),
-          const SizedBox(width: 16),
-          GestureDetector(
-            onTap: () {},
             child: Icon(Icons.more_vert,
                 color: _c.textSoft, size: 22),
           ),
