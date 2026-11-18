@@ -246,6 +246,13 @@ CREATE TABLE IF NOT EXISTS BookingPurchase (
     DiscountPercent DECIMAL(5,2) NOT NULL DEFAULT 0.00,
     DiscountAmount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     TotalAmount DECIMAL(12,2) NOT NULL,
+    -- Platform commission captured at purchase time (migration 013); every
+    -- lesson of the purchase pays the tutor at this rate. 'Backfilled' = set
+    -- by migration 013 where platformsettings.UpdatedAt proves the rate was
+    -- in force; 'Manual' = recorded by an administrator; NULL = unresolved
+    -- history (no payout is generated until it is resolved).
+    CommissionPercentage DECIMAL(5,2) NULL,
+    CommissionSource ENUM('Purchase', 'Backfilled', 'Manual') NULL,
     IdempotencyKey VARCHAR(128)
         CHARACTER SET ascii COLLATE ascii_bin NULL,
     RequestFingerprint CHAR(64)
@@ -277,6 +284,17 @@ CREATE TABLE IF NOT EXISTS BookingPurchase (
                 SubtotalAmount * DiscountPercent / 100, 2
             )
             AND TotalAmount = SubtotalAmount - DiscountAmount
+        ),
+    CONSTRAINT chk_purchase_commission_rate
+        CHECK (
+            CommissionPercentage IS NULL
+            OR CommissionPercentage BETWEEN 0 AND 100
+        ),
+    CONSTRAINT chk_purchase_commission_source
+        CHECK (
+            (CommissionPercentage IS NULL AND CommissionSource IS NULL)
+            OR (CommissionPercentage IS NOT NULL
+                AND CommissionSource IS NOT NULL)
         ),
     CONSTRAINT chk_purchase_idempotency_fields
         CHECK (
@@ -849,7 +867,11 @@ CREATE TABLE IF NOT EXISTS TutorApplication (
 -- =========================================================
 -- 17. PAYOUTS
 -- Workflow: Pending -> Approved -> Paid.
--- CommissionAmount and NetAmount are captured for the payout.
+-- CommissionAmount and NetAmount are captured for the payout, from the
+-- lesson price and its purchase's CommissionPercentage (migration 013).
+-- AdminID = who approved it; PaidByAdminID = who marked it paid, with the
+-- optional external PaymentReference. Every step is also recorded in
+-- payoutadminaction.
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS Payout (
@@ -866,10 +888,19 @@ CREATE TABLE IF NOT EXISTS Payout (
     AdminID INT NULL,
     ApprovedAt DATETIME NULL,
     PaidAt DATETIME NULL,
+    PaidByAdminID INT NULL,
+    PaymentReference VARCHAR(100) NULL,
 
     CONSTRAINT chk_payout_amount CHECK (Amount >= 0),
     CONSTRAINT chk_payout_commission CHECK (CommissionAmount >= 0),
     CONSTRAINT chk_payout_net CHECK (NetAmount >= 0),
+    CONSTRAINT chk_payout_paid_by CHECK (
+        PaidByAdminID IS NULL OR (Status = 'Paid' AND PaidAt IS NOT NULL)
+    ),
+    CONSTRAINT chk_payout_reference CHECK (
+        PaymentReference IS NULL
+        OR (Status = 'Paid' AND CHAR_LENGTH(TRIM(PaymentReference)) > 0)
+    ),
 
     CONSTRAINT fk_payout_tutor
         FOREIGN KEY (TutorID) REFERENCES TutorProfile(TutorID),
@@ -878,5 +909,32 @@ CREATE TABLE IF NOT EXISTS Payout (
         FOREIGN KEY (BookingID) REFERENCES Booking(Booking_id),
 
     CONSTRAINT fk_payout_admin
-        FOREIGN KEY (AdminID) REFERENCES Admin(AdminID)
+        FOREIGN KEY (AdminID) REFERENCES Admin(AdminID),
+
+    CONSTRAINT fk_payout_paid_by
+        FOREIGN KEY (PaidByAdminID) REFERENCES Admin(AdminID)
 );
+
+-- Audit trail of payout steps (migration 013), one row per Generated /
+-- Approved / Paid step, written in the same transaction as the step.
+-- Lowercase names like the live, case-sensitive server (see 012 above).
+CREATE TABLE IF NOT EXISTS payoutadminaction (
+    PayoutAdminActionID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    PayoutID INT NOT NULL,
+    AdminID INT NOT NULL,
+    Action ENUM('Generated', 'Approved', 'Paid') NOT NULL,
+    NetAmount DECIMAL(10,2) NOT NULL,
+    PaymentReference VARCHAR(100) NULL,
+    CreatedAtUtc DATETIME(6) NOT NULL,
+
+    CONSTRAINT chk_payout_action_amount CHECK (NetAmount >= 0),
+    CONSTRAINT chk_payout_action_reference
+        CHECK (PaymentReference IS NULL OR Action = 'Paid'),
+    CONSTRAINT fk_payout_action_payout
+        FOREIGN KEY (PayoutID) REFERENCES payout(PayoutID),
+    CONSTRAINT fk_payout_action_admin
+        FOREIGN KEY (AdminID) REFERENCES `admin`(AdminID),
+
+    UNIQUE KEY uq_payout_action_once (PayoutID, Action),
+    INDEX idx_payout_action_created (CreatedAtUtc)
+) ENGINE=InnoDB;

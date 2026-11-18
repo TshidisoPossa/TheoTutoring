@@ -147,8 +147,10 @@ void main() {
     expect(find.text('Mar 1, 2026'), findsNWidgets(3));
     expect(find.text('Pending'), findsWidgets);
     expect(find.text('Showing 1–3 of 3 tutors'), findsOneWidget);
-    expect(find.text('Add Tutor'), findsOneWidget);
-    expect(find.text('Export CSV'), findsOneWidget);
+    // The unbuilt Add Tutor / Export CSV placeholders were removed.
+    expect(find.text('Add Tutor'), findsNothing);
+    expect(find.text('Export CSV'), findsNothing);
+    expect(find.textContaining('not available yet'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -370,18 +372,6 @@ void main() {
 
     expect(find.text('Fresh Tutor'), findsOneWidget);
     expect(find.text('Stale Tutor'), findsNothing);
-  });
-
-  testWidgets('Add Tutor and Export CSV say they are not ready yet', (
-    tester,
-  ) async {
-    final backend = _Backend();
-    await _pump(tester, backend);
-
-    await tester.tap(find.text('Add Tutor'));
-    await tester.pump();
-    expect(find.text('Adding a tutor is not available yet.'), findsOneWidget);
-    expect(backend.patches, isEmpty);
   });
 
   testWidgets('the overview lists the tutor\'s uploaded documents', (

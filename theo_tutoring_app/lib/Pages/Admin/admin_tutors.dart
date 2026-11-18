@@ -125,13 +125,6 @@ class _AdminTutorsScreenState extends State<AdminTutorsScreen> {
     _load();
   }
 
-  // Add Tutor / Export CSV are not built yet.
-  void _notAvailableYet(String feature) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$feature is not available yet.')));
-  }
-
   Future<void> _openTutor(AdminTutor tutor) async {
     final updated = await showDialog<AdminTutor>(
       context: context,
@@ -165,7 +158,7 @@ class _AdminTutorsScreenState extends State<AdminTutorsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _Header(onUnavailable: _notAvailableYet),
+                const _Header(),
                 const SizedBox(height: 20),
                 if (_loading && data == null)
                   const Padding(
@@ -380,18 +373,10 @@ class _AdminTutorsScreenState extends State<AdminTutorsScreen> {
 // ------------------------------------------------------------ widgets
 
 class _Header extends StatelessWidget {
-  const _Header({required this.onUnavailable});
-
-  final ValueChanged<String> onUnavailable;
+  const _Header();
 
   @override
-  Widget build(BuildContext context) => Wrap(
-    alignment: WrapAlignment.spaceBetween,
-    crossAxisAlignment: WrapCrossAlignment.end,
-    spacing: 16,
-    runSpacing: 12,
-    children: [
-      const Column(
+  Widget build(BuildContext context) => const Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -410,38 +395,7 @@ class _Header extends StatelessWidget {
             style: TextStyle(fontSize: 14, color: AdminColors.textMuted),
           ),
         ],
-      ),
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FilledButton.icon(
-            onPressed: () => onUnavailable('Adding a tutor'),
-            style: FilledButton.styleFrom(
-              backgroundColor: AdminColors.primary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Tutor'),
-          ),
-          const SizedBox(width: 10),
-          FilledButton.icon(
-            onPressed: () => onUnavailable('Export to CSV'),
-            style: FilledButton.styleFrom(
-              backgroundColor: _greyBg,
-              foregroundColor: AdminColors.textDark,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: const Icon(Icons.download_outlined, size: 18),
-            label: const Text('Export CSV'),
-          ),
-        ],
-      ),
-    ],
-  );
+      );
 }
 
 class _Card extends StatelessWidget {

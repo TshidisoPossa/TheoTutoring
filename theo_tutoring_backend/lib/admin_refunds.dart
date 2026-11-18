@@ -645,6 +645,18 @@ class MySqlAdminRefundsRepository implements AdminRefundsRepository {
     MySQLConnection transaction,
     int refundId,
   ) async {
+    // Lock order booking -> refund -> payout, as cancellations and payout
+    // generation use (lib/admin_payouts.dart): the booking first, then the
+    // refund and payment rows below.
+    await transaction.execute(
+      '''
+      SELECT b.Booking_id FROM booking b
+      WHERE b.Booking_id =
+        (SELECT r.BookingID FROM refund r WHERE r.RefundID = :refundId)
+      FOR UPDATE OF b
+      ''',
+      {'refundId': refundId},
+    );
     final result = await transaction.execute(
       '''
       SELECT

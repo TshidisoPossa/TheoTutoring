@@ -9,8 +9,10 @@ nullable `StudentProfile.Institution`, the student's university), then
 then `009_email_verification_code.sql` (the emailed sign-up codes),
 then `010_report_category.sql` (Report a Problem categories),
 then `011_review_highlights_note.sql` (review badges and private note,
-both admin only), and finally `012_account_suspension_appeal.sql`
-(suspension history and appeals). Apply
+both admin only), then `012_account_suspension_appeal.sql`
+(suspension history and appeals), and finally
+`013_payout_payment_tracking.sql` (commission snapshot, payout payment
+tracking and audit). Apply
 these after the base `schema.sql`, from one deployment process with booking
 writes stopped.
 Each migration ledger version is written last.
@@ -513,3 +515,80 @@ written exactly as they exist on the case-sensitive server
 database selected when connecting. Re-running it changes nothing. Until it
 is applied, suspending from the admin Students and Tutors pages, the
 suspended-account screen and the Appeals page return server errors.
+
+
+## `013_payout_payment_tracking.sql`
+
+Adds what the admin Payouts page needs to track tutor payments
+(`lib/admin_payouts.dart`; the money rules are in `lib/payout_finance.dart`):
+
+- `bookingpurchase.CommissionPercentage` and `CommissionSource`: the platform
+  commission captured when the student buys (`Purchase`). Every lesson of the
+  purchase uses that rate, so later changes to
+  `platformsettings.CommissionPercentage` never alter existing purchases.
+- `payout.PaidByAdminID` and `PaymentReference`: who marked a payout as paid
+  and the optional external reference (up to 100 characters). `AdminID`
+  remains the approving administrator.
+- `payoutadminaction`: one audit row per `Generated`, `Approved` and `Paid`
+  step, written in the same transaction as the step;
+  `uq_payout_action_once` stops a step being recorded twice.
+
+### Historical purchases (evidence-based backfill)
+
+No purchase-time rate was ever stored, and `platformsettings` keeps no
+history: only the current `CommissionPercentage` and `UpdatedAt`, which
+changes whenever the row changes. The current rate is therefore known to
+apply to a purchase only if it was created after `UpdatedAt`. The migration
+backfills exactly those purchases (with one second of margin) as
+`Backfilled`; every earlier purchase stays NULL (unresolved). Unresolved
+lessons are listed on the Payouts page (`missing_commission_rate`) and payout
+generation skips them.
+
+`UpdatedAt` is server-local time and `CreatedAtUtc` is UTC. The migration
+converts with, in order: `@theo_013_settings_utc_offset` if set before running
+(a fixed offset such as `SET @theo_013_settings_utc_offset = '+00:00';`;
+invalid values mean "unknown"), otherwise the session time zone only when it
+equals the server's global zone. Otherwise nothing is backfilled. Assumption:
+the global time zone has not changed since `UpdatedAt` was written.
+
+Check the evidence before applying (read-only):
+
+```sql
+SELECT @@global.time_zone, @@session.time_zone, @@system_time_zone;
+SELECT UpdatedAt, CommissionPercentage FROM platformsettings WHERE SettingsID = 1;
+SELECT MIN(CreatedAtUtc), MAX(CreatedAtUtc), COUNT(*) FROM bookingpurchase;
+```
+
+Resolve a purchase the migration left NULL only on real evidence, as an
+administrator decision:
+
+```sql
+UPDATE bookingpurchase
+SET CommissionPercentage = 10.00, CommissionSource = 'Manual'
+WHERE PurchaseID = <id> AND CommissionPercentage IS NULL;
+```
+
+Re-running the migration never changes `Purchase`, `Manual` or earlier
+`Backfilled` values: only rows that are still NULL are considered.
+
+### Re-running and partial schemas
+
+Every column, constraint, index and the audit table is checked on its own:
+missing ones are added, correct ones are left alone, and one that exists with
+an unexpected definition stops the migration with `SQLSTATE 45000` and a
+message naming it (never silently skipped). An earlier draft's two-value
+`CommissionSource` ENUM is widened to include `Manual`. Table names are
+lowercase as on the case-sensitive server and the file has no `USE`. The
+backfill `UPDATE` filters on the primary key, so it also runs with MySQL
+Workbench's safe-update mode on.
+
+Test it on an isolated MySQL 8.4 `theotutoring_test` with
+`lower_case_table_names = 0` first:
+`test/integration/migration_013_db_test.dart` runs this file there (twice),
+and `test/integration/payouts_db_test.dart` exercises the payout workflow.
+
+Apply it before deploying the backend that uses it. Until it is applied, the
+Payouts page and payout generation return 503 ("apply the latest
+migrations"), and new purchases are saved without a commission rate (a
+warning is logged); the migration backfills those only if the evidence above
+supports it.

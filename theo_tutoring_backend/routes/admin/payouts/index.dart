@@ -12,14 +12,26 @@ Future<Response> onRequest(RequestContext context) =>
 /// GET /admin/payouts?status=all|pending|approved|paid&page=&pageSize=
 /// The admin Payouts page (permission admin.finance.read).
 ///
+/// Read-only: payouts are created by POST /admin/payouts/generate, never by
+/// this request.
+///
 /// { adminName, total, page, pageSize,
 ///   summary: { pendingCount, pendingNetAmount, approvedCount,
 ///              approvedNetAmount, paidCount, paidNetAmount },
+///   finance: { moneyReceived, platformCommission, owedToTutors,
+///              paidToTutors, refunded, heldForUpcomingLessons,
+///              retainedCancellationRevenue, awaitingRefundDecision,
+///              awaitingPayoutGeneration, unallocated, accountedFor,
+///              difference, reconciled, counts: {...},
+///              issues: [ {code, severity, count, amount, message} ] },
 ///   payouts: [ { payoutId, status, amount, commissionAmount, netAmount,
-///                createdAt, approvedAt, paidAt, approvedBy,
+///                commissionRate, commissionRateBackfilled,
+///                createdAt, approvedAt, paidAt, approvedBy, paidBy,
+///                paymentReference, refund: {status, amount}?, flagged,
 ///                tutor: {tutorId, name, email},
 ///                booking: {bookingId, studentName, subject, date,
 ///                          startTime, endTime, status} } ] }
+/// finance amounts are "1234.50" strings (lib/payout_finance.dart).
 Future<Response> handleAdminPayouts(
   RequestContext context, {
   AdminResolver? adminResolver,
@@ -75,12 +87,13 @@ Future<Response> handleAdminPayouts(
   } catch (error) {
     if (error is MySQLServerException) {
       stderr.writeln('Admin payouts lookup failed (MySQL ${error.errorCode}).');
-      // 1146: a table the query needs (payout) is missing on this server.
-      if (error.errorCode == 1146) {
+      // 1146: a table the query needs (payout) is missing on this server;
+      // 1054: a column migration 013 adds is missing.
+      if (error.errorCode == 1146 || error.errorCode == 1054) {
         return _error(
           HttpStatus.serviceUnavailable,
           'Payouts is not set up on this server yet: required database '
-          'tables are missing.',
+          'tables or columns are missing (apply the latest migrations).',
         );
       }
     } else {

@@ -432,6 +432,22 @@ void main() {
         },
       );
 
+      test('the purchase captured the platform commission rate '
+          '(migration 013)', () async {
+        final captured = await rows(
+          'SELECT p.CommissionPercentage, p.CommissionSource, '
+          's.CommissionPercentage AS Platform FROM bookingpurchase p '
+          'JOIN platformsettings s ON s.SettingsID = 1 '
+          'WHERE p.PurchaseID = :id',
+          {'id': singleId},
+        );
+        expect(captured.single['CommissionSource'], 'Purchase');
+        expect(
+          captured.single['CommissionPercentage'],
+          captured.single['Platform'],
+        );
+      });
+
       test('replaying the successful key does not double charge', () async {
         final replay = await pay(singleId, '$tag-pay-2', 'success');
         expect(replay.status, 200);

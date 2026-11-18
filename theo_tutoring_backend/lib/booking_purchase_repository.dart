@@ -609,6 +609,63 @@ class MySqlBookingPurchaseRepository
     );
   }
 
+  static const _purchaseColumns = '''
+        StudentID, TutorID, SubjectID, PurchaseType, LessonCount,
+        RatePerLesson, SubtotalAmount, DiscountPercent, DiscountAmount,
+        TotalAmount, IdempotencyKey, RequestFingerprint, PurchaseStatus,
+        CreatedAtUtc''';
+  static const _purchaseValues = '''
+        :studentId, :tutorId, :subjectId, :purchaseType, :lessonCount,
+        :rate, :subtotal, :discountPercent, :discount, :total,
+        :idempotencyKey, :fingerprint, 'Held', UTC_TIMESTAMP(6)''';
+
+  /// Inserts the purchase with the platform commission rate captured now
+  /// (CommissionSource 'Purchase'), so later changes to the setting never
+  /// alter what this purchase's lessons pay the tutor (lib/payout_finance.dart).
+  ///
+  /// Until migration 013 adds the snapshot columns the insert falls back to
+  /// the old columns (MySQL rolls back only the failed statement, not the
+  /// transaction); the migration then marks such purchases 'Backfilled'.
+  static Future<IResultSet> _insertPurchase(
+    MySQLConnection connection,
+    Map<String, dynamic> values,
+  ) async {
+    final settings = await connection.execute(
+      'SELECT CommissionPercentage FROM platformsettings '
+      'WHERE SettingsID = 1 LIMIT 1',
+    );
+    final commission = settings.rows.isEmpty
+        ? null
+        : settings.rows.first.str('CommissionPercentage');
+    try {
+      return await connection.execute(
+        '''
+        INSERT INTO bookingpurchase (
+          $_purchaseColumns, CommissionPercentage, CommissionSource
+        ) VALUES (
+          $_purchaseValues, :commission, :commissionSource
+        )
+        ''',
+        {
+          ...values,
+          'commission': commission,
+          'commissionSource': commission == null ? null : 'Purchase',
+        },
+      );
+    } on MySQLServerException catch (error) {
+      if (error.errorCode != 1054) rethrow;
+      stderr.writeln(
+        'bookingpurchase has no commission snapshot columns yet: apply '
+        'migration 013. The purchase was saved without a commission rate.',
+      );
+      return connection.execute(
+        'INSERT INTO bookingpurchase ($_purchaseColumns) '
+        'VALUES ($_purchaseValues)',
+        values,
+      );
+    }
+  }
+
   Future<BookingPurchaseReceipt> _createInTransaction(
     MySQLConnection connection,
     int studentId,
@@ -743,34 +800,20 @@ class MySqlBookingPurchaseRepository
       lessons: command.lessons,
     );
 
-    final purchaseInsert = await connection.execute(
-      '''
-      INSERT INTO bookingpurchase (
-        StudentID, TutorID, SubjectID, PurchaseType, LessonCount,
-        RatePerLesson, SubtotalAmount, DiscountPercent, DiscountAmount,
-        TotalAmount, IdempotencyKey, RequestFingerprint, PurchaseStatus,
-        CreatedAtUtc
-      ) VALUES (
-        :studentId, :tutorId, :subjectId, :purchaseType, :lessonCount,
-        :rate, :subtotal, :discountPercent, :discount, :total,
-        :idempotencyKey, :fingerprint, 'Held', UTC_TIMESTAMP(6)
-      )
-      ''',
-      {
-        'studentId': studentId,
-        'tutorId': command.tutorId,
-        'subjectId': command.subjectId,
-        'purchaseType': command.purchaseType,
-        'lessonCount': command.lessons.length,
-        'rate': price.rate,
-        'subtotal': price.subtotal,
-        'discountPercent': price.discountPercent,
-        'discount': price.discount,
-        'total': price.total,
-        'idempotencyKey': command.idempotencyKey,
-        'fingerprint': command.fingerprint,
-      },
-    );
+    final purchaseInsert = await _insertPurchase(connection, {
+      'studentId': studentId,
+      'tutorId': command.tutorId,
+      'subjectId': command.subjectId,
+      'purchaseType': command.purchaseType,
+      'lessonCount': command.lessons.length,
+      'rate': price.rate,
+      'subtotal': price.subtotal,
+      'discountPercent': price.discountPercent,
+      'discount': price.discount,
+      'total': price.total,
+      'idempotencyKey': command.idempotencyKey,
+      'fingerprint': command.fingerprint,
+    });
     final purchaseId = purchaseInsert.lastInsertID.toInt();
     final allocations = price.allocateLessonCents();
     final bookingIds = <int>[];

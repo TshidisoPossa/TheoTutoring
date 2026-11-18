@@ -1,7 +1,9 @@
-// Payouts: tutor earnings recorded per lesson. An administrator first
-// approves a pending payout, then marks it as paid once the payment has been
-// made outside the platform. Marking as paid only records the status; this
-// page never transfers money.
+// Payouts: the platform's money overview and tutor earnings recorded per
+// lesson. An administrator generates payouts for finished lessons, approves a
+// pending payout, then marks it as paid (with an optional external reference)
+// once the payment has been made outside the platform. Marking as paid only
+// records the payment; this page never transfers money. The figures and
+// their definitions come from the backend (lib/payout_finance.dart).
 
 import 'package:flutter/material.dart';
 
@@ -25,6 +27,9 @@ const _greyBg = Color(0xFFF3F4F6);
 const managePayoutsPermission = 'admin.payouts.manage';
 
 String _msg(Object e) => e.toString().replaceFirst('Exception: ', '');
+
+/// Cents -> "R 1,234.50" (display only; amounts stay in cents).
+String _rand(int cents) => formatRand(cents / 100);
 
 class AdminPayoutsScreen extends StatefulWidget {
   const AdminPayoutsScreen({super.key, this.service});
@@ -53,6 +58,7 @@ class _AdminPayoutsScreenState extends State<AdminPayoutsScreen> {
 
   /// The payout an action is running for, so only its button shows progress.
   int? _busyId;
+  bool _generating = false;
 
   @override
   void initState() {
@@ -176,17 +182,40 @@ class _AdminPayoutsScreenState extends State<AdminPayoutsScreen> {
   }
 
   Future<void> _markPaid(AdminPayout p) async {
-    final ok = await _confirm(
-      title: 'Mark payout as paid?',
-      message:
-          'Record that ${formatRand(p.netAmount)} has been paid to '
-          '${p.tutorName} (payout #${p.id})? This only records the payment '
-          'status. It does not transfer any money, and it cannot be undone.',
-      confirmLabel: 'Mark as paid',
-      color: AdminColors.primary,
+    // null = cancelled; '' = paid without a reference.
+    final reference = await showDialog<String>(
+      context: context,
+      builder: (_) => _MarkPaidDialog(payout: p),
     );
-    if (!ok) return;
-    await _run(p, () => _service.markPaid(p.id), 'Payout recorded as paid.');
+    if (reference == null) return;
+    await _run(
+      p,
+      () => _service.markPaid(p.id, reference: reference),
+      'Payout recorded as paid.',
+    );
+  }
+
+  Future<void> _generate() async {
+    setState(() => _generating = true);
+    try {
+      final result = await _service.generate();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: _red,
+          content: Text('Could not generate payouts: ${_msg(e)}'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+    // Totals and the list change either way (another admin may have run it).
+    if (mounted) await _load();
   }
 
   // ------------------------------------------------------------ build
@@ -237,7 +266,10 @@ class _AdminPayoutsScreenState extends State<AdminPayoutsScreen> {
                     _ErrorBanner(message: _error!, onRetry: _load),
                     const SizedBox(height: 16),
                   ],
-                  _buildStats(result.summary),
+                  if (result.finance == null)
+                    _buildStats(result.summary)
+                  else
+                    _buildFinance(result.finance!),
                   const SizedBox(height: 20),
                   _buildList(result),
                 ],
@@ -269,24 +301,114 @@ class _AdminPayoutsScreenState extends State<AdminPayoutsScreen> {
             ),
             SizedBox(height: 4),
             Text(
-              'Approve tutor earnings, then record them as paid once the '
-              'payment has been made.',
+              'Generate payouts for finished lessons, approve them, then '
+              'record them as paid once the payment has been made.',
               style: TextStyle(fontSize: 14, color: AdminColors.textMuted),
             ),
           ],
         ),
-        OutlinedButton.icon(
-          onPressed: _loading ? null : _load,
-          icon: _loading
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.refresh, size: 18),
-          label: const Text('Refresh'),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            if (_canManage)
+              FilledButton.icon(
+                onPressed: _loading || _generating || _busyId != null
+                    ? null
+                    : _generate,
+                icon: _generating
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.playlist_add_check, size: 18),
+                label: const Text('Generate eligible payouts'),
+              ),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _load,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh, size: 18),
+              label: const Text('Refresh'),
+            ),
+          ],
         ),
       ],
+    );
+  }
+
+  /// The four headline figures, any reconciliation warnings, then where
+  /// every rand received has gone.
+  Widget _buildFinance(PayoutFinance f) {
+    final cards = [
+      _StatCard(
+        label: 'Money received',
+        value: _rand(f.moneyReceived),
+        caption: 'Successful student payments',
+      ),
+      _StatCard(
+        label: 'Platform commission',
+        value: _rand(f.platformCommission),
+        caption: 'Earned on completed lessons',
+        valueColor: _green,
+      ),
+      _StatCard(
+        label: 'Owed to tutors',
+        value: _rand(f.owedToTutors),
+        caption:
+            '${f.pendingPayouts} pending approval · '
+            '${f.approvedPayouts} approved',
+        valueColor: f.owedToTutors > 0 ? _amber : null,
+      ),
+      _StatCard(
+        label: 'Paid to tutors',
+        value: _rand(f.paidToTutors),
+        caption:
+            '${f.paidPayouts} ${f.paidPayouts == 1 ? 'payout' : 'payouts'} '
+            'recorded as paid',
+        valueColor: _blue,
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _cardGrid(cards, wide: 4),
+        if (f.issues.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _IssuesBanner(issues: f.issues),
+        ],
+        const SizedBox(height: 14),
+        _Reconciliation(finance: f),
+      ],
+    );
+  }
+
+  Widget _cardGrid(List<Widget> cards, {required int wide}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final perRow = constraints.maxWidth >= 900
+            ? wide
+            : constraints.maxWidth >= 560
+            ? 2
+            : 1;
+        const gap = 14.0;
+        final width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final card in cards) SizedBox(width: width, child: card),
+          ],
+        );
+      },
     );
   }
 
@@ -461,7 +583,11 @@ class _PayoutTile extends StatelessWidget {
 
   Widget? _action() {
     if (!canManage) return null;
-    final onPressed = actionsLocked ? null : _onPressed;
+    // A Pending, Approved or Processed refund blocks approval and payment
+    // (the backend refuses them too); refund is null for a rejected one.
+    final onPressed = actionsLocked || payout.refundStatus != null
+        ? null
+        : _onPressed;
     final child = busy
         ? const SizedBox(
             width: 14,
@@ -500,8 +626,14 @@ class _PayoutTile extends StatelessWidget {
         'Approved ${formatCaseDate(payout.approvedAt!)}'
             '${payout.approvedBy == null ? '' : ' by ${payout.approvedBy}'}',
       if (payout.paidAt != null)
-        'Marked paid ${formatCaseDate(payout.paidAt!)}',
+        'Marked paid ${formatCaseDate(payout.paidAt!)}'
+            '${payout.paidBy == null ? '' : ' by ${payout.paidBy}'}',
     ];
+    final rate = payout.commissionRate;
+    final commissionLabel = rate == null
+        ? 'Commission'
+        : 'Commission ($rate%'
+              '${payout.commissionRateBackfilled ? ', backfilled rate' : ''})';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
@@ -551,7 +683,7 @@ class _PayoutTile extends StatelessWidget {
             runSpacing: 8,
             children: [
               _Amount(label: 'Gross amount', value: payout.amount),
-              _Amount(label: 'Commission', value: payout.commissionAmount),
+              _Amount(label: commissionLabel, value: payout.commissionAmount),
               _Amount(
                 label: 'Tutor net',
                 value: payout.netAmount,
@@ -576,6 +708,297 @@ class _PayoutTile extends StatelessWidget {
               ),
             ),
           ],
+          if (payout.paymentReference != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Payment reference: ${payout.paymentReference}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AdminColors.textDark,
+              ),
+            ),
+          ],
+          if (payout.refundStatus != null) ...[
+            const SizedBox(height: 10),
+            _RefundFlag(payout: payout),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A refund recorded for the lesson after its payout was generated. The
+/// payout is never changed automatically; an administrator has to review it.
+class _RefundFlag extends StatelessWidget {
+  const _RefundFlag({required this.payout});
+  final AdminPayout payout;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = payout.refundStatus == 'pending';
+    final amount = formatRand(payout.refundAmount ?? 0);
+    final paid = payout.status == PayoutStatus.paid;
+    final next = paid
+        ? 'it was already paid, so recover the amount from the tutor if '
+              'needed.'
+        : 'it cannot be approved or paid until the refund is resolved.';
+    final text = pending
+        ? 'A refund is awaiting a decision for this lesson. '
+              '${paid ? 'This payout was already paid.' : 'This payout cannot be approved or paid until it is decided.'}'
+        : 'Refund of $amount ${payout.refundStatus} after this payout was '
+              'generated. The payout was not changed: $next';
+    final (bg, fg) = pending ? (_amberBg, _amber) : (_redBg, _red);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 18, color: fg),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: TextStyle(fontSize: 12.5, color: fg)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Mark as paid: confirms, and takes the optional external payment
+/// reference. Pops the trimmed reference ('' for none), or null to cancel.
+class _MarkPaidDialog extends StatefulWidget {
+  const _MarkPaidDialog({required this.payout});
+  final AdminPayout payout;
+
+  @override
+  State<_MarkPaidDialog> createState() => _MarkPaidDialogState();
+}
+
+class _MarkPaidDialogState extends State<_MarkPaidDialog> {
+  final _reference = TextEditingController();
+
+  @override
+  void dispose() {
+    _reference.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.payout;
+    return AlertDialog(
+      title: const Text('Mark payout as paid?'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Record that ${formatRand(p.netAmount)} has been paid to '
+              '${p.tutorName} (payout #${p.id})? This only records the '
+              'payment. It does not transfer any money, and it cannot be '
+              'undone.',
+            ),
+            if (p.flagged) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'This lesson has a refund recorded after the payout was '
+                'generated. Check it before paying.',
+                style: TextStyle(color: _red, fontWeight: FontWeight.w600),
+              ),
+            ],
+            const SizedBox(height: 14),
+            TextField(
+              controller: _reference,
+              maxLength: 100,
+              decoration: const InputDecoration(
+                labelText: 'Payment reference (optional)',
+                hintText: 'e.g. the EFT reference',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _reference.text.trim()),
+          child: const Text('Mark as paid'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Reconciliation findings: anything that does not add up is shown, never
+/// adjusted away.
+class _IssuesBanner extends StatelessWidget {
+  const _IssuesBanner({required this.issues});
+  final List<PayoutIssue> issues;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, issue) in issues.indexed) ...[
+          if (i > 0) const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: issue.isWarning ? _amberBg : _blueBg,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  issue.isWarning
+                      ? Icons.warning_amber_rounded
+                      : Icons.info_outline,
+                  size: 18,
+                  color: issue.isWarning ? _amber : _blue,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    [
+                      issue.message,
+                      if (issue.count != null)
+                        '${issue.count} '
+                            '${issue.count == 1 ? 'record' : 'records'}',
+                      if (issue.amountCents != null) _rand(issue.amountCents!),
+                    ].join(' · '),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: issue.isWarning ? _amber : _blue,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Where every rand received has gone. Each paid lesson is counted in exactly
+/// one line; the difference is shown as it is.
+class _Reconciliation extends StatelessWidget {
+  const _Reconciliation({required this.finance});
+  final PayoutFinance finance;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = finance;
+    final lines = <(String, int)>[
+      ('Refunded to students', f.refunded),
+      ('Retained from cancellations', f.retainedCancellationRevenue),
+      ('Awaiting a refund decision', f.awaitingRefundDecision),
+      (
+        'Held for upcoming lessons (${f.upcomingLessons})',
+        f.heldForUpcomingLessons,
+      ),
+      (
+        'Finished lessons awaiting payout generation '
+            '(${f.awaitingPayoutGenerationCount})',
+        f.awaitingPayoutGeneration,
+      ),
+      ('Platform commission', f.platformCommission),
+      ('Owed to tutors', f.owedToTutors),
+      ('Paid to tutors', f.paidToTutors),
+      if (f.unallocated != 0) ('Unallocated (see warnings)', f.unallocated),
+    ];
+    return _Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Where the money is',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AdminColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _Line('Money received from students', f.moneyReceived, bold: true),
+            const Divider(height: 18, color: AdminColors.border),
+            for (final (label, cents) in lines) _Line(label, cents),
+            const Divider(height: 18, color: AdminColors.border),
+            _Line('Accounted for', f.accountedFor, bold: true),
+            _Line(
+              'Difference',
+              f.difference,
+              bold: true,
+              color: f.difference == 0 ? _green : _red,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              f.reconciled
+                  ? 'Reconciled: every rand received is accounted for.'
+                  : 'Not reconciled: ${_rand(f.difference)} is not explained '
+                        'by the records. See the warnings above.',
+              style: TextStyle(
+                fontSize: 12,
+                color: f.reconciled ? _green : _red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (f.eligibleLessons > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${f.eligibleLessons} finished '
+                '${f.eligibleLessons == 1 ? 'lesson is' : 'lessons are'} '
+                'ready for a payout: use Generate eligible payouts.',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AdminColors.textMuted,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Line extends StatelessWidget {
+  const _Line(this.label, this.cents, {this.bold = false, this.color});
+  final String label;
+  final int cents;
+  final bool bold;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: 13,
+      fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+      color: color ?? AdminColors.textDark,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: style)),
+          const SizedBox(width: 12),
+          Text(_rand(cents), style: style),
         ],
       ),
     );

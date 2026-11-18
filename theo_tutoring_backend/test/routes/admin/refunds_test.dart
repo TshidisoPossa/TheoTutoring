@@ -415,6 +415,13 @@ void main() {
         );
         expect(refundUpdate.$2?['status'], 'Rejected');
         expect(auditInsert.$2?['action'], 'Denied');
+        // Lock order booking -> refund, as cancellations and payout
+        // generation use: the booking row first, then the refund row.
+        expect(statements[0].$1, contains('FROM booking b'));
+        expect(statements[0].$1, contains('FOR UPDATE OF b'));
+        expect(statements[0].$2, {'refundId': 42});
+        expect(statements[1].$1, contains('FROM refund r'));
+        expect(statements[1].$1, contains('FOR UPDATE'));
       },
     );
   });

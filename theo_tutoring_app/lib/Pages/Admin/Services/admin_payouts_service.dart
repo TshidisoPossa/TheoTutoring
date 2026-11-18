@@ -75,20 +75,41 @@ class AdminPayoutsService {
     );
   }
 
-  Future<void> _post(int payoutId, String action) async {
+  Future<http.Response> _post(String path, Map<String, Object?> body) async {
     final response = await _client
         .post(
-          Uri.parse('$apiBaseUrl/admin/payouts/$payoutId/$action'),
+          Uri.parse('$apiBaseUrl/admin/payouts/$path'),
           headers: await _headers(),
-          body: '{}',
+          body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) throw _failure(response);
+    return response;
   }
 
   /// Pending -> Approved.
-  Future<void> approve(int payoutId) => _post(payoutId, 'approve');
+  Future<void> approve(int payoutId) => _post('$payoutId/approve', const {});
 
-  /// Approved -> Paid. Records the status only; it transfers no money.
-  Future<void> markPaid(int payoutId) => _post(payoutId, 'mark-paid');
+  /// Approved -> Paid, with an optional external payment [reference] (up to
+  /// 100 characters). Records the payment only; it transfers no money.
+  Future<void> markPaid(int payoutId, {String? reference}) {
+    final trimmed = reference?.trim() ?? '';
+    return _post('$payoutId/mark-paid', {
+      if (trimmed.isNotEmpty) 'reference': trimmed,
+    });
+  }
+
+  /// Creates Pending payouts for every eligible finished lesson that has
+  /// none yet. Safe to repeat. Returns the backend's message and count.
+  Future<({int generated, String message})> generate() async {
+    final response = await _post('generate', const {});
+    final body = jsonDecode(response.body);
+    final generated = body is Map && body['generated'] is num
+        ? (body['generated'] as num).toInt()
+        : 0;
+    final message = body is Map && body['message'] is String
+        ? body['message'] as String
+        : '$generated payouts generated.';
+    return (generated: generated, message: message);
+  }
 }
