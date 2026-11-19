@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'Pages/Admin/admin_subjects.dart';
 
 import 'Pages/auth_gate.dart';
+import 'Pages/splash_screen.dart';
 import 'Pages/Admin/admin_appeals.dart';
 import 'Pages/Admin/admin_chat_moderation.dart';
 import 'services/app_navigator.dart';
@@ -60,8 +61,9 @@ class MyApp extends StatelessWidget {
         ),
         darkTheme: TutorTheme.darkTheme,
         themeMode: themeMode,
-        // Signed in: their dashboard. Signed out: the splash screen.
-        home: AuthGate(service: authService),
+        // The animated introduction first, then the usual entry: signed in,
+        // their dashboard; signed out, the Log In / Register screen.
+        home: SplashScreen(next: (_) => AuthGate(service: authService)),
         routes: appRoutes,
         onUnknownRoute: onUnknownAppRoute,
       ),

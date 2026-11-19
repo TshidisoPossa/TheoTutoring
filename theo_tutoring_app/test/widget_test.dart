@@ -15,10 +15,17 @@ class _SignedOutAuth extends AuthService {
   Stream<User?> authStateChanges() => const Stream.empty();
 }
 
+/// Opens the app and continues past the animated splash (Continue only).
+Future<void> _openApp(WidgetTester tester) async {
+  await tester.pumpWidget(MyApp(authService: _SignedOutAuth()));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(ElevatedButton, 'Continue'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('signed out, the app opens on the splash screen', (tester) async {
-    await tester.pumpWidget(MyApp(authService: _SignedOutAuth()));
-    await tester.pumpAndSettle();
+    await _openApp(tester);
 
     expect(find.text('TheoTutoring'), findsOneWidget);
     expect(find.widgetWithText(ElevatedButton, 'Log In'), findsOneWidget);
@@ -26,8 +33,7 @@ void main() {
   });
 
   testWidgets('Log In opens the login screen', (tester) async {
-    await tester.pumpWidget(MyApp(authService: _SignedOutAuth()));
-    await tester.pumpAndSettle();
+    await _openApp(tester);
 
     await tester.tap(find.widgetWithText(ElevatedButton, 'Log In'));
     await tester.pumpAndSettle();
@@ -35,8 +41,7 @@ void main() {
   });
 
   testWidgets('Register opens role selection', (tester) async {
-    await tester.pumpWidget(MyApp(authService: _SignedOutAuth()));
-    await tester.pumpAndSettle();
+    await _openApp(tester);
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Register'));
     await tester.pumpAndSettle();
